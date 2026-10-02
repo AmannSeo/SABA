@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>[Sec &amp; AI Briefing] 10/8(목) A금융 앱 유출 정황 외 4건</title>
+</head>
+<body style="margin:0;padding:0;background-color:#EEF1F4;font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',Arial,sans-serif;color:#1B2733;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EEF1F4"><tr><td align="center" style="padding:16px 8px;">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px;">
+
+<tr><td style="padding:0 0 10px;font-size:12px;color:#8A94A0;text-align:center;">레이아웃 확인용 샘플입니다. 기사 내용, 수치, 링크는 모두 가상입니다.</td></tr>
+
+<tr><td bgcolor="#0F2A3D" style="background-color:#0F2A3D;padding:26px 24px 18px;border-radius:10px 10px 0 0;">
+  <div style="font-size:28px;font-weight:bold;color:#FFFFFF;line-height:1.3;">Security &amp; AI Briefing</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:12px;border-top:1px solid #35566B;"><tr>
+    <td style="padding-top:10px;font-size:13px;color:#BFD8E2;">2026년 10월 8일 목요일</td>
+    <td align="right" style="padding-top:10px;font-size:13px;color:#BFD8E2;">작성자 : 서창현 선임(보안사업팀)</td>
+  </tr></table>
+</td></tr>
+
+<tr><td bgcolor="#F7F9FB" style="background-color:#F7F9FB;padding:20px 20px 4px;">
+
+  <div style="padding:2px 4px 18px;font-size:14px;line-height:1.8;">
+    안녕하십니까. 보안사업팀 서창현 선임입니다.<br>
+    오늘은 금융 앱 유출 정황과 웹 서버 취약점 악용 소식이 눈에 띄어요.<br>
+    소속 부서와 연결된 이슈를 먼저 확인해 보시고, 업무에 참고가 되시길 바랍니다.
+  </div>
+
+  <!-- 한눈에 보기 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td style="padding:16px 18px 0;font-size:18px;font-weight:bold;color:#0F2A3D;">Today's Pick<span style="font-size:12px;font-weight:normal;color:#8A94A0;">&nbsp;&nbsp;한눈에 보기</span></td></tr>
+
+    <tr><td style="padding:14px 18px 4px;font-size:15px;font-weight:bold;color:#0E7C86;">🗓️ 일정</td></tr>
+    <tr><td style="padding:0 18px 6px;font-size:14px;line-height:1.8;">&bull; 13일(화) 주요 제품 <u>정기 보안 업데이트</u>가 배포돼요.<br>&bull; 15일(목) <u>○○ 보안 컨퍼런스</u>가 열려요. AI 보안 세션이 눈에 띄어요.<br>&bull; 16일(금) 금융보안 규제 개정안의 <u>의견 접수</u>가 마감돼요.</td></tr>
+
+    <tr><td style="padding:14px 18px 4px;font-size:15px;font-weight:bold;color:#0E7C86;">🔥 핫이슈</td></tr>
+    <tr><td style="padding:0 18px 6px;font-size:14px;line-height:1.8;">&bull; A금융 모바일 앱에서 고객 인증 정보가 외부 서버로 전송된 정황이 확인돼, 당국이 <b style="color:#C62828;"><u>조사에 착수</u></b>했어요. 비슷한 구조의 금융사에도 점검이 요청됐어요.<br>&bull; 널리 쓰이는 웹 서버 제품의 <b style="color:#C62828;"><u>원격 코드 실행 취약점</u></b>이 패치 직후부터 실제 공격에 쓰이고 있어요.</td></tr>
+
+    <tr><td style="padding:14px 18px 4px;font-size:15px;font-weight:bold;color:#0E7C86;">🔐 보안 뉴스</td></tr>
+    <tr><td style="padding:0 18px 6px;font-size:14px;line-height:1.8;">&bull; 중견 제조업체 여러 곳이 <u>랜섬웨어</u> 피해를 입었어요. 백업 서버까지 암호화돼 복구가 어려웠어요.<br>&bull; 개인정보 보호 관련 <u>지침 개정안</u>이 입법예고돼요. 안전조치 기준이 구체화될 전망이에요.<br>&bull; B서비스에서도 <u>개인정보 유출 정황</u>이 확인돼 원인을 조사 중이에요.</td></tr>
+
+    <tr><td style="padding:14px 18px 4px;font-size:15px;font-weight:bold;color:#0E7C86;">📈 보안시장 동향</td></tr>
+    <tr><td style="padding:0 18px 6px;font-size:14px;line-height:1.8;">&bull; 금융권이 <u>모바일 앱 보안 점검</u> 예산을 늘리려는 움직임이 보여요.<br>&bull; 소프트웨어 <u>공급망 보안</u> 도입 문의가 늘고 있다는 전망이에요.</td></tr>
+
+    <tr><td style="padding:14px 18px 4px;font-size:15px;font-weight:bold;color:#0E7C86;">🏢 기업 소식</td></tr>
+    <tr><td style="padding:0 18px 6px;font-size:14px;line-height:1.8;">&bull; A사가 <u>AI 기반 위협 탐지 서비스</u>를 새로 선보였어요.<br>&bull; B사가 보안 스타트업 인수를 추진한다고 알려졌어요.</td></tr>
+
+    <tr><td style="padding:14px 18px 4px;font-size:15px;font-weight:bold;color:#0E7C86;">🤖 AI &amp; 테크</td></tr>
+    <tr><td style="padding:0 18px 6px;font-size:14px;line-height:1.8;">&bull; AI 에이전트를 노린 <b style="color:#C62828;"><u>프롬프트 주입 공격</u></b>이 늘고 있어요. 문서에 숨긴 한 줄이 AI를 움직여요.<br>&bull; ○○ AI가 △△ 기업의 코드에서 <u>취약점 20건</u>을 찾아냈어요.</td></tr>
+
+    <tr><td style="padding:14px 18px 4px;font-size:15px;font-weight:bold;color:#0E7C86;">📊 경제 지표</td></tr>
+    <tr><td style="padding:0 18px 16px;font-size:14px;line-height:1.8;">&bull; 랜섬웨어 피해 신고가 전월보다 <u>○○%</u> 늘었어요.<br>&bull; 기업 보안 투자는 확대 기조를 이어가고 있어요.</td></tr>
+  </table>
+
+  <div style="height:26px;line-height:26px;font-size:0;">&nbsp;</div>
+
+  <!-- 부서별 -->
+  <div style="font-size:18px;font-weight:bold;color:#0F2A3D;padding:0 2px 4px;">부서별 보안 이슈</div>
+  <div style="font-size:12px;color:#8A94A0;padding:0 2px 12px;">우리 부서와 맞닿은 소식만 골랐어요. 버튼을 누르면 관련 뉴스로 이동해요.</div>
+
+  <!-- 경영전략팀 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td bgcolor="#2E7D32" style="background-color:#2E7D32;padding:10px 18px;font-size:15px;font-weight:bold;color:#FFFFFF;border-radius:7px 7px 0 0;">📊 경영전략팀&nbsp;<span style="font-size:12px;font-weight:normal;color:#D6EBD7;">오늘 2건</span></td></tr>
+    <tr><td style="padding:14px 18px 0;font-size:12px;line-height:2;"><span style="background-color:#FDECEA;color:#B3261E;font-weight:bold;padding:3px 8px;border-radius:10px;">긴급</span>&nbsp;<span style="background-color:#E6F4EA;color:#1E6B3A;padding:3px 8px;border-radius:10px;">공식 발표</span></td></tr>
+    <tr><td style="padding:2px 18px 4px;font-size:16px;font-weight:bold;line-height:1.5;color:#0F2A3D;">고객 정보가 새어 나간 곳은 앱 안쪽이었어요</td></tr>
+    <tr><td style="padding:0 18px 8px;font-size:14px;line-height:1.7;color:#33414E;">A금융 모바일 앱에서 인증 정보가 외부 서버로 흘러간 정황이 나왔어요. 당국이 조사에 나서면서 업계 전체가 긴장하고 있어요.</td></tr>
+    <tr><td style="padding:0 18px 10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#EAF4EA" style="background-color:#EAF4EA;padding:9px 12px;font-size:13px;line-height:1.6;color:#1B4D1F;">💬 <b>우리 부서 포인트</b> 고객사 신뢰와 규제 이슈로 번질 수 있어, 대응 메시지를 미리 준비해 두면 좋아요.</td></tr></table></td></tr>
+    <tr><td style="padding:0 18px 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:12px;color:#8A94A0;">출처 가상기관 보도자료<br>10/07 18:00</td><td align="right" width="130"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#2E7D32" style="background-color:#2E7D32;border-radius:6px;"><a href="#" style="display:block;padding:9px 16px;font-size:13px;font-weight:bold;color:#FFFFFF;text-decoration:none;">관련 뉴스 보기</a></td></tr></table></td></tr></table></td></tr>
+    <tr><td style="padding:0 18px;"><div style="border-top:1px dashed #DCE3E9;height:0;line-height:0;font-size:0;">&nbsp;</div></td></tr>
+    <tr><td style="padding:14px 18px 0;font-size:12px;line-height:2;"><span style="background-color:#FEF3C7;color:#8A5300;font-weight:bold;padding:3px 8px;border-radius:10px;">주의</span>&nbsp;<span style="background-color:#E8EEF8;color:#2B4A8B;padding:3px 8px;border-radius:10px;">언론 보도 2곳 확인</span></td></tr>
+    <tr><td style="padding:2px 18px 4px;font-size:16px;font-weight:bold;line-height:1.5;color:#0F2A3D;">금융당국, "외부 SDK 쓰는 곳은 직접 점검하세요"</td></tr>
+    <tr><td style="padding:0 18px 8px;font-size:14px;line-height:1.7;color:#33414E;">A금융 사고를 계기로 외부 연동 모듈을 쓰는 금융사가 점검 대상이 됐어요. 점검 결과 보고 기한은 이번 달 말로 알려졌어요.</td></tr>
+    <tr><td style="padding:0 18px 10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#EAF4EA" style="background-color:#EAF4EA;padding:9px 12px;font-size:13px;line-height:1.6;color:#1B4D1F;">💬 <b>우리 부서 포인트</b> 금융 고객사의 점검 수요가 늘 수 있어요. 사업 기회와 부담을 함께 살펴봐요.</td></tr></table></td></tr>
+    <tr><td style="padding:0 18px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:12px;color:#8A94A0;">출처 가상일보, 가상경제<br>10/07 20:30</td><td align="right" width="130"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#2E7D32" style="background-color:#2E7D32;border-radius:6px;"><a href="#" style="display:block;padding:9px 16px;font-size:13px;font-weight:bold;color:#FFFFFF;text-decoration:none;">관련 뉴스 보기</a></td></tr></table></td></tr></table></td></tr>
+  </table>
+  <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
+
+  <!-- 기술개발연구소 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td bgcolor="#1565C0" style="background-color:#1565C0;padding:10px 18px;font-size:15px;font-weight:bold;color:#FFFFFF;border-radius:7px 7px 0 0;">🔬 기술개발연구소&nbsp;<span style="font-size:12px;font-weight:normal;color:#D3E3F8;">오늘 2건</span></td></tr>
+    <tr><td style="padding:14px 18px 0;font-size:12px;line-height:2;"><span style="background-color:#FDECEA;color:#B3261E;font-weight:bold;padding:3px 8px;border-radius:10px;">긴급</span>&nbsp;<span style="background-color:#E6F4EA;color:#1E6B3A;padding:3px 8px;border-radius:10px;">공식 발표</span></td></tr>
+    <tr><td style="padding:2px 18px 4px;font-size:16px;font-weight:bold;line-height:1.5;color:#0F2A3D;">"패치했으니 안전하겠지"는 이제 통하지 않아요</td></tr>
+    <tr><td style="padding:0 18px 8px;font-size:14px;line-height:1.7;color:#33414E;">웹 서버 제품의 원격 코드 실행 취약점이 패치 공개 직후부터 공격에 쓰이고 있어요. 인증 없이 명령을 실행할 수 있어서 피해가 커질 수 있어요.</td></tr>
+    <tr><td style="padding:0 18px 10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#E8F0FB" style="background-color:#E8F0FB;padding:9px 12px;font-size:13px;line-height:1.6;color:#0F3C75;">💬 <b>우리 부서 포인트</b> 공격 패턴을 분석해 탐지 룰에 반영할 수 있는지 살펴봐요.</td></tr></table></td></tr>
+    <tr><td style="padding:0 18px 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:12px;color:#8A94A0;">출처 가상 CERT 경보<br>10/07 09:10</td><td align="right" width="130"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#1565C0" style="background-color:#1565C0;border-radius:6px;"><a href="#" style="display:block;padding:9px 16px;font-size:13px;font-weight:bold;color:#FFFFFF;text-decoration:none;">관련 뉴스 보기</a></td></tr></table></td></tr></table></td></tr>
+    <tr><td style="padding:0 18px;"><div style="border-top:1px dashed #DCE3E9;height:0;line-height:0;font-size:0;">&nbsp;</div></td></tr>
+    <tr><td style="padding:14px 18px 0;font-size:12px;line-height:2;"><span style="background-color:#FEF3C7;color:#8A5300;font-weight:bold;padding:3px 8px;border-radius:10px;">주의</span>&nbsp;<span style="background-color:#E6F4EA;color:#1E6B3A;padding:3px 8px;border-radius:10px;">공식 발표</span></td></tr>
+    <tr><td style="padding:2px 18px 4px;font-size:16px;font-weight:bold;line-height:1.5;color:#0F2A3D;">AI 비서가 숨은 문장 한 줄에 속아 넘어가요</td></tr>
+    <tr><td style="padding:0 18px 8px;font-size:14px;line-height:1.7;color:#33414E;">웹 문서나 메일에 숨긴 지시문으로 AI 에이전트가 엉뚱한 작업을 하게 만드는 공격이 늘고 있어요. 외부 도구와 연결될수록 피해 범위가 커져요.</td></tr>
+    <tr><td style="padding:0 18px 10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#E8F0FB" style="background-color:#E8F0FB;padding:9px 12px;font-size:13px;line-height:1.6;color:#0F3C75;">💬 <b>우리 부서 포인트</b> 방어 기법과 테스트 시나리오를 연구 과제로 검토해 봐요.</td></tr></table></td></tr>
+    <tr><td style="padding:0 18px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:12px;color:#8A94A0;">출처 가상 AI 보안 연구소<br>10/06 14:00</td><td align="right" width="130"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#1565C0" style="background-color:#1565C0;border-radius:6px;"><a href="#" style="display:block;padding:9px 16px;font-size:13px;font-weight:bold;color:#FFFFFF;text-decoration:none;">관련 뉴스 보기</a></td></tr></table></td></tr></table></td></tr>
+  </table>
+  <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
+
+  <!-- 보안사업팀 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td bgcolor="#C62828" style="background-color:#C62828;padding:10px 18px;font-size:15px;font-weight:bold;color:#FFFFFF;border-radius:7px 7px 0 0;">🛡️ 보안사업팀&nbsp;<span style="font-size:12px;font-weight:normal;color:#F9D6D6;">오늘 2건</span></td></tr>
+    <tr><td style="padding:14px 18px 0;font-size:12px;line-height:2;"><span style="background-color:#FDECEA;color:#B3261E;font-weight:bold;padding:3px 8px;border-radius:10px;">긴급</span>&nbsp;<span style="background-color:#E6F4EA;color:#1E6B3A;padding:3px 8px;border-radius:10px;">공식 발표</span></td></tr>
+    <tr><td style="padding:2px 18px 4px;font-size:16px;font-weight:bold;line-height:1.5;color:#0F2A3D;">A금융 사고, 우리 고객사는 괜찮을까요?</td></tr>
+    <tr><td style="padding:0 18px 8px;font-size:14px;line-height:1.7;color:#33414E;">인증 과정의 외부 연동 구간이 유출 경로로 지목됐어요. 비슷한 구조의 금융·통신 고객사가 먼저 떠오르는 사건이에요.</td></tr>
+    <tr><td style="padding:0 18px 10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#FBECEC" style="background-color:#FBECEC;padding:9px 12px;font-size:13px;line-height:1.6;color:#6E1515;">💬 <b>우리 부서 포인트</b> 고객사에 점검 포인트를 먼저 안내하면 좋은 접점이 될 수 있어요.</td></tr></table></td></tr>
+    <tr><td style="padding:0 18px 14px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:12px;color:#8A94A0;">출처 가상기관 보도자료<br>10/07 18:00</td><td align="right" width="130"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#C62828" style="background-color:#C62828;border-radius:6px;"><a href="#" style="display:block;padding:9px 16px;font-size:13px;font-weight:bold;color:#FFFFFF;text-decoration:none;">관련 뉴스 보기</a></td></tr></table></td></tr></table></td></tr>
+    <tr><td style="padding:0 18px;"><div style="border-top:1px dashed #DCE3E9;height:0;line-height:0;font-size:0;">&nbsp;</div></td></tr>
+    <tr><td style="padding:14px 18px 0;font-size:12px;line-height:2;"><span style="background-color:#FEF3C7;color:#8A5300;font-weight:bold;padding:3px 8px;border-radius:10px;">주의</span>&nbsp;<span style="background-color:#E8EEF8;color:#2B4A8B;padding:3px 8px;border-radius:10px;">언론 보도 2곳 확인</span></td></tr>
+    <tr><td style="padding:2px 18px 4px;font-size:16px;font-weight:bold;line-height:1.5;color:#0F2A3D;">백업까지 암호화됐어요, 복구가 막힌 이유</td></tr>
+    <tr><td style="padding:0 18px 8px;font-size:14px;line-height:1.7;color:#33414E;">중견 제조업체 랜섬웨어 피해에서 백업 서버가 같은 망에 있어 복구가 어려웠어요. 시작은 원격 접속 계정 탈취였어요.</td></tr>
+    <tr><td style="padding:0 18px 10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#FBECEC" style="background-color:#FBECEC;padding:9px 12px;font-size:13px;line-height:1.6;color:#6E1515;">💬 <b>우리 부서 포인트</b> 제조업 고객에게 백업 분리와 접근통제를 제안할 근거 사례로 쓸 수 있어요.</td></tr></table></td></tr>
+    <tr><td style="padding:0 18px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="font-size:12px;color:#8A94A0;">출처 가상보안뉴스, 가상데일리<br>10/07 11:20</td><td align="right" width="130"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#C62828" style="background-color:#C62828;border-radius:6px;"><a href="#" style="display:block;padding:9px 16px;font-size:13px;font-weight:bold;color:#FFFFFF;text-decoration:none;">관련 뉴스 보기</a></td></tr></table></td></tr></table></td></tr>
+  </table>
+  <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
+
+  <!-- STE본부 -->
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td bgcolor="#6A1B9A" style="background-color:#6A1B9A;padding:10px 18px;font-size:15px;font-weight:bold;color:#FFFFFF;border-radius:7px 7px 0 0;">🧩 STE본부&nbsp;<span style="font-size:12px;font-weight:normal;color:#E6D3F0;">오늘 0건</span></td></tr>
+    <tr><td style="padding:18px;font-size:14px;line-height:1.7;color:#8A94A0;">오늘은 해당 기사가 없어요. 내일 새로운 소식으로 찾아올게요.</td></tr>
+  </table>
+
+  <div style="height:26px;line-height:26px;font-size:0;">&nbsp;</div>
+
+  <!-- 심층 뉴스 -->
+  <div style="font-size:18px;font-weight:bold;color:#0F2A3D;padding:0 2px 10px;border-bottom:2px solid #0E7C86;">보안 심층 뉴스</div>
+
+  <div style="font-size:15px;font-weight:bold;color:#0E7C86;padding:14px 2px 8px;">국내 보안</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td style="padding:16px 18px 8px;font-size:12px;line-height:2;"><span style="background-color:#FDECEA;color:#B3261E;font-weight:bold;padding:3px 8px;border-radius:10px;">긴급</span>&nbsp;<span style="background-color:#E6F4EA;color:#1E6B3A;padding:3px 8px;border-radius:10px;">공식 발표</span></td></tr>
+    <tr><td style="padding:0 18px 4px;font-size:17px;font-weight:bold;line-height:1.5;color:#0F2A3D;">금융권 모바일 앱에서 개인정보 유출 정황, 당국 조사 착수</td></tr>
+    <tr><td style="padding:0 18px 10px;font-size:12px;color:#8A94A0;">출처 가상기관 보도자료 &nbsp;|&nbsp; 2026.10.07</td></tr>
+    <tr><td style="padding:0 18px 12px;font-size:14px;line-height:1.75;">&bull; 고객 인증 과정에서 외부 서버로 정보가 전송된 정황이 발견됐어요.<br>&bull; 피해 규모는 조사 중이며, 해당 서비스는 일부 기능이 중단됐어요.<br>&bull; 당국은 유사 구조를 쓰는 다른 금융사에도 점검을 요청했어요.</td></tr>
+    <tr><td style="padding:0 18px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="4" bgcolor="#0E7C86" style="background-color:#0E7C86;font-size:0;">&nbsp;</td><td bgcolor="#EAF5F6" style="background-color:#EAF5F6;padding:11px 14px;font-size:14px;line-height:1.7;color:#12333A;"><b>시사점</b><br>우리 고객사도 외부 연동이 많은 서비스를 운영해요. 제3자 SDK와 외부 전송 구간을 점검해 보자고 제안할 시점이에요.</td></tr></table></td></tr>
+    <tr><td style="padding:10px 18px 16px;border-top:1px solid #EDF1F4;font-size:13px;line-height:1.9;"><b style="color:#5B6773;">관련 기사</b><br>&bull; <a href="#" style="color:#0E7C86;">A금융 모바일 앱 고객정보 유출</a><br>&bull; <a href="#" style="color:#0E7C86;">A금융 앱 연동 문제로 고객 정보 유출 발생</a></td></tr>
+  </table>
+
+  <div style="font-size:15px;font-weight:bold;color:#0E7C86;padding:22px 2px 8px;">해외 보안</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td style="padding:16px 18px 8px;font-size:12px;line-height:2;"><span style="background-color:#FDECEA;color:#B3261E;font-weight:bold;padding:3px 8px;border-radius:10px;">긴급</span>&nbsp;<span style="background-color:#E6F4EA;color:#1E6B3A;padding:3px 8px;border-radius:10px;">공식 발표</span></td></tr>
+    <tr><td style="padding:0 18px 4px;font-size:17px;font-weight:bold;line-height:1.5;color:#0F2A3D;">웹 서버 제품 원격 코드 실행 취약점, 실제 공격에 악용 중</td></tr>
+    <tr><td style="padding:0 18px 10px;font-size:12px;line-height:1.6;color:#8A94A0;">출처 가상 CERT 경보 &nbsp;|&nbsp; 2026.10.07 &nbsp;|&nbsp; 원제 Remote Code Execution Flaw Exploited in the Wild</td></tr>
+    <tr><td style="padding:0 18px 12px;font-size:14px;line-height:1.75;">&bull; 인증 없이 서버에서 명령을 실행할 수 있는 취약점이에요.<br>&bull; 벤더가 보안 패치를 배포했지만 이미 공격이 관측됐어요.<br>&bull; 인터넷에 노출된 서버는 즉시 패치가 권고돼요.</td></tr>
+    <tr><td style="padding:0 18px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="4" bgcolor="#0E7C86" style="background-color:#0E7C86;font-size:0;">&nbsp;</td><td bgcolor="#EAF5F6" style="background-color:#EAF5F6;padding:11px 14px;font-size:14px;line-height:1.7;color:#12333A;"><b>시사점</b><br>패치 공개 후 공격까지의 시간이 짧아지고 있어요. 사내와 고객사 서버의 해당 버전 사용 여부를 오늘 안에 확인해 보면 좋아요.</td></tr></table></td></tr>
+    <tr><td style="padding:10px 18px 16px;border-top:1px solid #EDF1F4;font-size:13px;line-height:1.9;"><b style="color:#5B6773;">관련 기사</b><br>&bull; <a href="#" style="color:#0E7C86;">Web server product remote code execution vulnerability</a></td></tr>
+  </table>
+
+  <div style="font-size:15px;font-weight:bold;color:#0E7C86;padding:22px 2px 8px;">AI &amp; TECH</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #DCE3E9;border-radius:8px;">
+    <tr><td style="padding:16px 18px 8px;font-size:12px;line-height:2;"><span style="background-color:#FEF3C7;color:#8A5300;font-weight:bold;padding:3px 8px;border-radius:10px;">주의</span>&nbsp;<span style="background-color:#E6F4EA;color:#1E6B3A;padding:3px 8px;border-radius:10px;">공식 발표</span></td></tr>
+    <tr><td style="padding:0 18px 4px;font-size:17px;font-weight:bold;line-height:1.5;color:#0F2A3D;">AI 에이전트 겨냥 프롬프트 주입 공격, 외부 문서 통해 확산</td></tr>
+    <tr><td style="padding:0 18px 10px;font-size:12px;color:#8A94A0;">출처 가상 AI 보안 연구소 보고서 &nbsp;|&nbsp; 2026.10.06</td></tr>
+    <tr><td style="padding:0 18px 12px;font-size:14px;line-height:1.75;">&bull; 웹 문서나 메일에 숨긴 지시문으로 AI가 의도하지 않은 작업을 수행해요.<br>&bull; 외부 도구와 연결된 AI일수록 피해 범위가 커져요.</td></tr>
+    <tr><td style="padding:0 18px 12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="4" bgcolor="#0E7C86" style="background-color:#0E7C86;font-size:0;">&nbsp;</td><td bgcolor="#EAF5F6" style="background-color:#EAF5F6;padding:11px 14px;font-size:14px;line-height:1.7;color:#12333A;"><b>시사점</b><br>업무에 AI 도구를 쓸 때 외부 문서를 그대로 읽게 하지 말고, 권한을 최소로 줄이는 기준이 필요해요.</td></tr></table></td></tr>
+    <tr><td style="padding:10px 18px 16px;border-top:1px solid #EDF1F4;font-size:13px;line-height:1.9;"><b style="color:#5B6773;">관련 기사</b><br>&bull; <a href="#" style="color:#0E7C86;">AI agent-targeted prompt injection spreads via external documents</a></td></tr>
+  </table>
+
+  <div style="height:22px;line-height:22px;font-size:0;">&nbsp;</div>
+</td></tr>
+
+<tr><td bgcolor="#E3E9EE" style="background-color:#E3E9EE;padding:18px 24px;font-size:12px;line-height:1.8;color:#5B6773;">
+  <b style="color:#0F2A3D;">선정 기준</b><br>공식 기관 발표 또는 2곳 이상 언론에서 확인된 소식만 싣습니다. 발행 후 24시간 이내 기사 중 업무 관련도가 높은 순서로 선정합니다.<br><br>
+  <b style="color:#0F2A3D;">주요 출처</b><br>국내 | 공식 기관: KISA 보호나라, 국가사이버안보센터, 금융보안원 / 전문 언론: 보안뉴스, 데일리시큐, 전자신문<br>해외 | 공식 기관: CISA, NIST NVD, Microsoft MSRC / 전문 언론: BleepingComputer, The Hacker News, SecurityWeek<br><br>
+  <b style="color:#0F2A3D;">분류가 맞지 않거나 다루길 원하는 주제가 있다면 회신으로 알려 주시면 감사하겠습니다.</b>
+</td></tr>
+<tr><td bgcolor="#595959" style="background-color:#595959;padding:12px 24px;border-radius:0 0 10px 10px;font-size:11px;line-height:1.6;color:#FFFFFF;">
+  본 메일은 지정된 수취인 만을 위해 작성되었으며, 중요한 정보나 극비 사항, 저작권 등을 포함하고 있을 수 있습니다. 지정된 수신자 外 권한이 없는 자가 본 문서에 포함된 정보를 무단으로 제3자에게 공개, 배포, 복사 또는 사용하는 것을 엄금합니다.
+</td></tr>
+
+</table>
+</td></tr></table>
+</body>
+</html>
