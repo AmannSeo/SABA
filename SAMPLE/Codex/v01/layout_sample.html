@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security & AI Briefing</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+<main class="newsletter">
+
+  <!-- ==================================================
+       HEADER
+  =================================================== -->
+
+  <header class="header">
+
+    <div class="header-top">
+
+      <div>
+        <p class="eyebrow">DAILY SECURITY · AI · TECHNOLOGY</p>
+        <h1>Security & AI Briefing</h1>
+      </div>
+
+      <div class="header-date">
+        2026.10.08 THU
+      </div>
+
+    </div>
+
+    <div class="meta">
+      <span>2026년 10월 8일 목요일</span>
+      <span>작성자 : 서창현 선임 · 보안사업팀</span>
+    </div>
+
+  </header>
+
+
+  <!-- ==================================================
+       GREETING
+  =================================================== -->
+
+  <section class="greeting">
+
+    <p>안녕하세요. 보안사업팀 서창현 선임입니다.</p>
+
+    <p>
+      오늘의 주요 보안·AI 이슈와 기술 동향을 정리해 전달드립니다.<br>
+      각 이슈별 핵심 내용과 업무 관련 시사점을 함께 정리했으니,
+      관련 부서에서는 업무에 참고해 주시기 바랍니다.
+    </p>
+
+    <p>감사합니다.</p>
+
+  </section>
+
+
+  <!-- ==================================================
+       TODAY'S PICK
+  =================================================== -->
+
+  <!-- <section class="section">
+
+    <div class="section-heading">
+      <span class="section-icon">📌</span>
+
+      <div>
+        <h2>Today's Pick</h2>
+        <p>바쁜 아침, 이것만은 확인해보세요.</p>
+      </div>
+    </div>
+
+
+    <div class="pick-box">
+
+      <div class="pick-header">
+
+        <div>
+          <strong>10월 8일 주요 이슈</strong>
+          <p>오늘 주목할 보안·AI·기술 소식을 골랐습니다.</p>
+        </div>
+
+        <span class="count">8건</span>
+
+      </div>
+
+
+      <div class="pick-list">
+
+        <a href="#news-domestic-1" class="pick-item">
+          <span class="pick-category incident">보안사고</span>
+
+          <span class="pick-text">
+            <strong>금융권 모바일 서비스에서 개인정보 유출 정황</strong>
+            <small>외부 연동 구간에서 발생한 사고라는 점을 주목할 필요가 있습니다.</small>
+          </span>
+
+          <span class="pick-arrow">→</span>
+        </a>
+
+
+        <a href="#news-domestic-2" class="pick-item">
+          <span class="pick-category ransomware">랜섬웨어</span>
+
+          <span class="pick-text">
+            <strong>중견 제조업체 잇단 랜섬웨어 피해</strong>
+            <small>백업은 있었지만 같은 망에 있어 함께 암호화됐습니다.</small>
+          </span>
+
+          <span class="pick-arrow">→</span>
+        </a>
+
+
+        <a href="#news-overseas-1" class="pick-item">
+          <span class="pick-category vulnerability">취약점</span>
+
+          <span class="pick-text">
+            <strong>웹 서버 RCE 취약점, 실제 공격에 악용</strong>
+            <small>패치 공개 이후 실제 공격까지 걸리는 시간이 더욱 짧아지고 있습니다.</small>
+          </span>
+
+          <span class="pick-arrow">→</span>
+        </a>
+
+
+        <a href="#news-overseas-2" class="pick-item">
+          <span class="pick-category threat">위협동향</span>
+
+          <span class="pick-text">
+            <strong>클라우드 계정 탈취 공격 증가</strong>
+            <small>관리자 계정과 장기 API Key가 주요 공격 대상으로 지목됐습니다.</small>
+          </span>
+
+          <span class="pick-arrow">→</span>
+        </a>
+
+
+        <a href="#news-ai-1" class="pick-item">
+          <span class="pick-category ai">AI Security</span>
+
+          <span class="pick-text">
+            <strong>AI Agent 겨냥 Prompt Injection 공격 확산</strong>
+            <small>AI가 외부 도구를 직접 실행할수록 공격자가 노릴 수 있는 범위도 넓어집니다.</small>
+          </span>
+
+          <span class="pick-arrow">→</span>
+        </a>
+
+
+        <a href="#news-ai-2" class="pick-item">
+          <span class="pick-category ai">AI</span>
+
+          <span class="pick-text">
+            <strong>AI를 활용한 취약점 자동 탐지 기술 고도화</strong>
+            <small>사람이 놓치기 쉬운 코드 취약점을 AI가 먼저 찾는 사례가 늘고 있습니다.</small>
+          </span>
+
+          <span class="pick-arrow">→</span>
+        </a>
+
+
+        <div class="pick-item">
+          <span class="pick-category market">시장</span>
+
+          <span class="pick-text">
+            <strong>AI Security 관련 기업 투자 확대</strong>
+            <small>보안 자동화와 AI 기반 탐지 기술이 새로운 투자 분야로 부상하고 있습니다.</small>
+          </span>
+        </div>
+
+
+        <div class="pick-item">
+          <span class="pick-category company">기업</span>
+
+          <span class="pick-text">
+            <strong>글로벌 IT 기업, AI 보안 기능 강화</strong>
+            <small>기업용 AI 서비스에 권한 통제와 데이터 보호 기능이 추가되고 있습니다.</small>
+          </span>
+        </div>
+
+      </div>
+
+    </div>
+
+  </section> -->
+
+  <!-- ==================================================
+       DAILY BRIEFING
+       노션에 작성한 항목 전부 유지
+  =================================================== -->
+
+  <section class="section">
+
+    <div class="section-heading">
+      <span class="section-icon">📰</span>
+
+      <div>
+        <h2>오늘의 브리핑</h2>
+        <p>보안·AI 업계의 오늘을 분야별로 빠르게 훑어보세요.</p>
+      </div>
+    </div>
+
+
+    <div class="brief-list">
+
+
+      <!-- 일정 -->
+
+      <div class="brief-group">
+
+        <div class="brief-heading schedule">
+          <span>🗓️</span>
+          <h3>일정</h3>
+        </div>
+
+        <ul>
+          <li>
+            <strong>10월 9일</strong>
+            국내 보안기관의 하반기 사이버 위협 동향 세미나가 예정돼 있습니다.
+          </li>
+
+          <li>
+            <strong>10월 10일</strong>
+            주요 글로벌 벤더의 월간 보안 업데이트가 예정돼 있습니다.
+          </li>
+
+          <li>
+            <strong>10월 12일</strong>
+            AI Security 관련 온라인 기술 세미나가 진행됩니다.
+          </li>
+        </ul>
+
+      </div>
+
+
+      <!-- 핫이슈 -->
+
+      <div class="brief-group">
+
+        <div class="brief-heading hot">
+          <span>🔥</span>
+          <h3>핫이슈</h3>
+        </div>
+
+        <ul>
+          <li>
+            금융권 개인정보 유출 사고를 계기로
+            <a href="#news-domestic-1">외부 API와 제3자 SDK 관리</a>가
+            다시 주요 보안 이슈로 떠오르고 있습니다.
+          </li>
+
+          <li>
+            제조업 랜섬웨어 공격에서 백업 서버까지 피해를 입으며
+            <a href="#news-domestic-2">백업망 분리</a>의 중요성이 다시 확인됐습니다.
+          </li>
+        </ul>
+
+      </div>
+
+
+      <!-- 보안시장 동향 -->
+
+      <div class="brief-group" id="market">
+
+        <div class="brief-heading market">
+          <span>📈</span>
+          <h3>보안시장 동향</h3>
+        </div>
+
+        <ul>
+          <li>
+            기업의 생성형 AI 도입 확대와 함께 AI 서비스의 데이터 보호,
+            접근제어, Prompt Injection 대응 기술에 대한 관심이 높아지고 있습니다.
+          </li>
+
+          <li>
+            기존 탐지·대응 중심 보안에서 AI 기반 분석과 자동 대응 기능을
+            결합한 솔루션 경쟁이 확대되는 흐름입니다.
+          </li>
+        </ul>
+
+      </div>
+
+
+      <!-- 보안 뉴스 -->
+
+      <div class="brief-group">
+
+        <div class="brief-heading security">
+          <span>🛡️</span>
+          <h3>보안 뉴스</h3>
+        </div>
+
+        <ul>
+          <li>
+            <a href="#news-overseas-1">웹 서버 RCE 취약점</a>이
+            실제 공격에 사용되기 시작해 인터넷 노출 서버의 빠른 점검이 권고되고 있습니다.
+          </li>
+
+          <li>
+            <a href="#news-overseas-2">클라우드 관리자 계정 탈취</a> 사례가
+            증가하며 장기 API Key와 과도한 권한이 주요 위험요인으로 지적됐습니다.
+          </li>
+
+          <li>
+            제조업체를 대상으로 한 랜섬웨어 공격에서 내부 백업 시스템까지
+            함께 피해를 입는 사례가 확인되고 있습니다.
+          </li>
+        </ul>
+
+      </div>
+
+
+      <!-- 기업 소식 -->
+
+      <div class="brief-group">
+
+        <div class="brief-heading company">
+          <span>💼</span>
+          <h3>기업 소식</h3>
+        </div>
+
+        <ul>
+          <li>
+            글로벌 클라우드 기업들이 생성형 AI 서비스에 데이터 유출 방지와
+            세분화된 권한 관리 기능을 추가하고 있습니다.
+          </li>
+
+          <li>
+            국내 보안 기업들도 AI 기반 위협 분석과 보안 운영 자동화를
+            주요 신규 사업 영역으로 확대하는 흐름입니다.
+          </li>
+        </ul>
+
+      </div>
+
+
+      <!-- 테크 -->
+
+      <div class="brief-group">
+
+        <div class="brief-heading tech">
+          <span>⚙️</span>
+          <h3>테크(Tech)</h3>
+        </div>
+
+        <ul>
+          <li>
+            AI Agent가 외부 API와 업무 시스템을 직접 조작하는 구조가 확산되면서
+            Agent의 실행 권한을 통제하는 기술이 중요해지고 있습니다.
+          </li>
+
+          <li>
+            AI를 이용한 소스코드 분석과 취약점 자동 탐지 기술도
+            빠르게 발전하고 있습니다.
+          </li>
+        </ul>
+
+      </div>
+
+
+      <!-- 경제 지표 -->
+
+      <div class="brief-group">
+
+        <div class="brief-heading economy">
+          <span>📊</span>
+          <h3>경제 지표</h3>
+        </div>
+
+        <ul>
+          <li>
+            기업 IT 투자가 AI와 클라우드 중심으로 재편되면서
+            해당 환경을 보호하기 위한 보안 투자 수요도 함께 변화하고 있습니다.
+          </li>
+
+          <li>
+            보안 산업의 신규 투자와 사업 기회를 볼 때 AI 인프라,
+            클라우드 및 규제 변화도 함께 살펴볼 필요가 있습니다.
+          </li>
+        </ul>
+
+      </div>
+
+    </div>
+
+  </section>
+
+  <!-- ==================================================
+       DEPARTMENT ISSUES
+  =================================================== -->
+
+  <section class="section department-section">
+
+    <div class="section-heading">
+      <span class="section-icon">🏢</span>
+
+      <div>
+        <h2>부서별 주요 이슈</h2>
+        <p>오늘 우리 부서에서 한 번쯤 확인해볼 만한 소식입니다.</p>
+      </div>
+    </div>
+
+
+    <div class="department-grid">
+
+
+      <!-- 경영전략팀 -->
+
+      <article class="department-card strategy">
+
+        <div class="department-header">
+
+          <div class="department-title">
+            <span class="department-icon">📊</span>
+
+            <div>
+              <h3>경영전략팀</h3>
+              <span>오늘 관련 이슈 2건</span>
+            </div>
+          </div>
+
+          <span class="department-count">2</span>
+
+        </div>
+
+
+        <div class="department-content">
+
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-high">중요</span>
+              <span class="type-badge">보안사고</span>
+            </div>
+
+            <h4>금융권 개인정보 유출 정황</h4>
+
+            <p class="card-hook">
+              사고 한 번이 기술 문제를 넘어 기업 신뢰와 규제 리스크로 이어질 수 있습니다.
+            </p>
+
+            <p class="card-summary">
+              금융권 모바일 서비스에서 개인정보가 외부 서버로
+              전송된 정황이 확인돼 관계 기관이 조사에 착수했습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상기관</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-domestic-1" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-normal">관심</span>
+              <span class="type-badge">시장동향</span>
+            </div>
+
+            <h4>AI Security 시장 투자 확대</h4>
+
+            <p class="card-hook">
+              AI 도입이 늘어나는 만큼 'AI를 보호하는 시장'도 함께 커지고 있습니다.
+            </p>
+
+            <p class="card-summary">
+              글로벌 기업들의 AI 보안 관련 투자와 신규 제품 출시가
+              이어지면서 관련 시장 확대 가능성이 주목받고 있습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상테크리서치</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#market" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+        </div>
+
+      </article>
+
+
+      <!-- 기술개발연구소 -->
+
+      <article class="department-card development">
+
+        <div class="department-header">
+
+          <div class="department-title">
+            <span class="department-icon">💻</span>
+
+            <div>
+              <h3>기술개발연구소</h3>
+              <span>오늘 관련 이슈 2건</span>
+            </div>
+          </div>
+
+          <span class="department-count">2</span>
+
+        </div>
+
+
+        <div class="department-content">
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-critical">긴급</span>
+              <span class="type-badge">취약점</span>
+            </div>
+
+            <h4>웹 서버 RCE 취약점 실제 악용</h4>
+
+            <p class="card-hook">
+              패치가 공개됐지만 공격자는 이미 움직이고 있습니다.
+            </p>
+
+            <p class="card-summary">
+              인증 없이 서버 명령 실행이 가능한 취약점의 실제
+              악용 사례가 확인돼 신속한 버전 확인이 필요합니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상 CERT</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-overseas-1" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-high">중요</span>
+              <span class="type-badge">AI Security</span>
+            </div>
+
+            <h4>AI Agent Prompt Injection 공격</h4>
+
+            <p class="card-hook">
+              AI가 똑똑해질수록 'AI에게 무엇을 시킬 수 있는가'도 공격 대상이 됩니다.
+            </p>
+
+            <p class="card-summary">
+              외부 문서의 악성 지시문을 AI Agent가 실행하도록
+              유도하는 새로운 공격 사례가 보고됐습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상 AI Security Lab</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-ai-1" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+        </div>
+
+      </article>
+
+
+      <!-- 보안사업팀 -->
+
+      <article class="department-card security-team">
+
+        <div class="department-header">
+
+          <div class="department-title">
+            <span class="department-icon">🛡️</span>
+
+            <div>
+              <h3>보안사업팀</h3>
+              <span>오늘 관련 이슈 3건</span>
+            </div>
+          </div>
+
+          <span class="department-count">3</span>
+
+        </div>
+
+
+        <div class="department-content">
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-critical">긴급</span>
+              <span class="type-badge">랜섬웨어</span>
+            </div>
+
+            <h4>제조업 랜섬웨어, 백업까지 암호화</h4>
+
+            <p class="card-hook">
+              백업은 있었습니다. 문제는 공격자가 백업까지 접근할 수 있었다는 점입니다.
+            </p>
+
+            <p class="card-summary">
+              공격자가 원격 계정을 탈취한 뒤 내부망으로 이동하면서
+              동일 망의 백업 서버까지 암호화한 사례가 확인됐습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상보안뉴스 외 1곳</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-domestic-2" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-high">중요</span>
+              <span class="type-badge">보안사고</span>
+            </div>
+
+            <h4>외부 연동 구간 개인정보 유출</h4>
+
+            <p class="card-hook">
+              고객사의 '직접 관리 영역 밖'에서 발생하는 위험도 점검 대상이 될 수 있습니다.
+            </p>
+
+            <p class="card-summary">
+              외부 API 및 제3자 SDK와 연결된 서비스에서 발생한
+              사고 사례로 공급망·연동 구간 관리 필요성이 커지고 있습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상기관</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-domestic-1" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-normal">관심</span>
+              <span class="type-badge">AI Security</span>
+            </div>
+
+            <h4>AI 기반 공격 자동화 가능성 확대</h4>
+
+            <p class="card-hook">
+              공격 자동화가 쉬워지면 고객이 마주하는 위협의 속도도 달라질 수 있습니다.
+            </p>
+
+            <p class="card-summary">
+              AI Agent를 정보 수집과 공격 단계 자동화에 활용하는
+              가능성이 보안 업계의 새로운 이슈로 떠오르고 있습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상 Security Lab</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-ai-1" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+        </div>
+
+      </article>
+
+
+      <!-- STE본부 -->
+
+      <article class="department-card ste">
+
+        <div class="department-header">
+
+          <div class="department-title">
+            <span class="department-icon">⚙️</span>
+
+            <div>
+              <h3>STE본부</h3>
+              <span>오늘 관련 이슈 2건</span>
+            </div>
+          </div>
+
+          <span class="department-count">2</span>
+
+        </div>
+
+
+        <div class="department-content">
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-high">중요</span>
+              <span class="type-badge">취약점</span>
+            </div>
+
+            <h4>주요 웹 서버 취약점 공개</h4>
+
+            <p class="card-hook">
+              실제 공격이 시작된 취약점이라면 '언젠가 패치'보다 현재 사용 여부 확인이 먼저입니다.
+            </p>
+
+            <p class="card-summary">
+              인터넷에 노출된 웹 서버 제품을 대상으로 한
+              원격 코드 실행 취약점 악용이 확인됐습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상 CERT</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-overseas-1" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+
+          <div class="department-news-item">
+
+            <div class="card-badges">
+              <span class="importance importance-normal">관심</span>
+              <span class="type-badge">Tech</span>
+            </div>
+
+            <h4>AI 취약점 분석 기술 고도화</h4>
+
+            <p class="card-hook">
+              AI가 개발 보조를 넘어 보안 테스트 영역까지 빠르게 들어오고 있습니다.
+            </p>
+
+            <p class="card-summary">
+              AI 모델을 활용해 코드와 애플리케이션의 취약점을
+              자동으로 탐색하는 기술 사례가 공개됐습니다.
+            </p>
+
+            <div class="card-meta">
+              <span>출처 · 가상 AI Lab</span>
+              <span>2026.10.08</span>
+            </div>
+
+            <a href="#news-ai-2" class="card-button">
+              관련 뉴스 보기 →
+            </a>
+
+          </div>
+
+        </div>
+
+      </article>
+
+    </div>
+
+  </section>
+
+  <!-- ==================================================
+       DEEP NEWS
+  =================================================== -->
+
+  <section class="section deep-section">
+
+    <div class="section-heading">
+      <span class="section-icon">🔎</span>
+
+      <div>
+        <h2>보안 심층 뉴스</h2>
+        <p>오늘 업무에 참고할 만한 이슈를 조금 더 자세히 살펴봅니다.</p>
+      </div>
+    </div>
+
+
+    <!-- ==================================================
+         국내 보안
+    =================================================== -->
+
+    <div class="news-category-heading">
+
+      <div>
+        <span class="category-icon">🇰🇷</span>
+        <h3>국내 보안</h3>
+      </div>
+
+      <span class="category-count">2건</span>
+
+    </div>
+
+
+    <!-- 국내 1 -->
+
+    <article class="news-card" id="news-domestic-1">
+
+      <div class="news-top">
+
+        <div class="news-badges">
+          <span class="badge urgent">긴급</span>
+          <span class="badge official">공식 발표</span>
+          <span class="badge neutral">개인정보</span>
+          <span class="badge neutral">금융</span>
+        </div>
+
+        <span class="reading-time">약 2분</span>
+
+      </div>
+
+
+      <h3 class="news-title">
+        금융권 모바일 앱에서 개인정보 유출 정황,
+        관계 기관 조사 착수
+      </h3>
+
+
+      <p class="news-hook">
+        “이번 사고에서 눈여겨볼 부분은 서버 자체보다
+        외부 서비스와 연결되는 구간입니다.”
+      </p>
+
+
+      <div class="news-meta">
+        <span>가상기관 보도자료</span>
+        <span>2026.10.08</span>
+        <span>국내</span>
+      </div>
+
+
+      <p class="news-lead">
+        금융사의 모바일 서비스에서 고객 인증 과정 중 일부 개인정보가
+        외부 서버로 전송된 정황이 확인됐습니다. 관계 기관은 정확한
+        유출 규모와 사고 원인을 조사하고 있으며, 유사 구조를 사용하는
+        서비스에 대해서도 점검을 요청했습니다.
+      </p>
+
+
+      <div class="content-block">
+
+        <h4>
+          <span>📍</span>
+          핵심 내용
+        </h4>
+
+        <ul>
+          <li>고객 인증 과정에서 외부 서버로 개인정보가 전송된 정황이 확인됐습니다.</li>
+          <li>정확한 피해 인원과 유출 범위는 현재 조사 중입니다.</li>
+          <li>사고 이후 해당 서비스의 일부 기능이 일시 중단됐습니다.</li>
+          <li>유사한 연동 구조를 사용하는 다른 서비스에도 점검이 요청됐습니다.</li>
+        </ul>
+
+      </div>
+
+
+      <div class="context-box">
+
+        <h4>조금 더 보면</h4>
+
+        <p>
+          기업 서비스는 자체 시스템만으로 동작하지 않습니다.
+          인증·분석·광고·결제 등 다양한 외부 API와 SDK가 연결됩니다.
+          따라서 기업이 직접 개발하지 않은 영역도 데이터 흐름 관점에서는
+          함께 관리해야 할 필요가 있습니다.
+        </p>
+
+      </div>
+
+
+      <div class="insight-box">
+
+        <h4>
+          <span>💡</span>
+          시사점
+        </h4>
+
+        <p>
+          우리 고객사 역시 다양한 외부 서비스와 API를 사용하고 있을 가능성이 높습니다.
+          단순 취약점 점검뿐 아니라 <strong>어떤 정보가 어느 외부 서비스로 전달되는지</strong>
+          확인하는 관점도 보안 점검에 포함할 필요가 있습니다.
+        </p>
+
+      </div>
+
+
+      <div class="department-impact">
+
+        <h4>
+          <span>🏢</span>
+          우리 업무와의 연결
+        </h4>
+
+        <div class="impact-row">
+          <strong>경영전략팀</strong>
+          <span>개인정보 사고가 기업 신뢰도와 규제 리스크에 미치는 영향 참고</span>
+        </div>
+
+        <div class="impact-row">
+          <strong>보안사업팀</strong>
+          <span>금융·유사 업종 고객사의 외부 연동 구간 점검 및 제안 사례로 활용 가능</span>
+        </div>
+
+      </div>
+
+
+      <div class="source-area">
+
+        <h4>
+          <span>🏛️</span>
+          공식 출처
+        </h4>
+
+        <div class="source-item">
+
+          <div>
+            <strong>가상 금융기관</strong>
+            <p>「모바일 서비스 개인정보 유출 관련 조사 착수」</p>
+            <small>2026.10.08 · 공식 보도자료</small>
+          </div>
+
+          <a href="#" target="_blank">
+            공식 발표 확인 →
+          </a>
+
+        </div>
+
+
+        <div class="source-item">
+
+          <div>
+            <strong>가상 CERT</strong>
+            <p>「관련 서비스 보안 점검 권고」</p>
+            <small>2026.10.08 · 보안 공지</small>
+          </div>
+
+          <a href="#" target="_blank">
+            보안 공지 확인 →
+          </a>
+
+        </div>
+
+      </div>
+
+
+      <div class="related-articles">
+
+        <h4>
+          <span>🔗</span>
+          관련 기사
+        </h4>
+
+        <a href="#" target="_blank" class="article-link">
+          <span>
+            <strong>가상보안뉴스</strong>
+            ○○금융 모바일 앱 고객정보 유출 정황
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+
+        <a href="#" target="_blank" class="article-link">
+          <span>
+            <strong>가상IT데일리</strong>
+            ○○금융 사고, 외부 연동 시스템 조사 확대
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+      </div>
+
+    </article>
+
+
+    <!-- 국내 2 -->
+
+    <article class="news-card" id="news-domestic-2">
+
+      <div class="news-top">
+
+        <div class="news-badges">
+          <span class="badge important">중요</span>
+          <span class="badge verified">복수 언론 확인</span>
+          <span class="badge neutral">랜섬웨어</span>
+          <span class="badge neutral">제조업</span>
+        </div>
+
+        <span class="reading-time">약 2분</span>
+
+      </div>
+
+
+      <h3 class="news-title">
+        중견 제조업체 잇단 랜섬웨어 피해,
+        백업 서버까지 암호화
+      </h3>
+
+
+      <p class="news-hook">
+        “백업은 있었습니다. 문제는 공격자가 그 백업에도 접근할 수 있었다는 점입니다.”
+      </p>
+
+
+      <div class="news-meta">
+        <span>가상보안뉴스 외 1곳</span>
+        <span>2026.10.08</span>
+        <span>국내</span>
+      </div>
+
+
+      <p class="news-lead">
+        제조업체를 대상으로 한 랜섬웨어 공격에서 공격자가 원격 접속
+        계정을 탈취한 뒤 내부 시스템으로 이동한 정황이 확인됐습니다.
+        일부 기업에서는 운영 서버뿐 아니라 백업 서버까지 함께 암호화돼
+        복구에 어려움을 겪은 것으로 알려졌습니다.
+      </p>
+
+
+      <div class="content-block">
+
+        <h4>
+          <span>📍</span>
+          핵심 내용
+        </h4>
+
+        <ul>
+          <li>외부 원격 접속 계정 탈취가 초기 침투 경로로 추정됩니다.</li>
+          <li>공격자가 내부망으로 이동하며 다수 시스템에 접근했습니다.</li>
+          <li>운영망과 가까운 위치의 백업 서버도 함께 피해를 입었습니다.</li>
+        </ul>
+
+      </div>
+
+
+      <div class="insight-box">
+
+        <h4>
+          <span>💡</span>
+          시사점
+        </h4>
+
+        <p>
+          백업 파일의 존재 자체보다 <strong>공격자가 백업 시스템에 접근할 수 있는가</strong>가
+          더 중요한 문제가 될 수 있습니다. 고객사 진단 및 제안 시
+          백업망 분리와 관리자 권한 관리까지 함께 확인할 필요가 있습니다.
+        </p>
+
+      </div>
+
+
+      <div class="department-impact">
+
+        <h4>
+          <span>🏢</span>
+          우리 업무와의 연결
+        </h4>
+
+        <div class="impact-row">
+          <strong>보안사업팀</strong>
+          <span>제조업 고객 대상 백업·접근통제·계정관리 제안 사례</span>
+        </div>
+
+      </div>
+
+
+      <div class="source-area">
+
+        <h4>
+          <span>🏛️</span>
+          공식 출처
+        </h4>
+
+        <div class="no-official-source">
+          현재 확인된 공식 기관 발표는 없습니다.
+        </div>
+
+      </div>
+
+
+      <div class="related-articles">
+
+        <h4>
+          <span>🔗</span>
+          관련 기사
+        </h4>
+
+        <a href="#" target="_blank" class="article-link">
+          <span>
+            <strong>가상보안뉴스</strong>
+            제조업체 다수 랜섬웨어 피해…백업 서버까지 감염
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+        <a href="#" target="_blank" class="article-link">
+          <span>
+            <strong>가상IT신문</strong>
+            제조기업 노린 랜섬웨어 공격 증가
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+      </div>
+
+    </article>
+
+
+    <!-- ==================================================
+         해외 보안
+    =================================================== -->
+
+    <div class="news-category-heading">
+
+      <div>
+        <span class="category-icon">🌎</span>
+        <h3>해외 보안</h3>
+      </div>
+
+      <span class="category-count">2건</span>
+
+    </div>
+
+
+    <!-- 해외 1 -->
+
+    <article class="news-card" id="news-overseas-1">
+
+      <div class="news-top">
+
+        <div class="news-badges">
+          <span class="badge urgent">긴급</span>
+          <span class="badge official">공식 Advisory</span>
+          <span class="badge neutral">RCE</span>
+        </div>
+
+        <span class="reading-time">약 2분</span>
+
+      </div>
+
+
+      <h3 class="news-title">
+        웹 서버 제품 원격 코드 실행 취약점,
+        실제 공격에 악용 중
+      </h3>
+
+
+      <p class="news-hook">
+        “패치가 공개됐다는 소식보다 중요한 건 이미 공격이 시작됐다는 사실입니다.”
+      </p>
+
+
+      <p class="original-title">
+        Original · Remote Code Execution Flaw Exploited in the Wild
+      </p>
+
+
+      <div class="news-meta">
+        <span>가상 CERT</span>
+        <span>2026.10.08</span>
+        <span>해외</span>
+      </div>
+
+
+      <p class="news-lead">
+        널리 사용되는 웹 서버 제품에서 인증 없이 원격 명령을 실행할 수 있는
+        취약점이 공개됐으며, 실제 공격에서 해당 취약점이 악용되는 정황도
+        확인됐습니다.
+      </p>
+
+
+      <div class="content-block">
+
+        <h4>
+          <span>📍</span>
+          핵심 내용
+        </h4>
+
+        <ul>
+          <li>인증 없이 원격 명령 실행이 가능한 취약점입니다.</li>
+          <li>벤더는 수정 버전을 공개했습니다.</li>
+          <li>실제 공격에 활용되는 정황이 확인됐습니다.</li>
+          <li>인터넷에 노출된 서버는 우선적인 점검과 패치가 권고됩니다.</li>
+        </ul>
+
+      </div>
+
+
+      <div class="insight-box">
+
+        <h4>
+          <span>💡</span>
+          시사점
+        </h4>
+
+        <p>
+          취약점 공개와 실제 공격 사이의 시간이 짧아지고 있습니다.
+          해당 제품을 사용한다면 정기 패치 일정만 기다리기보다
+          <strong>사용 여부 확인 → 노출 여부 확인 → 우선 패치</strong> 순서로
+          빠르게 대응할 필요가 있습니다.
+        </p>
+
+      </div>
+
+
+      <div class="department-impact">
+
+        <h4>
+          <span>🏢</span>
+          우리 업무와의 연결
+        </h4>
+
+        <div class="impact-row">
+          <strong>기술개발연구소</strong>
+          <span>사용 라이브러리·제품 버전 및 공격 패턴 검토</span>
+        </div>
+
+        <div class="impact-row">
+          <strong>보안사업팀</strong>
+          <span>고객사 취약점 대응 및 긴급 점검 안내 참고</span>
+        </div>
+
+      </div>
+
+
+      <div class="source-area">
+
+        <h4>
+          <span>🏛️</span>
+          공식 출처
+        </h4>
+
+        <div class="source-item">
+
+          <div>
+            <strong>가상 CERT</strong>
+            <p>Remote Code Execution Security Advisory</p>
+            <small>2026.10.08 · Security Advisory</small>
+          </div>
+
+          <a href="#" target="_blank">
+            Advisory 확인 →
+          </a>
+
+        </div>
+
+      </div>
+
+
+      <div class="related-articles">
+
+        <h4>
+          <span>🔗</span>
+          관련 기사
+        </h4>
+
+        <a href="#" target="_blank" class="article-link">
+          <span>
+            <strong>가상 Security News</strong>
+            Critical RCE Flaw Exploited in Active Attacks
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+        <a href="#" target="_blank" class="article-link">
+          <span>
+            <strong>가상 Tech Security</strong>
+            Organizations Urged to Patch Critical Web Server Flaw
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+      </div>
+
+    </article>
+
+
+    <!-- 해외 2 -->
+
+    <article class="news-card" id="news-overseas-2">
+
+      <div class="news-top">
+
+        <div class="news-badges">
+          <span class="badge important">중요</span>
+          <span class="badge verified">복수 출처 확인</span>
+          <span class="badge neutral">Cloud</span>
+        </div>
+
+        <span class="reading-time">약 1분</span>
+
+      </div>
+
+      <h3 class="news-title">
+        클라우드 관리자 계정 탈취 공격 증가,
+        장기 API Key가 주요 표적
+      </h3>
+
+      <p class="news-hook">
+        “비밀번호 하나를 훔치는 공격에서 이제는 오래 살아남는 권한을 훔치는 공격으로 바뀌고 있습니다.”
+      </p>
+
+      <div class="news-meta">
+        <span>가상 Cloud Security Report</span>
+        <span>2026.10.08</span>
+        <span>해외</span>
+      </div>
+
+      <p class="news-lead">
+        공격자가 클라우드 관리자 계정과 장기간 유지되는 API Key를
+        확보한 뒤 정상 사용자처럼 시스템에 접근하는 사례가 증가하고 있습니다.
+      </p>
+
+
+      <div class="content-block">
+
+        <h4><span>📍</span> 핵심 내용</h4>
+
+        <ul>
+          <li>관리자 권한 계정이 주요 공격 대상입니다.</li>
+          <li>장기 API Key가 지속적인 접근 수단으로 악용됩니다.</li>
+          <li>최소 권한과 주기적인 Key Rotation이 권고됩니다.</li>
+        </ul>
+
+      </div>
+
+
+      <div class="insight-box">
+
+        <h4><span>💡</span> 시사점</h4>
+
+        <p>
+          클라우드 보안에서는 계정 자체뿐 아니라 API Key,
+          Service Account 등 <strong>사람이 직접 로그인하지 않는 인증정보</strong>까지
+          함께 관리해야 합니다.
+        </p>
+
+      </div>
+
+
+      <div class="source-area">
+
+        <h4><span>🏛️</span> 공식 출처</h4>
+
+        <div class="source-item">
+
+          <div>
+            <strong>가상 Cloud Security Center</strong>
+            <p>Cloud Identity Threat Report</p>
+            <small>2026.10.08 · Threat Report</small>
+          </div>
+
+          <a href="#" target="_blank">보고서 확인 →</a>
+
+        </div>
+
+      </div>
+
+
+      <div class="related-articles">
+
+        <h4><span>🔗</span> 관련 기사</h4>
+
+        <a href="#" class="article-link">
+          <span>
+            <strong>가상 Security Weekly</strong>
+            Attackers Target Long-Lived Cloud Credentials
+          </span>
+          <small>2026.10.08 →</small>
+        </a>
+
+      </div>
+
+    </article>
+
+
+    <!-- ==================================================
+         AI & TECH
+    =================================================== -->
+
+    <div class="news-category-heading">
+
+      <div>
+        <span class="category-icon">🤖</span>
+        <h3>AI & Tech</h3>
+      </div>
+
+      <span class="category-count">2건</span>
+
+    </div>
+
+
+    <!-- AI 1 -->
+
+    <article class="news-card" id="news-ai-1">
+
+      <div class="news-top">
+
+        <div class="news-badges">
+          <span class="badge important">중요</span>
+          <span class="badge official">공식 연구</span>
+          <span class="badge ai-badge">AI Security</span>
+        </div>
+
+        <span class="reading-time">약 2분</span>
+
+      </div>
+
+
+      <h3 class="news-title">
+        AI Agent 겨냥 Prompt Injection 공격,
+        외부 문서를 통해 확산
+      </h3>
+
+
+      <p class="news-hook">
+        “AI가 외부 문서를 읽고 직접 행동한다면,
+        그 문서 자체가 공격 명령서가 될 수도 있습니다.”
+      </p>
+
+
+      <div class="news-meta">
+        <span>가상 AI Security Lab</span>
+        <span>2026.10.08</span>
+        <span>AI Security</span>
+      </div>
+
+
+      <p class="news-lead">
+        웹페이지나 이메일, 문서 안에 숨겨진 악성 명령을 AI Agent가
+        정상적인 지시로 인식하도록 유도하는 Prompt Injection 공격 사례가
+        보안 연구를 통해 공개됐습니다.
+      </p>
+
+
+      <div class="content-block">
+
+        <h4><span>📍</span> 핵심 내용</h4>
+
+        <ul>
+          <li>외부 문서 안에 AI를 대상으로 한 숨겨진 지시문을 삽입합니다.</li>
+          <li>AI Agent가 해당 지시를 사용자 요청보다 우선하도록 유도합니다.</li>
+          <li>메일·파일·웹페이지 등 다양한 입력 경로가 공격에 활용될 수 있습니다.</li>
+          <li>외부 도구 실행 권한이 많을수록 피해 범위도 커질 수 있습니다.</li>
+        </ul>
+
+      </div>
+
+
+      <div class="context-box">
+
+        <h4>쉽게 말하면</h4>
+
+        <p>
+          사람이 악성 문서를 열어 악성코드를 실행하는 것처럼,
+          AI 시대에는 <strong>AI가 읽는 문서 안에 AI를 속이는 명령</strong>을
+          넣는 공격이 가능해진다는 의미입니다.
+        </p>
+
+      </div>
+
+
+      <div class="insight-box">
+
+        <h4><span>💡</span> 시사점</h4>
+
+        <p>
+          사내 AI Agent를 업무 시스템과 연결할 경우
+          외부 데이터를 무조건 신뢰하지 않도록 설계하고,
+          Agent가 실행할 수 있는 기능과 접근 가능한 데이터의 범위를
+          최소화하는 기준이 필요합니다.
+        </p>
+
+      </div>
+
+
+      <div class="department-impact">
+
+        <h4><span>🏢</span> 우리 업무와의 연결</h4>
+
+        <div class="impact-row">
+          <strong>기술개발연구소</strong>
+          <span>Agent 권한 설계와 Prompt Injection 방어 시나리오 검토</span>
+        </div>
+
+        <div class="impact-row">
+          <strong>보안사업팀</strong>
+          <span>AI Security 신규 위협 및 고객사 컨설팅 소재 참고</span>
+        </div>
+
+      </div>
+
+
+      <div class="source-area">
+
+        <h4><span>🏛️</span> 공식 출처</h4>
+
+        <div class="source-item">
+
+          <div>
+            <strong>가상 AI Security Lab</strong>
+            <p>Indirect Prompt Injection Against AI Agents</p>
+            <small>2026.10.08 · Research</small>
+          </div>
+
+          <a href="#" target="_blank">연구자료 확인 →</a>
+
+        </div>
+
+      </div>
+
+
+      <div class="related-articles">
+
+        <h4><span>🔗</span> 관련 기사</h4>
+
+        <a href="#" class="article-link">
+          <span>
+            <strong>가상 AI Tech News</strong>
+            AI Agents Face New Prompt Injection Risks
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+        <a href="#" class="article-link">
+          <span>
+            <strong>가상 Security Weekly</strong>
+            Why Agentic AI Changes Prompt Injection Risk
+          </span>
+
+          <small>2026.10.08 →</small>
+        </a>
+
+      </div>
+
+    </article>
+
+
+    <!-- AI 2 -->
+
+    <article class="news-card" id="news-ai-2">
+
+      <div class="news-top">
+
+        <div class="news-badges">
+          <span class="badge reference">참고</span>
+          <span class="badge official">공식 발표</span>
+          <span class="badge ai-badge">AI</span>
+        </div>
+
+        <span class="reading-time">약 1분</span>
+
+      </div>
+
+
+      <h3 class="news-title">
+        AI를 활용한 소프트웨어 취약점 자동 탐지 기술 고도화
+      </h3>
+
+
+      <p class="news-hook">
+        “AI가 코드를 작성하는 시대를 넘어,
+        이제는 AI가 다른 코드의 약점을 찾는 단계로 가고 있습니다.”
+      </p>
+
+
+      <div class="news-meta">
+        <span>가상 AI Lab</span>
+        <span>2026.10.08</span>
+        <span>AI · Security</span>
+      </div>
+
+
+      <p class="news-lead">
+        AI 모델을 활용해 대규모 소스코드를 분석하고 잠재적인 보안 취약점을
+        찾아내는 기술 연구 결과가 공개됐습니다.
+      </p>
+
+
+      <div class="content-block">
+
+        <h4><span>📍</span> 핵심 내용</h4>
+
+        <ul>
+          <li>AI가 대규모 코드베이스를 분석해 취약점 후보를 탐색합니다.</li>
+          <li>정적 분석과 AI 추론을 결합하는 방식이 연구되고 있습니다.</li>
+          <li>개발 초기 단계에서 취약점을 발견하는 데 활용 가능성이 있습니다.</li>
+        </ul>
+
+      </div>
+
+
+      <div class="insight-box">
+
+        <h4><span>💡</span> 시사점</h4>
+
+        <p>
+          AI 기반 보안 분석은 기존 도구를 완전히 대체하기보다
+          개발자와 보안 담당자가 우선 확인해야 할 영역을 빠르게 좁혀주는
+          보조 수단으로 활용 가능성이 있습니다.
+        </p>
+
+      </div>
+
+
+      <div class="source-area">
+
+        <h4><span>🏛️</span> 공식 출처</h4>
+
+        <div class="source-item">
+
+          <div>
+            <strong>가상 AI Lab</strong>
+            <p>AI Assisted Vulnerability Discovery</p>
+            <small>2026.10.08 · Technical Report</small>
+          </div>
+
+          <a href="#" target="_blank">기술자료 확인 →</a>
+
+        </div>
+
+      </div>
+
+
+      <div class="related-articles">
+
+        <h4><span>🔗</span> 관련 기사</h4>
+
+        <a href="#" class="article-link">
+
+          <span>
+            <strong>가상 Tech News</strong>
+            AI Finds Security Flaws in Large Codebases
+          </span>
+
+          <small>2026.10.08 →</small>
+
+        </a>
+
+      </div>
+
+    </article>
+
+  </section>
+
+
+  <!-- ==================================================
+       SELECTION POLICY
+  =================================================== -->
+
+  <section class="source-policy">
+
+    <div class="policy-block">
+
+      <h3>
+        <span>📋</span>
+        선정 기준
+      </h3>
+
+      <p>
+        공식 기관 발표 또는 신뢰할 수 있는 전문 매체를 우선 확인합니다.
+        동일 사건이 여러 매체에서 보도된 경우 내용을 교차 확인하며,
+        발행 전 24시간 이내 소식 중 업무 관련도가 높은 내용을 우선 선정합니다.
+      </p>
+
+    </div>
+
+
+    <div class="policy-block">
+
+      <h3>
+        <span>🔗</span>
+        주요 출처
+      </h3>
+
+      <div class="source-grid">
+
+        <div>
+          <strong>국내</strong>
+          <p>
+            공식 기관 · CERT · 보안 전문 언론 ·
+            주요 IT/경제 언론
+          </p>
+        </div>
+
+        <div>
+          <strong>해외</strong>
+          <p>
+            CERT · 보안기관 · Vendor Advisory ·
+            Security 전문매체 · AI 공식 블로그
+          </p>
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <div class="feedback">
+
+      <strong>브리핑에 의견이 있으신가요?</strong>
+
+      <p>
+        분류가 맞지 않거나 추가로 다루길 원하는 주제가 있다면
+        회신으로 알려주시면 감사하겠습니다.
+      </p>
+
+    </div>
+
+  </section>
+
+
+  <!-- ==================================================
+       FOOTER
+  =================================================== -->
+
+  <footer class="footer">
+
+    <div>
+      <strong>Security & AI Briefing</strong>
+
+      <p>
+        Security · AI · Technology Daily Briefing
+      </p>
+    </div>
+
+    <p class="footer-notice">
+      본 브리핑은 국내·외 공개 자료를 업무 참고 목적으로
+      요약·정리하여 제공합니다. 정확한 세부 내용은 연결된
+      공식 자료 및 기사 원문을 확인해주세요.
+    </p>
+
+  </footer>
+
+
+  <!--
+    실제 발송 단계에서는 이 아래에
+    회사 기존 메일 서명 HTML을 붙이는 방식으로 처리
+  -->
+
+</main>
+
+</body>
+</html>
