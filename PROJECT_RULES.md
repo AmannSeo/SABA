@@ -43,8 +43,11 @@ SABA/
 ├─ SAMPLE/
 │  ├─ Claude/
 │  └─ Codex/
-│     ├─ layout_sample.html
-│     └─ style.css
+│     ├─ v00/ … v08/  (기존 버전 원본)
+│     └─ v09/
+│        ├─ layout_review_v9.html
+│        ├─ style_review_v9.css
+│        └─ LOGO.png
 └─ sign/
    ├─ sign_img.jpg
    ├─ sign.css
@@ -59,7 +62,7 @@ SAMPLE/Claude 폴더의 역할은 현재 임의로 정의하지 않는다.
 
 사용자가 현재 지정한 디자인은 `SAMPLE/Codex/v09/`의 레이아웃 샘플이다.
 새 버전이 추가되면 아래 최신 버전 선택 규칙을 적용한다.
-위 구조 표는 기존 파일 구조이며, 실제 버전 폴더와 파일은 작업 시작 시 확인한다.
+위 구조 표는 현재 확인한 버전 구조이며, 실제 최고 버전 폴더와 파일은 매 작업 시작 시 다시 확인한다.
 
 
 ---
@@ -88,94 +91,7 @@ Web Crawling은 RSS/API로 필요한 데이터를 얻기 어려운 경우에 검
 ### Latest Design Baseline
 
 매 작업 시작 시 `SAMPLE/Codex/`의 바로 아래에 있는 버전 폴더를 확인한다.
-폴더명이 `^v[0-9]+# SABA Project Rules
-
-## 1. Project
-
-SABA = Security & AI Briefing Automation
-
-국내외 보안·AI 관련 정보를 자동 수집하고,
-AI 분석을 거쳐 HTML 뉴스레터를 생성한 후
-회사 메일로 정기 발송하는 시스템이다.
-
-
----
-
-## 2. Development Rules
-
-전체 시스템을 한 번에 구현하지 않는다.
-
-작업은 다음 순서로 진행한다.
-
-설계
-→ 구현
-→ 실행
-→ 확인
-→ 수정
-→ 사용자 승인
-→ 다음 단계
-
-사용자의 승인 없이 다음 단계로 넘어가지 않는다.
-
-확정되지 않은 요구사항을 임의로 결정하지 않는다.
-
-기존 파일의 위치와 이름을
-사용자 승인 없이 변경하지 않는다.
-
-
----
-
-## 3. Current Project Structure
-
-현재 프로젝트 구조:
-
-SABA/
-├─ SAMPLE/
-│  ├─ Claude/
-│  └─ Codex/
-│     ├─ layout_sample.html
-│     └─ style.css
-└─ sign/
-   ├─ sign_img.jpg
-   ├─ sign.css
-   └─ sign.html
-
-SAMPLE/Claude 폴더의 역할은 현재 임의로 정의하지 않는다.
-
-### Versioned Design Folders
-
-뉴스레터 디자인 버전은 `SAMPLE/Codex/v숫자/` 폴더로 관리한다.
-예: `v01/`, `v09/`, `v10/`.
-
-사용자가 현재 지정한 디자인은 `SAMPLE/Codex/v09/`의 레이아웃 샘플이다.
-새 버전이 추가되면 아래 최신 버전 선택 규칙을 적용한다.
-위 구조 표는 기존 파일 구조이며, 실제 버전 폴더와 파일은 작업 시작 시 확인한다.
-
-
----
-
-## 4. Technology
-
-Backend / Automation:
-
-Python
-
-MVP에서는 별도의 Web Frontend를 만들지 않는다.
-
-뉴스 수집 우선순위:
-
-1. RSS
-2. Official API
-3. Web Crawling
-
-Web Crawling은 RSS/API로 필요한 데이터를 얻기 어려운 경우에 검토한다.
-
-
----
-
-# 5. PROTECTED - Newsletter Design
-
- 형식인 폴더만 대상으로 하며,
+폴더명이 `^v[0-9]+$` 형식인 폴더만 대상으로 하며,
 `v` 뒤의 값을 정수로 비교하여 가장 높은 버전을 선택한다.
 
 - 문자열 정렬이나 수정 시각으로 최신 버전을 판단하지 않는다.
@@ -197,10 +113,10 @@ Web Crawling은 RSS/API로 필요한 데이터를 얻기 어려운 경우에 검
 기존 자동화 Template이 있다면 차이를 검토하고 별도 Template에 필요한 변경을 반영한다.
 원본 파일을 수정하거나 자동으로 메일을 발송·배포하는 근거로 사용하지 않는다.
 
-기존 루트 샘플은 과거 기준 원본으로 보존한다.
-
-- `SAMPLE/Codex/layout_sample.html`
-- `SAMPLE/Codex/style.css`
+기존 디자인 샘플은 현재 버전 폴더에 있는 위치 그대로 과거 기준 원본으로 보존한다.
+예: `SAMPLE/Codex/v00/layout_sample.html`, `SAMPLE/Codex/v00/style.css`.
+이전 규칙의 `SAMPLE/Codex/layout_sample.html`, `SAMPLE/Codex/style.css`는 과거 경로이며,
+존재하지 않는 과거 경로를 다시 생성하거나 최신 기준으로 사용하지 않는다.
 
 모든 버전 폴더의 디자인 원본도 보호 대상이다.
 
@@ -398,8 +314,8 @@ Secret은 환경변수 또는 적절한 Secret 관리 방법을 사용한다.
 
 - `SAMPLE/Codex/v숫자/` 내부의 레이아웃 HTML, CSS, 이미지 및 기타 디자인 자산
 
-- `SAMPLE/Codex/layout_sample.html`
-- `SAMPLE/Codex/style.css`
+- 기존 버전 폴더에 보존된 모든 레이아웃 샘플과 CSS
+- 과거 루트 경로의 샘플이 남아 있다면 해당 파일도 보호
 - `sign/sign.html`
 - `sign/sign.css`
 - `sign/sign_img.jpg`
