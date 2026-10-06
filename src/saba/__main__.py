@@ -1,12 +1,14 @@
 import argparse
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
 
 from pydantic import ValidationError
 
 from saba.schema import Article, validate_articles
+from saba.rss import RssError, fetch_feed, parse_feed, reconcile_articles, select_articles
 from saba.storage import DEFAULT_DB, StorageError, get_article, list_articles, save_articles
 
 
@@ -65,9 +67,26 @@ def main() -> int:
     actions.add_argument("--import-json", type=Path, metavar="FILE", help="검증 후 SQLite에 기사 저장")
     actions.add_argument("--list-articles", action="store_true", help="저장 기사 목록 조회")
     actions.add_argument("--show-article", metavar="ID", help="기사 한 건의 전체 JSON 조회")
+    actions.add_argument("--collect-rss", action="store_true", help="승인된 CERT-EU RSS 메타데이터 수집")
+    parser.add_argument("--dry-run", action="store_true", help="수집 예상 결과만 확인, DB 쓰기 없음")
+    period = parser.add_mutually_exclusive_group()
+    period.add_argument("--bootstrap", action="store_true", help="최초 검증용 최근 30일")
+    period.add_argument("--since", metavar="ISO8601", help="시간대가 있는 명시적 복구 시작 시각")
     parser.add_argument("--db", type=Path, metavar="PATH", help="SQLite DB 경로 (기본: 프로젝트 루트/data/saba.db)")
     args = parser.parse_args()
-    storage_action = args.import_json is not None or args.list_articles or args.show_article is not None
+    if (args.dry_run or args.bootstrap or args.since is not None) and not args.collect_rss:
+        parser.error("수집 보조 옵션은 --collect-rss와 함께 사용해야 합니다.")
+    now = datetime.now(timezone.utc)
+    since = None
+    if args.since is not None:
+        try:
+            since = datetime.fromisoformat(args.since)
+            if since.tzinfo is None or since.utcoffset() is None or since > now:
+                raise ValueError
+            since = since.astimezone(timezone.utc)
+        except ValueError:
+            parser.error("--since는 시간대가 있고 미래가 아닌 ISO 8601 시각이어야 합니다.")
+    storage_action = args.import_json is not None or args.list_articles or args.show_article is not None or args.collect_rss
     if args.db is not None and not storage_action:
         parser.error("--db는 저장 또는 조회 옵션과 함께 사용해야 합니다.")
     if args.show_article is not None and not args.show_article.strip():
@@ -77,7 +96,21 @@ def main() -> int:
     if storage_action:
         path = args.db if args.db is not None else DEFAULT_DB
         try:
-            if args.import_json is not None:
+            if args.collect_rss:
+                articles = parse_feed(fetch_feed(), now)
+                candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since)
+                logging.info(
+                    "RSS 확인: 전체 %s건 · 기간 제외 %s건 · 발행 시각 미확인 %s건 · 상한 제외 %s건 · 저장 후보 %s건",
+                    counts["total"], counts["excluded"], counts["unknown"], counts["limited"], counts["candidates"],
+                )
+                prepared, skipped = reconcile_articles(path, candidates)
+                if args.dry_run:
+                    logging.info("RSS dry-run: 예상 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 0건", len(prepared) - skipped, skipped)
+                else:
+                    inserted, skipped = save_articles(path, prepared) if prepared else (0, 0)
+                    logging.info("RSS 저장 완료: 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 %s건", inserted, skipped, inserted)
+                logging.info("RSS 메타데이터만 처리했습니다. 본문 확보·AI 분석·분류·뉴스레터 생성·메일 발송은 수행하지 않았습니다.")
+            elif args.import_json is not None:
                 articles = read_articles(args.import_json)
                 if articles is None:
                     return 1
@@ -93,7 +126,7 @@ def main() -> int:
             else:
                 article = get_article(path, args.show_article)
                 print(article.model_dump_json(indent=2))
-        except StorageError as exc:
+        except (StorageError, RssError) as exc:
             logging.error("%s", exc)
             return 1
         except sqlite3.Error as exc:

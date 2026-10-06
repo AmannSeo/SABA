@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title>합성 CERT-EU 형태 검증 Feed</title>
+<item><title>[가상] 문서 검토 안내</title><link>https://example.com/fictional/one?a=1&amp;b=2</link><guid>fictional-one</guid><pubDate>Tue, 06 Oct 2026 10:00:00 CEST</pubDate><description>가상 설명입니다. 전문이나 분석 결과가 아닙니다.</description></item>
+<item><title>[가상] 검토 후속 안내</title><link>https://example.com/fictional/two</link><guid>fictional-two</guid><pubDate>Mon, 05 Oct 2026 11:00:00 CET</pubDate><description>합성 검증 항목입니다.</description></item>
+</channel></rss>
