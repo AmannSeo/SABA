@@ -9,4 +9,6 @@ dist/
 .env.*
 !.env.example
 data/
+*.db
+*.db-*
 logs/
