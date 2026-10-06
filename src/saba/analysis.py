@@ -6,9 +6,9 @@ import json
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, TypeAdapter, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StrictInt, TypeAdapter, model_validator
 
-from saba.schema import Article, Text
+from saba.schema import Article, Text, utc_datetime
 
 RULES_VERSION = "saba-analysis-v1"
 Category = Literal["보안 사고", "취약점·권고", "위협 동향", "AI 보안", "AI·기술", "산업·시장·기업"]
@@ -44,7 +44,7 @@ def normalize_text(value: str) -> str:
     return " ".join(value.split())
 
 
-def analysis_input(article: Article) -> tuple[dict[str, str], InputKind, str]:
+def input_payload(article: Article) -> dict:
     texts = {"original_title": normalize_text(article.original_title)}
     kind: InputKind = "title_only"
     if article.extracted_text is not None:
@@ -67,8 +67,47 @@ def analysis_input(article: Article) -> tuple[dict[str, str], InputKind, str]:
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "input_kind": kind, "texts": texts,
     }
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return texts, kind, hashlib.sha256(encoded).hexdigest()
+    return payload
+
+
+def canonical_json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def json_hash(value: object) -> str:
+    return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def analysis_input(article: Article) -> tuple[dict[str, str], InputKind, str]:
+    payload = input_payload(article)
+    return payload["texts"], payload["input_kind"], json_hash(payload)
+
+
+class InputSnapshot(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    rules_version: Literal["saba-analysis-v1"]
+    article_id: Text
+    schema_version: Annotated[StrictInt, Field(ge=1, le=1)]
+    source_id: Text
+    source_name: Text
+    url: Text
+    published_at: Text | None
+    input_kind: InputKind
+    texts: dict[Literal["original_title", "feed_excerpt", "extracted_text"], Text]
+
+    @model_validator(mode="after")
+    def normalized_input(self):
+        expected = {"original_title"}
+        if self.input_kind != "title_only":
+            expected.add(self.input_kind)
+        if set(self.texts) != expected or any(normalize_text(text) != text for text in self.texts.values()):
+            raise ValueError("스냅샷 입력 필드·공백 정규화가 일치하지 않습니다")
+        if str(TypeAdapter(HttpUrl).validate_python(self.url)) != self.url:
+            raise ValueError("스냅샷 URL은 정규화된 HTTP(S) URL이어야 합니다")
+        if self.published_at is not None and utc_datetime(self.published_at).isoformat() != self.published_at:
+            raise ValueError("스냅샷 발행일은 정규화된 UTC여야 합니다")
+        return self
 
 
 class EvidenceSpan(BaseModel):
@@ -131,23 +170,27 @@ def validate_analysis(value: object, articles: list[Article]) -> list[AnalysisRe
         article = by_id.get(result.article_id)
         if article is None:
             raise AnalysisError(f"{prefix}: 입력 기사에 없는 article_id입니다.")
-        texts, kind, digest = analysis_input(article)
-        if result.input_kind != kind or result.input_hash != digest:
-            raise AnalysisError(f"{prefix}: 분석 입력 종류 또는 Hash가 일치하지 않습니다.")
-        if result.summary is not None and not result.summary.startswith(article.source_name + "에 따르면"):
-            raise AnalysisError(f"{prefix}: 요약은 입력 출처 이름과 '에 따르면'으로 시작해야 합니다.")
-        targets = {field for field in ("newsletter_title", "summary", "category", "importance_reason")
-                   if getattr(result, field) is not None}
-        targets.update(f"tags[{i}]" for i in range(len(result.tags)))
-        targets.update(f"key_points[{i}]" for i in range(len(result.key_points)))
-        covered = set()
-        for span in result.evidence:
-            text = texts.get(span.input_field)
-            if span.target not in targets or text is None or not (0 <= span.start < span.end <= len(text)):
-                raise AnalysisError(f"{prefix}: 근거 대상·입력 필드·위치가 유효하지 않습니다.")
-            if text[span.start:span.end] != span.quote:
-                raise AnalysisError(f"{prefix}: 근거 인용문이 입력 위치와 일치하지 않습니다.")
-            covered.add(span.target)
-        if covered != targets:
-            raise AnalysisError(f"{prefix}: 채워진 분석 출력에 근거 연결이 필요합니다.")
+        validate_snapshot_result(result, InputSnapshot.model_validate(input_payload(article)), prefix)
     return results
+
+
+def validate_snapshot_result(result: AnalysisResult, snapshot: InputSnapshot, prefix="결과") -> None:
+    if (result.article_id != snapshot.article_id or result.rules_version != snapshot.rules_version
+            or result.input_kind != snapshot.input_kind or result.input_hash != json_hash(snapshot.model_dump())):
+        raise AnalysisError(f"{prefix}: 분석 입력 종류 또는 Hash가 일치하지 않습니다.")
+    if result.summary is not None and not result.summary.startswith(snapshot.source_name + "에 따르면"):
+        raise AnalysisError(f"{prefix}: 요약은 입력 출처 이름과 '에 따르면'으로 시작해야 합니다.")
+    targets = {field for field in ("newsletter_title", "summary", "category", "importance_reason")
+               if getattr(result, field) is not None}
+    targets.update(f"tags[{i}]" for i in range(len(result.tags)))
+    targets.update(f"key_points[{i}]" for i in range(len(result.key_points)))
+    covered = set()
+    for span in result.evidence:
+        text = snapshot.texts.get(span.input_field)
+        if span.target not in targets or text is None or not (0 <= span.start < span.end <= len(text)):
+            raise AnalysisError(f"{prefix}: 근거 대상·입력 필드·위치가 유효하지 않습니다.")
+        if text[span.start:span.end] != span.quote:
+            raise AnalysisError(f"{prefix}: 근거 인용문이 입력 위치와 일치하지 않습니다.")
+        covered.add(span.target)
+    if covered != targets:
+        raise AnalysisError(f"{prefix}: 채워진 분석 출력에 근거 연결이 필요합니다.")

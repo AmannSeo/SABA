@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from saba.schema import Article, validate_articles
 from saba.analysis import AnalysisError, validate_analysis
+from saba.analysis_storage import DEFAULT_ANALYSIS_DB, get_analysis, list_analyses, save_analysis
 from saba.rss import RssError, fetch_feed, parse_feed, reconcile_articles, select_articles
 from saba.storage import DEFAULT_DB, StorageError, get_article, list_articles, save_articles
 
@@ -77,6 +78,10 @@ def main() -> int:
     actions.add_argument("--show-article", metavar="ID", help="기사 한 건의 전체 JSON 조회")
     actions.add_argument("--collect-rss", action="store_true", help="승인된 CERT-EU RSS 메타데이터 수집")
     actions.add_argument("--validate-analysis", type=Path, metavar="RESULT_JSON", help="합성 분석 결과 형식·입력 연결 검증")
+    actions.add_argument("--import-analysis", type=Path, metavar="RESULT_JSON", help="기사 DB 검증 후 별도 분석 DB에 저장")
+    actions.add_argument("--list-analyses", action="store_true", help="저장한 과거 분석 결과 목록")
+    actions.add_argument("--show-analysis", metavar="ID", help="저장한 과거 결과·입력 스냅샷 조회")
+    parser.add_argument("--analysis-db", type=Path, metavar="PATH", help="분석 DB 경로 (기본: 프로젝트 루트/data/analysis.db)")
     parser.add_argument("--articles", type=Path, metavar="ARTICLE_JSON", help="분석 검증에 연결할 기사 JSON")
     parser.add_argument("--dry-run", action="store_true", help="수집 예상 결과만 확인, DB 쓰기 없음")
     period = parser.add_mutually_exclusive_group()
@@ -98,8 +103,13 @@ def main() -> int:
             since = since.astimezone(timezone.utc)
         except ValueError:
             parser.error("--since는 시간대가 있고 미래가 아닌 ISO 8601 시각이어야 합니다.")
+    analysis_storage_action = args.import_analysis is not None or args.list_analyses or args.show_analysis is not None
+    if args.analysis_db is not None and not analysis_storage_action:
+        parser.error("--analysis-db는 분석 저장 또는 조회 옵션과 함께 사용해야 합니다.")
+    if args.show_analysis is not None and not args.show_analysis.strip():
+        parser.error("--show-analysis에는 비어 있지 않은 ID가 필요합니다.")
     storage_action = args.import_json is not None or args.list_articles or args.show_article is not None or args.collect_rss
-    if args.db is not None and not storage_action:
+    if args.db is not None and not (storage_action or args.import_analysis is not None):
         parser.error("--db는 저장 또는 조회 옵션과 함께 사용해야 합니다.")
     if args.show_article is not None and not args.show_article.strip():
         parser.error("--show-article에는 비어 있지 않은 ID가 필요합니다.")
@@ -122,10 +132,26 @@ def main() -> int:
         logging.info("합성 분석 결과 검증 성공: 전체 %s건 · 검토 필요 %s건 · 입력 부족 보류 %s건 · 대상 밖 %s건", len(results), *(sum(result.status == status for result in results) for status in ("검토 필요", "입력 부족 보류", "대상 밖")))
         logging.info("형식·입력 연결만 검증했습니다. 실제 AI 분석·품질 평가·저장·발송은 수행하지 않았습니다.")
         return 0
-    if storage_action:
+    if storage_action or analysis_storage_action:
         path = args.db if args.db is not None else DEFAULT_DB
         try:
-            if args.collect_rss:
+            if analysis_storage_action:
+                analysis_path = args.analysis_db if args.analysis_db is not None else DEFAULT_ANALYSIS_DB
+                if args.import_analysis is not None:
+                    inserted, skipped = save_analysis(path, analysis_path, read_json(args.import_analysis))
+                    logging.info("분석 저장 완료: 신규 %s건 · 동일 결과 %s건 생략 · 충돌 0건 · 실제 저장 %s건", inserted, skipped, inserted)
+                    logging.info("검증된 입력 결과만 저장했습니다. AI 분석·사람 검토·발송은 수행하지 않았습니다.")
+                elif args.list_analyses:
+                    records = list_analyses(analysis_path)
+                    print(f"저장된 과거 분석 결과 {len(records)}건 (현재 기사 일치·사람 검토 완료를 뜻하지 않습니다)")
+                    for record in records:
+                        result = record["result"]
+                        print(f'{record["analysis_id"]} | {result["article_id"]} | {result["status"]} | {record["stored_at"]}')
+                else:
+                    record = get_analysis(analysis_path, args.show_analysis)
+                    print(json.dumps(record, ensure_ascii=False, indent=2))
+                    logging.info("저장 당시 입력 스냅샷의 과거 결과입니다. 현재 기사 일치·사람 검토 완료를 뜻하지 않습니다.")
+            elif args.collect_rss:
                 articles = parse_feed(fetch_feed(), now)
                 candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since)
                 logging.info(
@@ -166,6 +192,14 @@ def main() -> int:
             return 1
         except OSError as exc:
             logging.error("DB 경로 접근 실패: %s (OS 오류 코드 %s)", type(exc).__name__, exc.errno)
+            return 1
+        except ValidationError as exc:
+            logging.error("분석 입력 형식 검증 실패: 오류 %s개. 입력 타입·필수 필드·상태를 확인하세요.", exc.error_count())
+            return 1
+        except AnalysisError as exc:
+            logging.error("%s", exc)
+            return 1
+        except ValueError:
             return 1
         return 0
     logging.info("SABA 실행을 시작합니다.")

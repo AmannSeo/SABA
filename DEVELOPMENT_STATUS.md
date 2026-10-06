@@ -12,11 +12,20 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - CERT-EU Security Advisories RSS 수집 코드
 - RSS 재수집 동일 원문 생략 및 변경 충돌 방지 구조
 - AI 분석 결과 Schema/검증 구조
+- 합성 분석 결과의 별도 SQLite 저장·읽기 전용 조회 (`data/analysis.db`)
+- 정규화 Analysis Input Snapshot 저장 및 Hash·출처·근거 위치 재검증
+- 동일 분석 결과 생략 및 최초 저장 시각 유지
+- 동일 입력의 다른 분석 결과 이력 보관 (기존 결과 불변)
+- 분석 저장 전체 입력 Transaction/Rollback 및 기사 DB 읽기 전용 검증
+- 분석 저장·조회 CLI: 합성 결과 3건 저장, 재입력 3건 생략, 다른 결과 1건 추가와 별도 프로세스 조회 확인
+- 2026-10-07 검증: Python 3.12.14에서 unittest 전체 112개 통과. 임시 DB만 사용했고 실제 AI API는 호출하지 않음
 
 ### 현재 AI 상태
 - `analysis.py`는 실제 AI API 호출 기능이 아니다.
 - 현재는 합성 분석 결과의 형식, 입력 연결, 근거 연결을 검증하는 구조다.
-- 실제 AI Provider/API 연결, 실제 기사 분석 실행 및 저장은 별도 승인 대상이다.
+- 분석 결과 저장·조회 기능은 구현됐으며 현재 저장 검증은 합성 결과 기반이다.
+- 실제 AI API는 연결하지 않았고 Provider/Model도 확정하지 않았다.
+- 실제 기사 AI 분석 실행과 그 결과의 저장은 별도 승인 대상이다.
 
 ### 미구현/별도 승인 대상
 - 실제 AI API 연결
@@ -31,6 +40,10 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 관리자 UI
 - 서버/Cloud 배포
 - 운영 ON/OFF 및 운영 로그 화면
+- 최종 운영 DB 구조 및 DB 제품 선정
+- 운영 로그 / 실행 이력 저장 구조
+- 데이터·로그 보관 / Archive 정책
+- DB Backup / Restore 정책
 
 ## 수집 구조 원칙
 Source와 Newsletter Category를 분리한다.
