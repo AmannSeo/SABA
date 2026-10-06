@@ -1,0 +1,35 @@
+[
+  {
+    "schema_version": 1,
+    "article_id": "fictional-analysis-001",
+    "original_title": "[가상] 테스트 도구 새 버전 안내",
+    "source_id": "fictional-source",
+    "source_name": "가상 문서실",
+    "url": "https://example.com/fictional/tool?edition=1",
+    "collection_method": "rss",
+    "collected_at": "2026-10-06T00:00:00Z",
+    "published_at": "2026-10-05T23:00:00Z",
+    "feed_excerpt": "<p>가상 도구의 새 버전이 공개됐습니다.</p><p>문서 검색 기능을 추가했습니다.</p>"
+  },
+  {
+    "schema_version": 1,
+    "article_id": "fictional-analysis-002",
+    "original_title": "[가상] 추가 안내 예정",
+    "source_id": "fictional-source",
+    "source_name": "가상 문서실",
+    "url": "https://example.com/fictional/unknown",
+    "collection_method": "rss",
+    "collected_at": "2026-10-06T00:00:00Z"
+  },
+  {
+    "schema_version": 1,
+    "article_id": "fictional-analysis-003",
+    "original_title": "[가상] 연습 행사 일정",
+    "source_id": "fictional-source",
+    "source_name": "가상 문서실",
+    "url": "https://example.com/fictional/event",
+    "collection_method": "rss",
+    "collected_at": "2026-10-06T00:00:00Z",
+    "feed_excerpt": "가상 연습 행사의 일정을 안내합니다."
+  }
+]

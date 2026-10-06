@@ -1,0 +1,98 @@
+[
+  {
+    "rules_version": "saba-analysis-v1",
+    "status": "검토 필요",
+    "reason": "합성 결과이며 사람이 검토해야 합니다.",
+    "category": "AI·기술",
+    "tags": [
+      "가상 도구"
+    ],
+    "importance": null,
+    "importance_reason": null,
+    "newsletter_title": "[가상] 테스트 도구 새 버전",
+    "summary": "가상 문서실에 따르면 가상 도구 새 버전이 공개됐고 문서 검색 기능이 추가됐습니다.",
+    "key_points": [
+      "가상 도구의 새 버전이 공개됐습니다.",
+      "문서 검색 기능을 추가했습니다."
+    ],
+    "evidence": [
+      {
+        "target": "newsletter_title",
+        "input_field": "feed_excerpt",
+        "start": 0,
+        "end": 38,
+        "quote": "가상 도구의 새 버전이 공개됐습니다. 문서 검색 기능을 추가했습니다."
+      },
+      {
+        "target": "summary",
+        "input_field": "feed_excerpt",
+        "start": 0,
+        "end": 38,
+        "quote": "가상 도구의 새 버전이 공개됐습니다. 문서 검색 기능을 추가했습니다."
+      },
+      {
+        "target": "category",
+        "input_field": "feed_excerpt",
+        "start": 0,
+        "end": 38,
+        "quote": "가상 도구의 새 버전이 공개됐습니다. 문서 검색 기능을 추가했습니다."
+      },
+      {
+        "target": "tags[0]",
+        "input_field": "feed_excerpt",
+        "start": 0,
+        "end": 38,
+        "quote": "가상 도구의 새 버전이 공개됐습니다. 문서 검색 기능을 추가했습니다."
+      },
+      {
+        "target": "key_points[0]",
+        "input_field": "feed_excerpt",
+        "start": 0,
+        "end": 38,
+        "quote": "가상 도구의 새 버전이 공개됐습니다. 문서 검색 기능을 추가했습니다."
+      },
+      {
+        "target": "key_points[1]",
+        "input_field": "feed_excerpt",
+        "start": 0,
+        "end": 38,
+        "quote": "가상 도구의 새 버전이 공개됐습니다. 문서 검색 기능을 추가했습니다."
+      }
+    ],
+    "article_id": "fictional-analysis-001",
+    "input_hash": "62fc16e658d9b81a50e7025d28158d5ab9f19488d1b77df1837ce286c68fde6d",
+    "input_kind": "feed_excerpt"
+  },
+  {
+    "rules_version": "saba-analysis-v1",
+    "status": "입력 부족 보류",
+    "reason": "제목만 제공되어 사실 요약과 중요도 판단을 보류합니다.",
+    "category": null,
+    "tags": [],
+    "importance": null,
+    "importance_reason": null,
+    "newsletter_title": null,
+    "summary": null,
+    "key_points": [],
+    "evidence": [],
+    "article_id": "fictional-analysis-002",
+    "input_hash": "5f44b53fa1564416ff4dc977aaedf2e0c82aed23e3fe04197d9da11657b02bf7",
+    "input_kind": "title_only"
+  },
+  {
+    "rules_version": "saba-analysis-v1",
+    "status": "대상 밖",
+    "reason": "일정은 승인된 분석 MVP의 대상이 아닙니다.",
+    "category": null,
+    "tags": [],
+    "importance": null,
+    "importance_reason": null,
+    "newsletter_title": null,
+    "summary": null,
+    "key_points": [],
+    "evidence": [],
+    "article_id": "fictional-analysis-003",
+    "input_hash": "ce307bd046e310f77316bba65454e261c1d13d28b97eff47bf0742ae7bd7f92a",
+    "input_kind": "feed_excerpt"
+  }
+]

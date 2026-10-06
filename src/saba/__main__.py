@@ -8,24 +8,32 @@ import sqlite3
 from pydantic import ValidationError
 
 from saba.schema import Article, validate_articles
+from saba.analysis import AnalysisError, validate_analysis
 from saba.rss import RssError, fetch_feed, parse_feed, reconcile_articles, select_articles
 from saba.storage import DEFAULT_DB, StorageError, get_article, list_articles, save_articles
 
 
-def read_articles(path: Path) -> list[Article] | None:
+def read_json(path: Path) -> object:
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeError:
         logging.error("입력 파일 / 인코딩: UTF-8로 읽을 수 없습니다.")
-        return None
+        raise ValueError("입력 파일 읽기 실패") from None
     except OSError as exc:
         logging.error("입력 파일 / 읽기: %s (OS 오류 코드 %s)", type(exc).__name__, exc.errno)
-        return None
+        raise ValueError("입력 파일 읽기 실패") from None
 
     try:
-        data = json.loads(text)
+        return json.loads(text)
     except json.JSONDecodeError as exc:
         logging.error("JSON / %s행 %s열: %s", exc.lineno, exc.colno, exc.msg)
+        raise ValueError("JSON 읽기 실패") from None
+
+
+def read_articles(path: Path) -> list[Article] | None:
+    try:
+        data = read_json(path)
+    except ValueError:
         return None
 
     if not isinstance(data, list):
@@ -61,19 +69,23 @@ def validate_file(path: Path) -> int:
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    parser = argparse.ArgumentParser(description="SABA 기본 실행, JSON 검증 및 SQLite 기사 저장·조회")
+    parser = argparse.ArgumentParser(description="SABA 기본 실행, 기사·분석 결과 검증 및 SQLite 저장·조회")
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--validate-json", type=Path, metavar="FILE", help="UTF-8 기사 배열 JSON 검증")
     actions.add_argument("--import-json", type=Path, metavar="FILE", help="검증 후 SQLite에 기사 저장")
     actions.add_argument("--list-articles", action="store_true", help="저장 기사 목록 조회")
     actions.add_argument("--show-article", metavar="ID", help="기사 한 건의 전체 JSON 조회")
     actions.add_argument("--collect-rss", action="store_true", help="승인된 CERT-EU RSS 메타데이터 수집")
+    actions.add_argument("--validate-analysis", type=Path, metavar="RESULT_JSON", help="합성 분석 결과 형식·입력 연결 검증")
+    parser.add_argument("--articles", type=Path, metavar="ARTICLE_JSON", help="분석 검증에 연결할 기사 JSON")
     parser.add_argument("--dry-run", action="store_true", help="수집 예상 결과만 확인, DB 쓰기 없음")
     period = parser.add_mutually_exclusive_group()
     period.add_argument("--bootstrap", action="store_true", help="최초 검증용 최근 30일")
     period.add_argument("--since", metavar="ISO8601", help="시간대가 있는 명시적 복구 시작 시각")
     parser.add_argument("--db", type=Path, metavar="PATH", help="SQLite DB 경로 (기본: 프로젝트 루트/data/saba.db)")
     args = parser.parse_args()
+    if (args.validate_analysis is not None) != (args.articles is not None):
+        parser.error("--validate-analysis와 --articles는 함께 사용해야 합니다.")
     if (args.dry_run or args.bootstrap or args.since is not None) and not args.collect_rss:
         parser.error("수집 보조 옵션은 --collect-rss와 함께 사용해야 합니다.")
     now = datetime.now(timezone.utc)
@@ -93,6 +105,23 @@ def main() -> int:
         parser.error("--show-article에는 비어 있지 않은 ID가 필요합니다.")
     if args.validate_json is not None:
         return validate_file(args.validate_json)
+    if args.validate_analysis is not None:
+        articles = read_articles(args.articles)
+        if articles is None:
+            return 1
+        try:
+            results = validate_analysis(read_json(args.validate_analysis), articles)
+        except ValidationError as exc:
+            logging.error("분석 결과 형식 검증 실패: 오류 %s개. 입력 타입·필수 필드·상태·개수 제한을 확인하세요.", exc.error_count())
+            return 1
+        except AnalysisError as exc:
+            logging.error("%s", exc)
+            return 1
+        except ValueError:
+            return 1
+        logging.info("합성 분석 결과 검증 성공: 전체 %s건 · 검토 필요 %s건 · 입력 부족 보류 %s건 · 대상 밖 %s건", len(results), *(sum(result.status == status for result in results) for status in ("검토 필요", "입력 부족 보류", "대상 밖")))
+        logging.info("형식·입력 연결만 검증했습니다. 실제 AI 분석·품질 평가·저장·발송은 수행하지 않았습니다.")
+        return 0
     if storage_action:
         path = args.db if args.db is not None else DEFAULT_DB
         try:
