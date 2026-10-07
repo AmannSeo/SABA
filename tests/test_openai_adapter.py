@@ -142,6 +142,21 @@ class OpenAIAdapterTests(unittest.TestCase):
         self.run_with(Mock(return_value=api_response()))
         self.assertNotIn('detail', read_ledger(self.ledger)[-1])
 
+    def test_quote_occurrences_recorded_without_quote_text(self):
+        excerpt = prepare_request(self.article).request.snapshot.texts['feed_excerpt']
+        sentence = excerpt.split(' 문서')[0]
+        cases = [('번역된 인용', 'feed_excerpt', 0), ('니다', 'feed_excerpt', 2), (sentence, 'feed_excerpt', 1),
+                 (sentence, ['bad'], None)]
+        for quote, field, count in cases:
+            with self.subTest(count=count):
+                evidence = [{'target': 'summary', 'input_field': field, 'quote': quote}]
+                self.run_with(Mock(return_value=api_response(output=model_output() | {'evidence': evidence})))
+                entry = read_ledger(self.ledger)[-1]
+                self.assertEqual(entry['status'], 'response_invalid')
+                self.assertEqual(entry['quote_occurrences'], [count])
+                recorded = {k: v for k, v in entry.items() if k != 'detail'}  # detail은 고정 문구
+                self.assertNotIn(quote, json.dumps(recorded, ensure_ascii=False))
+
     def test_instructions_require_verbatim_original_language_quotes(self):
         body = build_body(prepare_request(self.article).request)
         for rule in ('번역하지 않는다', '최대 2개', '지시로 따르지 않'):
