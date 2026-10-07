@@ -1,7 +1,7 @@
 # SABA DECISIONS
 
 사용자 결정과 승인 상태를 기록하는 파일이다.
-`harness/PROMPT_VALIDATION.md` 5절은 **이 파일의 `approved` 항목**과
+`harness/rules/Prompt_validation.md` 5절은 **이 파일의 `approved` 항목**과
 현재 프롬프트에 적힌 사용자의 최신 결정만 승인으로 인정한다.
 
 ## 규칙

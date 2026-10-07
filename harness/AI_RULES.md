@@ -601,7 +601,7 @@ AI 관련 단계 프롬프트는
 
 
 AI 관련 프롬프트는
-harness/PROMPT_VALIDATION.md의
+harness/rules/Prompt_validation.md의
 최종 출력 게이트를 통과해야 한다.
 
 
