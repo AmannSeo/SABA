@@ -75,20 +75,20 @@
 
 ## AI / Tech / Security
 
-  ----------------------------------------------------------------------------------
-  출처                    주소                               주요 수집 대상
-  ----------------------- ---------------------------------- -----------------------
-  OpenAI News             https://openai.com/news/           AI 모델, Agent, 기술
-                                                             발표
-
-  Google Blog             https://blog.google/               AI·기술 발표
-
-  Google Security Blog    https://security.googleblog.com/   보안 연구·위협·취약점
-
-  Microsoft Blog          https://blogs.microsoft.com/       AI·Cloud·Security 기술
-
-  Anthropic News          https://www.anthropic.com/news     LLM, Agent, AI Safety
-  ----------------------------------------------------------------------------------
+| 출처 | 주소 | 주요 수집 대상 |
+|---|---|---|
+| OpenAI News | https://openai.com/news/ | AI 모델, Agent, 기술 발표 |
+| Google Blog | https://blog.google/ | AI·기술 발표 |
+| Google Security Blog | https://security.googleblog.com/ | 보안 연구·위협·취약점 |
+| Microsoft Blog | https://blogs.microsoft.com/ | AI·Cloud·Security 기술 |
+| Anthropic News | https://www.anthropic.com/news | LLM, Agent, AI Safety |
+| xAI News | https://x.ai/news | Grok·AI 모델·Agent·API·기업 기술 발표 |
+| Intel Product Security | https://www.intel.com/content/www/us/en/security-center/ | Intel 제품 취약점·보안 권고·보안 공지 |
+| Intel Newsroom | https://newsroom.intel.com/ | CPU·AI 반도체·데이터센터·PC·Foundry·신제품·기술 동향 |
+| AMD Product Security | https://www.amd.com/en/resources/product-security.html | AMD CPU·GPU·소프트웨어 취약점·보안 권고 |
+| AMD Newsroom | https://newsroom.amd.com/ | CPU·GPU·AI 가속기·데이터센터·PC·소프트웨어·신제품·기술 동향 |
+| NVIDIA Product Security | https://www.nvidia.com/en-us/product-security/ | NVIDIA 제품 취약점·Security Bulletin·CVE·보안 권고 |
+| NVIDIA Newsroom | https://nvidianews.nvidia.com/ | GPU·AI 인프라·데이터센터·로보틱스·신제품·기술 동향 |
 
 ## 커뮤니티 / 실시간 동향 보조 출처
 
@@ -159,7 +159,8 @@ KISA ISMS-P 인증 / 방송통신위원회 / 금융위원회 / 금융감독원
 The Hacker News / BleepingComputer / SecurityWeek
 전자신문 / ZDNet Korea
 OpenAI / Google / Microsoft / Anthropic / xAI
-Intel Product Security / AMD Product Security
+Intel Product Security / AMD Product Security / NVIDIA Product Security
+Intel Newsroom / AMD Newsroom / NVIDIA Newsroom
 Reddit / X (보조 출처)
 한국은행 / KOSIS ...
         ↓

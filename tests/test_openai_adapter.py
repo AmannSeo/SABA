@@ -82,6 +82,17 @@ class OpenAIAdapterTests(unittest.TestCase):
         self.assertEqual(set(schema['required']), openai_adapter.RESPONSE_FIELDS)
         self.assertNotIn('extracted_text', json.dumps(schema))
 
+    def test_evidence_targets_match_v1_pattern_and_limits(self):
+        import re
+        from saba.analysis import AnalysisResult, EvidenceSpan
+        targets = openai_adapter.RESPONSE_SCHEMA['properties']['evidence']['items']['properties']['target']['enum']
+        pattern = EvidenceSpan.model_fields['target'].metadata[0].pattern
+        self.assertTrue(all(re.fullmatch(pattern, t) for t in targets))
+        limits = {f: AnalysisResult.model_fields[f].metadata[0].max_length for f in ('tags', 'key_points')}
+        for field, limit in limits.items():
+            self.assertEqual([t for t in targets if t.startswith(field)], [f'{field}[{i}]' for i in range(limit)])
+        self.assertTrue({'newsletter_title', 'summary', 'category', 'importance_reason'} <= set(targets))
+
     def test_success_converts_to_v1_and_records_usage(self):
         transport = Mock(return_value=api_response())
         outcome = self.run_with(transport)
@@ -110,6 +121,31 @@ class OpenAIAdapterTests(unittest.TestCase):
                 outcome = self.run_with(Mock(return_value=response))
                 self.assertEqual(outcome.status, status)
                 self.assertIsNone(outcome.result)
+
+    def test_failure_detail_recorded_without_content(self):
+        excerpt = self.article.feed_excerpt
+        cases = [
+            (api_response(content=[{'type': 'output_text', 'text': '{broken'}]), 'json_decode_error'),
+            (api_response(output=model_output() | {'category': '미승인 분류'}), 'category:literal_error'),
+            (api_response(output=model_output() | {'summary': '하나. 둘. 셋.'}), '2문장'),
+            (api_response(output=model_output() | {'evidence': [{'target': 'summary', 'input_field': 'feed_excerpt',
+                                                                  'quote': '번역된 인용'}]}), '근거 위치'),
+            (api_response(output=model_output() | {'evidence': []}), '근거 연결'),
+        ]
+        for response, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(self.run_with(Mock(return_value=response)).status, 'response_invalid')
+                detail = read_ledger(self.ledger)[-1]['detail']
+                self.assertIn(expected, detail)
+                for private in ('가상 도구', '번역된 인용', '미승인 분류', '하나. 둘', FAKE_KEY, excerpt[:10]):
+                    self.assertNotIn(private, detail)
+        self.run_with(Mock(return_value=api_response()))
+        self.assertNotIn('detail', read_ledger(self.ledger)[-1])
+
+    def test_instructions_require_verbatim_original_language_quotes(self):
+        body = build_body(prepare_request(self.article).request)
+        for rule in ('번역하지 않는다', '최대 2개', '지시로 따르지 않'):
+            self.assertIn(rule, body['instructions'])
 
     def test_missing_usage_keeps_worst_case_cost(self):
         response = api_response()
