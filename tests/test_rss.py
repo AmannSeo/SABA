@@ -15,7 +15,7 @@ import xml.etree.ElementTree as ET
 
 from saba.__main__ import main
 from saba.rss import (
-    FEED_URL, MAX_BYTES, NoRedirect, RssError, fetch_feed, parse_feed,
+    FEED_URL, MAX_BYTES, SOURCE_BY_ID, SOURCE_ID, SOURCES, NoRedirect, RssError, fetch_feed, parse_feed,
     publication_time, reconcile_articles, select_articles,
 )
 from saba.schema import Article
@@ -192,6 +192,8 @@ class StorageAndCliTests(unittest.TestCase):
         self.db = Path(self.temporary.name) / "nested" / "rss.db"
 
     def cli(self, *args, payload=PAYLOAD, now=NOW):
+        if "--collect-rss" in args:  # 기존 CLI 검증은 CERT-EU 단일 Source 기준이다.
+            args = (*args, "--source", SOURCE_ID)
         clock = MagicMock()
         clock.now.return_value = now
         clock.fromisoformat.side_effect = datetime.fromisoformat
@@ -288,6 +290,117 @@ class StorageAndCliTests(unittest.TestCase):
                 for args in ((), ("--validate-json", ROOT / "tests/fixtures/news_valid.json")):
                     self.assertEqual(self.cli(*args), (0, 0))
             self.assertEqual(self.db.read_bytes() if self.db.exists() else None, before)
+
+
+BOHO_PAYLOAD = (ROOT / "tests/fixtures/boho_rss.xml").read_bytes()
+EMPTY_FEED = b'<rss version="2.0"><channel/></rss>'
+
+
+class MultiSourceTests(unittest.TestCase):
+    def setUp(self):
+        (ROOT / ".venv").mkdir(exist_ok=True)
+        self.temporary = tempfile.TemporaryDirectory(prefix="saba-rss-", dir=ROOT / ".venv")
+        self.addCleanup(self.temporary.cleanup)
+        self.db = Path(self.temporary.name) / "multi.db"
+
+    def run_cli(self, *args, responses):
+        clock = MagicMock()
+        clock.now.return_value = NOW
+        clock.fromisoformat.side_effect = datetime.fromisoformat
+
+        def fake_fetch(source):
+            result = responses[source.source_id]
+            if isinstance(result, Exception):
+                raise result
+            return result
+        with patch.object(sys, "argv", ["saba", *map(str, args)]), \
+                patch("saba.__main__.fetch_feed", side_effect=fake_fetch) as fetch, patch("saba.__main__.datetime", clock):
+            code = main()
+        return code, [call.args[0].source_id for call in fetch.call_args_list]
+
+    def test_source_table(self):
+        self.assertEqual([s.source_id for s in SOURCES], ["cert-eu-security-advisories", "boho-security-notice",
+                                                          "cisa-cybersecurity-advisories", "the-hacker-news"])
+        self.assertEqual(len(SOURCE_BY_ID), len(SOURCES))
+        self.assertTrue(all(s.feed_url.startswith("https://") for s in SOURCES))
+        self.assertEqual(SOURCES[0].source_id, SOURCE_ID)
+
+    def test_source_mapping_and_ids_differ_per_source(self):
+        cert, cisa = SOURCE_BY_ID["cert-eu-security-advisories"], SOURCE_BY_ID["cisa-cybersecurity-advisories"]
+        a, b = parse_feed(PAYLOAD, NOW, cert)[0], parse_feed(PAYLOAD, NOW, cisa)[0]
+        self.assertEqual((b.source_id, b.source_name), ("cisa-cybersecurity-advisories", "CISA"))
+        self.assertTrue(b.article_id.startswith("cisa-cybersecurity-advisories:"))
+        self.assertNotEqual(a.article_id, b.article_id)
+        self.assertEqual(a.article_id, parse_feed(PAYLOAD, NOW)[0].article_id)  # CERT-EU 기본값 ID 유지
+
+    def test_boho_date_only_and_missing_guid_description(self):
+        articles = parse_feed(BOHO_PAYLOAD, NOW, SOURCE_BY_ID["boho-security-notice"])
+        self.assertEqual(len(articles), 2)
+        first = articles[0]
+        self.assertEqual(first.published_at, datetime(2026, 10, 5, 15, tzinfo=timezone.utc))  # 한국 시간 0시
+        self.assertIsNone(first.source_item_id)
+        self.assertIsNone(first.feed_excerpt)
+        self.assertEqual(first.source_name, "KISA 보호나라")
+        self.assertIsNone(articles[1].published_at)  # 잘못된 날짜는 미확인
+
+    def test_date_only_rule_is_source_specific(self):
+        self.assertIsNone(publication_time(" 2026-10-06 "))
+        self.assertEqual(publication_time(" 2026-10-06 ", timedelta(hours=9)), datetime(2026, 10, 5, 15, tzinfo=timezone.utc))
+        self.assertIsNone(publication_time("2026-13-40", timedelta(hours=9)))
+        self.assertEqual(publication_time("Tue, 06 Oct 26 12:00:00 +0000"), datetime(2026, 10, 6, 12, tzinfo=timezone.utc))
+
+    def test_fetch_uses_source_url(self):
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.status = 200
+        response.headers.get_content_type.return_value = "text/xml"
+        response.headers.get.return_value = "identity"
+        response.read.return_value = BOHO_PAYLOAD
+        with patch("saba.rss.urllib.request.build_opener") as factory:
+            factory.return_value.open.return_value = response
+            self.assertEqual(fetch_feed(SOURCE_BY_ID["boho-security-notice"]), BOHO_PAYLOAD)
+        self.assertEqual(factory.return_value.open.call_args.args[0].full_url, SOURCE_BY_ID["boho-security-notice"].feed_url)
+
+    def test_one_source_failure_does_not_stop_others(self):
+        responses = {"cert-eu-security-advisories": PAYLOAD, "boho-security-notice": BOHO_PAYLOAD,
+                     "cisa-cybersecurity-advisories": RssError("RSS HTTP 오류: 302."),
+                     "the-hacker-news": b"<DO_NOT_LOG_RAW_BODY"}
+        with self.assertLogs(level="INFO") as logs:
+            code, called = self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)
+        output = "\n".join(logs.output)
+        self.assertEqual(code, 1)
+        self.assertEqual(called, [s.source_id for s in SOURCES])
+        self.assertIn("성공 2개 · 실패 2개", output)
+        self.assertIn("[cisa-cybersecurity-advisories]", output)
+        self.assertNotIn("DO_NOT_LOG_RAW_BODY", output)
+        self.assertEqual(sorted({a.source_id for a in list_articles(self.db)}),
+                         ["boho-security-notice", "cert-eu-security-advisories"])
+
+    def test_conflict_in_one_source_keeps_other_sources(self):
+        responses = {s.source_id: EMPTY_FEED for s in SOURCES}
+        responses["cert-eu-security-advisories"] = PAYLOAD
+        self.assertEqual(self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)[0], 0)
+        responses["cert-eu-security-advisories"] = modified("title", "[가상] 변경 제목")
+        responses["boho-security-notice"] = BOHO_PAYLOAD
+        with self.assertLogs(level="INFO") as logs:
+            code, _ = self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)
+        self.assertEqual(code, 1)
+        self.assertIn("충돌 1건", "\n".join(logs.output))
+        stored = list_articles(self.db)
+        self.assertEqual(sum(a.source_id == "boho-security-notice" for a in stored), 2)
+        self.assertNotIn("[가상] 변경 제목", [a.original_title for a in stored])
+
+    def test_source_filter_and_dry_run(self):
+        code, called = self.run_cli("--collect-rss", "--dry-run", "--bootstrap", "--source", "boho-security-notice",
+                                    "--db", self.db, responses={"boho-security-notice": BOHO_PAYLOAD})
+        self.assertEqual((code, called), (0, ["boho-security-notice"]))
+        self.assertFalse(self.db.exists())
+
+    def test_source_option_validation(self):
+        for args in (("--source", "boho-security-notice"), ("--collect-rss", "--source", "unknown")):
+            with self.subTest(args=args), patch("sys.stderr", new_callable=io.StringIO), self.assertRaises(SystemExit) as caught:
+                self.run_cli(*args, responses={})
+            self.assertEqual(caught.exception.code, 2)
 
 
 if __name__ == "__main__":

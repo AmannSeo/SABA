@@ -1,5 +1,6 @@
-"""승인된 CERT-EU Feed의 메타데이터만 수집한다."""
+"""승인된 Source Feed의 메타데이터만 수집한다 (D-023, D-024)."""
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 import hashlib
@@ -15,8 +16,28 @@ from pydantic import HttpUrl, TypeAdapter, ValidationError
 from saba.schema import Article, validate_articles
 from saba.storage import StorageError, list_articles, normalized_json
 
-FEED_URL = "https://cert.europa.eu/publications/security-advisories-rss"
-SOURCE_ID = "cert-eu-security-advisories"
+
+
+@dataclass(frozen=True)
+class Source:
+    source_id: str
+    source_name: str
+    feed_url: str
+    # 날짜만 있는 pubDate(YYYY-MM-DD)를 해당 UTC 오프셋의 0시로 해석한다. None이면 미확인 처리.
+    date_only_offset: timedelta | None = None
+
+
+SOURCES = (
+    Source("cert-eu-security-advisories", "CERT-EU", "https://cert.europa.eu/publications/security-advisories-rss"),
+    Source("boho-security-notice", "KISA 보호나라", "https://www.boho.or.kr/kr/rss.do?bbsId=B0000133",
+           date_only_offset=timedelta(hours=9)),  # 한국 표준시, 일광 절약 시간 없음
+    Source("cisa-cybersecurity-advisories", "CISA", "https://www.cisa.gov/cybersecurity-advisories/all.xml"),
+    Source("the-hacker-news", "The Hacker News", "https://feeds.feedburner.com/TheHackersNews"),
+)
+SOURCE_BY_ID = {source.source_id: source for source in SOURCES}
+CERT_EU = SOURCES[0]
+FEED_URL = CERT_EU.feed_url
+SOURCE_ID = CERT_EU.source_id
 MAX_BYTES = 2 * 1024 * 1024
 TIMEOUT = 15
 SOURCE_FIELDS = (
@@ -34,9 +55,9 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def fetch_feed() -> bytes:
+def fetch_feed(source: Source = CERT_EU) -> bytes:
     # timeout은 각 소켓 작업의 제한이다. DNS 및 전체 실행의 15초 상한은 아니다.
-    request = urllib.request.Request(FEED_URL, headers={
+    request = urllib.request.Request(source.feed_url, headers={
         "User-Agent": "SABA/0.1 RSS metadata collector",
         "Accept": "application/rss+xml, application/xml, text/xml",
         "Accept-Encoding": "identity",
@@ -59,10 +80,16 @@ def fetch_feed() -> bytes:
         raise RssError(f"RSS 네트워크 요청 실패: {type(exc).__name__}. 연결·권한·시간 초과를 확인하세요.") from None
 
 
-def publication_time(value: str | None) -> datetime | None:
+def publication_time(value: str | None, date_only_offset: timedelta | None = None) -> datetime | None:
     if not value:
         return None
     value = value.strip()
+    if date_only_offset is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        try:
+            day = datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone(date_only_offset))
+        except ValueError:
+            return None
+        return day.astimezone(timezone.utc)
     value = re.sub(r"\bCEST$", "+0200", value)
     value = re.sub(r"\bCET$", "+0100", value)
     try:
@@ -74,7 +101,7 @@ def publication_time(value: str | None) -> datetime | None:
         return None
 
 
-def parse_feed(payload: bytes, now: datetime) -> list[Article]:
+def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[Article]:
     if len(payload) > MAX_BYTES:
         raise RssError("RSS 응답이 2MiB 상한을 초과했습니다.")
     # 외부 DTD와 엔티티는 수집에 필요하지 않으며 확장하지 않는다.
@@ -104,14 +131,14 @@ def parse_feed(payload: bytes, now: datetime) -> list[Article]:
         except ValidationError:
             raise RssError(f"RSS 항목 {index + 1}: HTTP(S) URL이 필요합니다.") from None
         identity = "guid:" + guid if guid else "url:" + url
-        digest = hashlib.sha256((SOURCE_ID + "\n" + identity).encode("utf-8")).hexdigest()
+        digest = hashlib.sha256((source.source_id + "\n" + identity).encode("utf-8")).hexdigest()
         excerpt = item.findtext("description")
         data.append({
-            "schema_version": 1, "article_id": SOURCE_ID + ":" + digest,
-            "source_id": SOURCE_ID, "source_name": "CERT-EU",
+            "schema_version": 1, "article_id": source.source_id + ":" + digest,
+            "source_id": source.source_id, "source_name": source.source_name,
             "original_title": title, "url": url, "collection_method": "rss",
             "source_item_id": guid, "collected_at": now.isoformat(),
-            "published_at": publication_time(item.findtext("pubDate")),
+            "published_at": publication_time(item.findtext("pubDate"), source.date_only_offset),
             "feed_excerpt": excerpt if excerpt and excerpt.strip() else None,
         })
     try:

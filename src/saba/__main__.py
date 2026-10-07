@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from saba.schema import Article, validate_articles
 from saba.analysis import AnalysisError, validate_analysis
 from saba.analysis_storage import DEFAULT_ANALYSIS_DB, get_analysis, list_analyses, save_analysis
-from saba.rss import RssError, fetch_feed, parse_feed, reconcile_articles, select_articles
+from saba.rss import SOURCE_BY_ID, SOURCES, RssError, fetch_feed, parse_feed, reconcile_articles, select_articles
 from saba.storage import DEFAULT_DB, StorageError, get_article, list_articles, save_articles
 
 
@@ -68,6 +68,23 @@ def validate_file(path: Path) -> int:
     return 0
 
 
+def collect_source(source, path: Path, now: datetime, args, since: datetime | None) -> None:
+    articles = parse_feed(fetch_feed(source), now, source)
+    candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since)
+    logging.info(
+        "[%s] RSS 확인: 전체 %s건 · 기간 제외 %s건 · 발행 시각 미확인 %s건 · 상한 제외 %s건 · 저장 후보 %s건",
+        source.source_id, counts["total"], counts["excluded"], counts["unknown"], counts["limited"], counts["candidates"],
+    )
+    prepared, skipped = reconcile_articles(path, candidates)
+    if args.dry_run:
+        logging.info("[%s] RSS dry-run: 예상 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 0건",
+                     source.source_id, len(prepared) - skipped, skipped)
+    else:
+        inserted, skipped = save_articles(path, prepared) if prepared else (0, 0)
+        logging.info("[%s] RSS 저장 완료: 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 %s건",
+                     source.source_id, inserted, skipped, inserted)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     parser = argparse.ArgumentParser(description="SABA 기본 실행, 기사·분석 결과 검증 및 SQLite 저장·조회")
@@ -76,7 +93,7 @@ def main() -> int:
     actions.add_argument("--import-json", type=Path, metavar="FILE", help="검증 후 SQLite에 기사 저장")
     actions.add_argument("--list-articles", action="store_true", help="저장 기사 목록 조회")
     actions.add_argument("--show-article", metavar="ID", help="기사 한 건의 전체 JSON 조회")
-    actions.add_argument("--collect-rss", action="store_true", help="승인된 CERT-EU RSS 메타데이터 수집")
+    actions.add_argument("--collect-rss", action="store_true", help="승인된 Source RSS 메타데이터 수집 (전체 또는 --source)")
     actions.add_argument("--validate-analysis", type=Path, metavar="RESULT_JSON", help="합성 분석 결과 형식·입력 연결 검증")
     actions.add_argument("--import-analysis", type=Path, metavar="RESULT_JSON", help="기사 DB 검증 후 별도 분석 DB에 저장")
     actions.add_argument("--list-analyses", action="store_true", help="저장한 과거 분석 결과 목록")
@@ -84,6 +101,7 @@ def main() -> int:
     parser.add_argument("--analysis-db", type=Path, metavar="PATH", help="분석 DB 경로 (기본: 프로젝트 루트/data/analysis.db)")
     parser.add_argument("--articles", type=Path, metavar="ARTICLE_JSON", help="분석 검증에 연결할 기사 JSON")
     parser.add_argument("--dry-run", action="store_true", help="수집 예상 결과만 확인, DB 쓰기 없음")
+    parser.add_argument("--source", choices=list(SOURCE_BY_ID), help="지정한 승인 Source 하나만 수집")
     period = parser.add_mutually_exclusive_group()
     period.add_argument("--bootstrap", action="store_true", help="최초 검증용 최근 30일")
     period.add_argument("--since", metavar="ISO8601", help="시간대가 있는 명시적 복구 시작 시각")
@@ -91,7 +109,7 @@ def main() -> int:
     args = parser.parse_args()
     if (args.validate_analysis is not None) != (args.articles is not None):
         parser.error("--validate-analysis와 --articles는 함께 사용해야 합니다.")
-    if (args.dry_run or args.bootstrap or args.since is not None) and not args.collect_rss:
+    if (args.dry_run or args.bootstrap or args.since is not None or args.source is not None) and not args.collect_rss:
         parser.error("수집 보조 옵션은 --collect-rss와 함께 사용해야 합니다.")
     now = datetime.now(timezone.utc)
     since = None
@@ -152,19 +170,20 @@ def main() -> int:
                     print(json.dumps(record, ensure_ascii=False, indent=2))
                     logging.info("저장 당시 입력 스냅샷의 과거 결과입니다. 현재 기사 일치·사람 검토 완료를 뜻하지 않습니다.")
             elif args.collect_rss:
-                articles = parse_feed(fetch_feed(), now)
-                candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since)
-                logging.info(
-                    "RSS 확인: 전체 %s건 · 기간 제외 %s건 · 발행 시각 미확인 %s건 · 상한 제외 %s건 · 저장 후보 %s건",
-                    counts["total"], counts["excluded"], counts["unknown"], counts["limited"], counts["candidates"],
-                )
-                prepared, skipped = reconcile_articles(path, candidates)
-                if args.dry_run:
-                    logging.info("RSS dry-run: 예상 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 0건", len(prepared) - skipped, skipped)
-                else:
-                    inserted, skipped = save_articles(path, prepared) if prepared else (0, 0)
-                    logging.info("RSS 저장 완료: 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 %s건", inserted, skipped, inserted)
+                sources = [SOURCE_BY_ID[args.source]] if args.source else SOURCES
+                failed = []
+                for source in sources:
+                    # Source 하나의 수집·충돌 실패는 해당 Source만 보류하고 나머지는 계속한다.
+                    try:
+                        collect_source(source, path, now, args, since)
+                    except (StorageError, RssError) as exc:
+                        logging.error("[%s] %s", source.source_id, exc)
+                        failed.append(source.source_id)
+                logging.info("RSS Source 요약: 대상 %s개 · 성공 %s개 · 실패 %s개%s", len(sources),
+                             len(sources) - len(failed), len(failed), f" ({', '.join(failed)})" if failed else "")
                 logging.info("RSS 메타데이터만 처리했습니다. 본문 확보·AI 분석·분류·뉴스레터 생성·메일 발송은 수행하지 않았습니다.")
+                if failed:
+                    return 1
             elif args.import_json is not None:
                 articles = read_articles(args.import_json)
                 if articles is None:
