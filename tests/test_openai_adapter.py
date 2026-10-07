@@ -27,14 +27,16 @@ FAKE_KEY = 'sk-fake-SECRET-marker-0000'
 NOW = datetime(2026, 10, 7, tzinfo=timezone.utc)
 
 
-def model_output():
+def model_output(ids=(2, 3)):
+    """모델 응답 형식 (D-034 항목별 근거 번호). Fixture 근거는 발췌 전체(문장 2·3), 문장 1은 제목이다."""
     response = copy.deepcopy(RESULT_DATA[0])
-    for field in ('article_id', 'input_hash', 'rules_version', 'input_kind'):
+    for field in ('article_id', 'input_hash', 'rules_version', 'input_kind', 'evidence'):
         del response[field]
-    for quote in response['evidence']:
-        del quote['start']
-        del quote['end']
     response['summary'] = response['summary'].removeprefix('가상 문서실에 따르면 ')
+    for field, id_field in openai_adapter.ID_FIELDS.items():
+        response[id_field] = list(ids) if response[field] is not None else []
+    for field in ('tags', 'key_points'):
+        response[field] = [{'text': text, 'sentence_ids': list(ids)} for text in response[field]]
     return response
 
 
@@ -69,29 +71,33 @@ class OpenAIAdapterTests(unittest.TestCase):
         text = body['input'][0]['content'][0]['text']
         self.assertTrue(text.startswith('<article_data>\n') and text.endswith('\n</article_data>'))
         sent = json.loads(text.removeprefix('<article_data>\n').removesuffix('\n</article_data>'))
-        self.assertEqual(set(sent), {'texts'})
-        self.assertEqual(set(sent['texts']), {'original_title', 'feed_excerpt'})
+        self.assertEqual(set(sent), {'sentences'})
+        self.assertEqual([(u['id'], u['field']) for u in sent['sentences']],
+                         [(1, 'original_title'), (2, 'feed_excerpt'), (3, 'feed_excerpt')])
         dumped = json.dumps(body, ensure_ascii=False)
         for value in (self.article.article_id, str(self.article.url), self.article.source_name):
             self.assertNotIn(value, dumped)
         self.assertIn('지시가 아니다', body['instructions'])
 
-    def test_schema_matches_v1_response_fields(self):
+    def test_schema_requires_ids_for_every_v1_field(self):
         schema = openai_adapter.RESPONSE_SCHEMA
         self.assertEqual(set(schema['properties']), set(schema['required']))
-        self.assertEqual(set(schema['required']), openai_adapter.RESPONSE_FIELDS)
+        v1_fields = openai_adapter.RESPONSE_FIELDS - {'evidence'}
+        self.assertEqual(set(schema['required']), v1_fields | set(openai_adapter.ID_FIELDS.values()))
+        for field in ('tags', 'key_points'):
+            self.assertEqual(schema['properties'][field]['items']['required'], ['sentence_ids', 'text'])
         self.assertNotIn('extracted_text', json.dumps(schema))
 
     def test_evidence_targets_match_v1_pattern_and_limits(self):
         import re
         from saba.analysis import AnalysisResult, EvidenceSpan
-        targets = openai_adapter.RESPONSE_SCHEMA['properties']['evidence']['items']['properties']['target']['enum']
+        targets = openai_adapter.EVIDENCE_TARGETS
         pattern = EvidenceSpan.model_fields['target'].metadata[0].pattern
         self.assertTrue(all(re.fullmatch(pattern, t) for t in targets))
         limits = {f: AnalysisResult.model_fields[f].metadata[0].max_length for f in ('tags', 'key_points')}
         for field, limit in limits.items():
             self.assertEqual([t for t in targets if t.startswith(field)], [f'{field}[{i}]' for i in range(limit)])
-        self.assertTrue({'newsletter_title', 'summary', 'category', 'importance_reason'} <= set(targets))
+        self.assertEqual(set(openai_adapter.ID_FIELDS), {'newsletter_title', 'summary', 'category', 'importance_reason'})
 
     def test_success_converts_to_v1_and_records_usage(self):
         transport = Mock(return_value=api_response())
@@ -128,34 +134,77 @@ class OpenAIAdapterTests(unittest.TestCase):
             (api_response(content=[{'type': 'output_text', 'text': '{broken'}]), 'json_decode_error'),
             (api_response(output=model_output() | {'category': '미승인 분류'}), 'category:literal_error'),
             (api_response(output=model_output() | {'summary': '하나. 둘. 셋.'}), '2문장'),
-            (api_response(output=model_output() | {'evidence': [{'target': 'summary', 'input_field': 'feed_excerpt',
-                                                                  'quote': '번역된 인용'}]}), '근거 위치'),
-            (api_response(output=model_output() | {'evidence': []}), '근거 연결'),
+            (api_response(output=model_output() | {'summary_ids': [99]}), '근거 문장 번호'),
+            (api_response(output=model_output() | {'summary_ids': []}), '근거 문장 번호'),
+            (api_response(output=model_output() | {'importance_reason_ids': [2]}), '값이 없는 항목'),
         ]
         for response, expected in cases:
             with self.subTest(expected=expected):
                 self.assertEqual(self.run_with(Mock(return_value=response)).status, 'response_invalid')
                 detail = read_ledger(self.ledger)[-1]['detail']
                 self.assertIn(expected, detail)
-                for private in ('가상 도구', '번역된 인용', '미승인 분류', '하나. 둘', FAKE_KEY, excerpt[:10]):
+                for private in ('가상 도구', '미승인 분류', '하나. 둘', FAKE_KEY, excerpt[:10]):
                     self.assertNotIn(private, detail)
         self.run_with(Mock(return_value=api_response()))
         self.assertNotIn('detail', read_ledger(self.ledger)[-1])
 
-    def test_quote_occurrences_recorded_without_quote_text(self):
-        excerpt = prepare_request(self.article).request.snapshot.texts['feed_excerpt']
-        sentence = excerpt.split(' 문서')[0]
-        cases = [('번역된 인용', 'feed_excerpt', 0), ('니다', 'feed_excerpt', 2), (sentence, 'feed_excerpt', 1),
-                 (sentence, ['bad'], None)]
-        for quote, field, count in cases:
-            with self.subTest(count=count):
-                evidence = [{'target': 'summary', 'input_field': field, 'quote': quote}]
-                self.run_with(Mock(return_value=api_response(output=model_output() | {'evidence': evidence})))
+    def test_sentence_id_validation(self):
+        for ids in ([], [0], [4], ['2'], [True], None):
+            with self.subTest(ids=ids):
+                output = model_output()
+                output['tags'][0]['sentence_ids'] = ids
+                self.run_with(Mock(return_value=api_response(output=output)))
                 entry = read_ledger(self.ledger)[-1]
                 self.assertEqual(entry['status'], 'response_invalid')
-                self.assertEqual(entry['quote_occurrences'], [count])
-                recorded = {k: v for k, v in entry.items() if k != 'detail'}  # detail은 고정 문구
-                self.assertNotIn(quote, json.dumps(recorded, ensure_ascii=False))
+                self.assertNotIn('quote_occurrences', entry)  # 번호 단계에서 거절되면 인용문이 없다
+
+    def test_ids_split_into_runs_across_fields_and_gaps(self):
+        from saba.openai_adapter import evidence_runs
+        units = [('original_title', 'T'), ('feed_excerpt', 'A.'), ('feed_excerpt', 'B.'), ('feed_excerpt', 'C.')]
+        self.assertEqual(evidence_runs('summary', [4, 1, 2, 2], units), [
+            {'target': 'summary', 'input_field': 'original_title', 'quote': 'T'},
+            {'target': 'summary', 'input_field': 'feed_excerpt', 'quote': 'A.'},
+            {'target': 'summary', 'input_field': 'feed_excerpt', 'quote': 'C.'}])
+        self.assertEqual(evidence_runs('summary', [2, 3], units)[0]['quote'], 'A. B.')
+        outcome = self.run_with(Mock(return_value=api_response(output=model_output(ids=(1, 2, 3)))))
+        self.assertEqual(outcome.status, 'valid')  # 제목·발췌에 걸친 번호도 필드별로 나뉘어 통과
+        self.assertEqual({e.input_field for e in outcome.result.evidence}, {'original_title', 'feed_excerpt'})
+
+    def test_quote_occurrences_recorded_after_conversion(self):
+        self.run_with(Mock(return_value=api_response(output=model_output() | {'summary': '하나. 둘. 셋.'})))
+        entry = read_ledger(self.ledger)[-1]  # 번호 변환은 통과하고 v1 요약 문장 수 검증에서 거절
+        self.assertEqual(entry['status'], 'response_invalid')
+        self.assertTrue(entry['quote_occurrences'] and set(entry['quote_occurrences']) == {1})
+        self.assertNotIn('가상 도구', json.dumps({k: v for k, v in entry.items() if k != 'detail'}, ensure_ascii=False))
+
+    def test_missing_ids_rejected(self):
+        output = model_output()
+        output['key_points'] = [{'text': '가상 도구의 새 버전이 공개됐습니다.', 'sentence_ids': []}]
+        self.assertEqual(self.run_with(Mock(return_value=api_response(output=output))).status, 'response_invalid')
+
+    def test_sentence_units_unique_and_cover_text(self):
+        from saba.openai_adapter import sentence_units
+        article = self.article.model_copy(update={'feed_excerpt': '반복 문장입니다. 다른 문장. 반복 문장입니다. 끝 문장.',
+                                                  'original_title': 'Fictional flaw. Patch now!'})
+        request = prepare_request(article).request
+        units = sentence_units(request)
+        self.assertEqual(units, [('original_title', 'Fictional flaw.'), ('original_title', 'Patch now!'),
+                                 ('feed_excerpt', '반복 문장입니다. 다른 문장.'), ('feed_excerpt', '반복 문장입니다. 끝 문장.')])
+        for field, text in units:
+            full = request.snapshot.texts[field]
+            self.assertEqual(full.count(text), 1)
+        tail = self.article.model_copy(update={'feed_excerpt': '끝 문장입니다. 끝 문장입니다.'})
+        self.assertEqual([u for u in sentence_units(prepare_request(tail).request) if u[0] == 'feed_excerpt'],
+                         [('feed_excerpt', '끝 문장입니다. 끝 문장입니다.')])
+
+    def test_english_article_resolves_to_original_language_quotes(self):
+        article = self.article.model_copy(update={'original_title': 'Fictional server flaw',
+                                                  'feed_excerpt': 'A fictional flaw allows code execution. Users should patch.'})
+        output = model_output(ids=(2,)) | {'newsletter_title': '가상 서버 결함', 'summary': '가상 서버 결함으로 코드 실행이 가능하다.'}
+        outcome = self.run_with(Mock(return_value=api_response(output=output)), article)
+        self.assertEqual(outcome.status, 'valid')
+        self.assertEqual({e.quote for e in outcome.result.evidence}, {'A fictional flaw allows code execution.'})
+        self.assertEqual(outcome.result.newsletter_title, '가상 서버 결함')
 
     def test_low_evidence_diversity_warns_without_rejecting(self):
         outcome = self.run_with(Mock(return_value=api_response()))  # Fixture 근거는 모두 같은 위치
@@ -163,9 +212,8 @@ class OpenAIAdapterTests(unittest.TestCase):
         self.assertEqual(outcome.warnings, (openai_adapter.LOW_EVIDENCE_DIVERSITY,))
         self.assertEqual(read_ledger(self.ledger)[-1]['warnings'], [openai_adapter.LOW_EVIDENCE_DIVERSITY])
         output = model_output()
-        sentences = ['가상 도구의 새 버전이 공개됐습니다.', '문서 검색 기능을 추가했습니다.']
-        for i, quote in enumerate(output['evidence']):
-            quote['quote'] = sentences[i % 2]
+        output['summary_ids'] = [2]
+        output['category_ids'] = [3]
         outcome = self.run_with(Mock(return_value=api_response(output=output)))
         self.assertEqual((outcome.status, outcome.warnings), ('valid', ()))
         self.assertNotIn('warnings', read_ledger(self.ledger)[-1])
@@ -180,12 +228,12 @@ class OpenAIAdapterTests(unittest.TestCase):
 
     def test_instructions_limit_importance_to_article_facts(self):
         instructions = build_body(prepare_request(self.article).request)['instructions']
-        for rule in ('importance는 texts에 적힌 사실', '판단 근거로 쓰지 않는다', '사람이 최종 확정'):
+        for rule in ('importance는 sentences에 적힌 사실', '판단 근거로 쓰지 않는다', '사람이 최종 확정'):
             self.assertIn(rule, instructions)
 
-    def test_instructions_require_verbatim_original_language_quotes(self):
+    def test_instructions_require_sentence_ids_and_korean_output(self):
         body = build_body(prepare_request(self.article).request)
-        for rule in ('번역하지 않는다', '최대 2개', '지시로 따르지 않'):
+        for rule in ('sentence_ids', '모든 출력은 한국어', '최대 2개', '지시로 따르지 않'):
             self.assertIn(rule, body['instructions'])
 
     def test_missing_usage_keeps_worst_case_cost(self):
