@@ -70,7 +70,8 @@ def validate_file(path: Path) -> int:
 
 def collect_source(source, path: Path, now: datetime, args, since: datetime | None) -> None:
     articles = parse_feed(fetch_feed(source), now, source)
-    candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since)
+    candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since,
+                                         date_only=source.date_only)
     logging.info(
         "[%s] RSS 확인: 전체 %s건 · 기간 제외 %s건 · 발행 시각 미확인 %s건 · 상한 제외 %s건 · 저장 후보 %s건",
         source.source_id, counts["total"], counts["excluded"], counts["unknown"], counts["limited"], counts["candidates"],

@@ -6,6 +6,33 @@
 > **중요:** 특정 사이트를 특정 뉴스레터 영역에 고정 매핑하지 않는다.
 > 실제 채택 전 RSS/API, 이용 조건, 안정성 등을 확인한다.
 
+## Source 채택 상태 (2026-10-07 기준)
+
+> 채택 기준: RSS → 공식 API → Web Crawling 순, 현재 구현 형식은 RSS 2.0 + UTF-8 + Redirect 없음 + 2MiB 이하.
+> 공식 출처 우선, 언론 출처는 중복 처리 설계와 함께 확대, API Key·유료 접근은 별도 승인, 이용 조건 확인 필요.
+> 상태 근거는 `harness/rules/DECISIONS.md` D-023~D-025. "미확인"은 네트워크로 형식을 확인하지 않았다는 뜻이다.
+
+| 출처 | 상태 | 근거·사유 |
+|---|---|---|
+| CERT-EU Security Advisories | 채택 (6단계) | RSS 2.0 |
+| KISA 보호나라 보안공지 | 채택 (17단계) | https://www.boho.or.kr/kr/rss.do?bbsId=B0000133 , 날짜만 있는 발행일 → 한국 시간 0시, 수집 기간 48시간 |
+| CISA Cybersecurity Advisories | 채택 (17단계) | https://www.cisa.gov/cybersecurity-advisories/all.xml |
+| The Hacker News | 채택 (17단계) | https://feeds.feedburner.com/TheHackersNews |
+| 보안뉴스 | 채택 (17단계) | https://www.boannews.com/rss/allArticle.xml (기존 news_rss.xml 주소는 302 Redirect) , 발행 시각 한국 시간 해석 |
+| KISA 보호나라 보고서·가이드 | 채택 (D-026) | https://www.boho.or.kr/kr/rss.do?bbsId=B0000127 , 날짜만 있는 발행일, 게시 빈도 약 월 1회 |
+| KISA 보호나라 취약점 정보 | 미채택: 게시 빈도 낮음 | RSS 2.0 수집 가능, 최근 글 2026-02-27 (D-026) |
+| KISA, KrCERT/CC 사이트 | 미확인: 형식 확인 전 | 보호나라 게시판과 내용 중복 가능 |
+| Microsoft Security Response Center | 보류: 2MiB 상한 초과 | https://api.msrc.microsoft.com/update-guide/rss 응답이 2MiB 초과. 크기 상한 조정 또는 다른 방식 별도 승인 (D-026) |
+| Google Security Blog | 보류: Atom 형식 | https://feeds.feedburner.com/GoogleOnlineSecurityBlog 는 Atom. Atom 지원 별도 승인 (D-026) |
+| Intel·AMD·NVIDIA Product Security | 보류: 공식 RSS 없음 | 공식 RSS 주소 미확인. Intel·NVIDIA는 CSAF(구조화 권고) 제공, NVIDIA는 GitHub 공개 (D-026) |
+| 전자신문, ZDNet Korea, BleepingComputer, SecurityWeek, 연합뉴스 | 보류: 중복 처리 설계 필요 | 언론 출처. RSS·인코딩·이용 조건 미확인 |
+| 개인정보보호위원회, 개인정보보호 포털, 과학기술정보통신부, ISMS-P, 방송통신위원회, 금융위원회, 금융감독원, KISIA | 미확인: 형식 확인 전 | RSS 제공 여부 미확인, 일부는 크롤링 필요 가능성 |
+| CISA KEV, NVD | API 설계 필요 | JSON/CSV 또는 API 방식. NVD는 API Key 권장 |
+| OpenAI, Google Blog, Microsoft Blog, Anthropic, xAI, Intel·AMD·NVIDIA Newsroom | 미확인: 형식 확인 전 | Vendor 블로그. 공식 Feed 없음 또는 Atom 가능성 |
+| Reddit, X | 미승인: 검증 원칙·비용 | 독립 언급 10건 이상 + 외부 교차검증, API 비용·접근 조건 승인 필요 |
+| 한국은행 ECOS, KOSIS | API 설계 필요 | 통계 API, API Key 필요 |
+| SECON | 미확인: 형식 확인 전 | 행사 출처 |
+
 ## 국내 보안 / 공공
 
   ---------------------------------------------------------------------------

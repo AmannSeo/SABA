@@ -5,7 +5,13 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 
 ## 현재 확인된 상태
 ### 현재 단계와 승인 상태
-- 공식 개발 단계: 16단계 — OpenAI API 실제 연결 및 TEST 호출 검증 (형식 기준 완료)
+- 공식 개발 단계: 17단계 — 추가 Source 수집 (D-023~D-025)
+- 17단계 구현: `src/saba/rss.py` Source 설정 표 (CERT-EU, KISA 보호나라 보안공지, CISA Advisories, The Hacker News, 보안뉴스). 시간대 없는 pubDate는 Source 설정의 한국 시간 기준 해석, 날짜만 있는 Source(보호나라)는 기본 수집 기간 48시간. `--collect-rss` 전체 Source 수집, Source별 실패·충돌 격리, `--source` 필터
+- 17단계 첫 실제 저장 수집 (2026-10-07, `--collect-rss --bootstrap`, `data/saba.db` 신규): 5개 Source 모두 성공, 105건 저장 (CERT-EU 5, 보호나라 10, CISA 30, The Hacker News 30, 보안뉴스 30), 발행 시각 미확인 0건. The Hacker News·보안뉴스는 Source별 최대 30건 상한으로 각 20건 제외
+- 17단계 검증: unittest 216개 중 215개 통과, 1개 Skip, 실패 0개. 테스트는 가상 Fixture 사용
+- 17단계 후속 공식 RSS 묶음 (D-026): KISA 보호나라 보고서·가이드 채택 (승인 Source 6개). 취약점 정보는 게시 빈도 낮아 미채택, MSRC(2MiB 초과)·Google Security Blog(Atom)는 현재 구조로 수집 불가, Intel·AMD·NVIDIA는 공식 RSS 미확인. 검증: unittest 217개 중 216개 통과, 1개 Skip
+- Source 이용 조건(재배포·요약 사용 범위)은 미확인. 기사 본문 수집은 하지 않으며 RSS 메타데이터와 Feed 제공 발췌만 저장
+- 16단계: OpenAI API 실제 연결 및 TEST 호출 검증 (형식 기준 완료)
 - 12단계 기록: Newsletter Template 및 Preview 완료 승인 (D-011). 실제 이메일 호환성·발송 검증 완료를 의미하지 않음
 - 13~15단계: 선택적 AI 보강 계층 설계, Provider 독립 오프라인 어댑터와 Mock 검증 (`src/saba/ai_adapter.py`), Provider·Model·비용·데이터·TEST 범위 결정 (D-013~D-017)
 - 16단계 구현: `src/saba/openai_adapter.py` (stdlib urllib, Responses API, gpt-4o-mini 고정, Structured Output strict, store=false, 재시도 없음), 사용량 기록 `data/openai_usage.json`, 월 $3 로컬 방어선, 변환 실패 진단 detail·quote_occurrences (기사 내용 미기록)
@@ -22,6 +28,7 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - SQLite 저장·조회
 - Source 조사 및 수집 구조 설계
 - CERT-EU Security Advisories RSS 수집 코드
+- 다중 Source RSS 수집 (17단계, 승인 Source 5개)
 - RSS 재수집 동일 원문 생략 및 변경 충돌 방지 구조
 - Newsletter HTML Renderer·동적 Template과 SAMPLE Preview 구현 및 사용자 Preview 승인. 운영 발행 기능 완료를 의미하지 않음
 - AI 분석 결과 Schema/검증 구조
@@ -44,7 +51,7 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 ### 미구현/별도 승인 대상
 - 실제 운영 기사 AI 분석 및 결과 저장·Newsletter 반영
 - AI 분석 품질 기준 실제 효과 검증 (importance 주입 저항 반복 실험, category 정의 효과) 및 importance 사람 확정 절차 설계
-- 추가 Source 수집
+- 추가 Source 확대 (순서: 공식 RSS 묶음 → 언론 묶음(중복 처리 설계 후) → 공식 데이터 API(CISA KEV, NVD), D-025)
 - 필요한 Source의 Web Crawling
 - 사건 단위 중복 통합
 - 관련 부서 자동 분류

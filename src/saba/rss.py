@@ -23,16 +23,22 @@ class Source:
     source_id: str
     source_name: str
     feed_url: str
-    # 날짜만 있는 pubDate(YYYY-MM-DD)를 해당 UTC 오프셋의 0시로 해석한다. None이면 미확인 처리.
-    date_only_offset: timedelta | None = None
+    # 시간대 없는 pubDate(YYYY-MM-DD, YYYY-MM-DD HH:MM:SS)를 이 UTC 오프셋 기준으로 해석한다. None이면 미확인 처리.
+    local_offset: timedelta | None = None
+    # pubDate가 날짜만 있어 0시로 해석되는 Source. 기본 수집 기간을 48시간으로 늘린다 (D-025).
+    date_only: bool = False
 
 
+KST = timedelta(hours=9)  # 한국 표준시, 일광 절약 시간 없음
 SOURCES = (
     Source("cert-eu-security-advisories", "CERT-EU", "https://cert.europa.eu/publications/security-advisories-rss"),
     Source("boho-security-notice", "KISA 보호나라", "https://www.boho.or.kr/kr/rss.do?bbsId=B0000133",
-           date_only_offset=timedelta(hours=9)),  # 한국 표준시, 일광 절약 시간 없음
+           local_offset=KST, date_only=True),
     Source("cisa-cybersecurity-advisories", "CISA", "https://www.cisa.gov/cybersecurity-advisories/all.xml"),
     Source("the-hacker-news", "The Hacker News", "https://feeds.feedburner.com/TheHackersNews"),
+    Source("boannews", "보안뉴스", "https://www.boannews.com/rss/allArticle.xml", local_offset=KST),
+    Source("boho-report-guide", "KISA 보호나라 보고서·가이드", "https://www.boho.or.kr/kr/rss.do?bbsId=B0000127",
+           local_offset=KST, date_only=True),
 )
 SOURCE_BY_ID = {source.source_id: source for source in SOURCES}
 CERT_EU = SOURCES[0]
@@ -80,16 +86,19 @@ def fetch_feed(source: Source = CERT_EU) -> bytes:
         raise RssError(f"RSS 네트워크 요청 실패: {type(exc).__name__}. 연결·권한·시간 초과를 확인하세요.") from None
 
 
-def publication_time(value: str | None, date_only_offset: timedelta | None = None) -> datetime | None:
+def publication_time(value: str | None, local_offset: timedelta | None = None) -> datetime | None:
     if not value:
         return None
     value = value.strip()
-    if date_only_offset is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-        try:
-            day = datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone(date_only_offset))
-        except ValueError:
-            return None
-        return day.astimezone(timezone.utc)
+    if local_offset is not None:
+        for pattern, layout in ((r"\d{4}-\d{2}-\d{2}", "%Y-%m-%d"),
+                                (r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", "%Y-%m-%d %H:%M:%S")):
+            if re.fullmatch(pattern, value):
+                try:
+                    local = datetime.strptime(value, layout).replace(tzinfo=timezone(local_offset))
+                except ValueError:
+                    return None
+                return local.astimezone(timezone.utc)
     value = re.sub(r"\bCEST$", "+0200", value)
     value = re.sub(r"\bCET$", "+0100", value)
     try:
@@ -138,7 +147,7 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
             "source_id": source.source_id, "source_name": source.source_name,
             "original_title": title, "url": url, "collection_method": "rss",
             "source_item_id": guid, "collected_at": now.isoformat(),
-            "published_at": publication_time(item.findtext("pubDate"), source.date_only_offset),
+            "published_at": publication_time(item.findtext("pubDate"), source.local_offset),
             "feed_excerpt": excerpt if excerpt and excerpt.strip() else None,
         })
     try:
@@ -148,7 +157,7 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
 
 
 def select_articles(articles: list[Article], now: datetime, *, bootstrap=False,
-                    since: datetime | None = None) -> tuple[list[Article], dict[str, int]]:
+                    since: datetime | None = None, date_only=False) -> tuple[list[Article], dict[str, int]]:
     if bootstrap and since is not None:
         raise RssError("bootstrap과 since는 함께 사용할 수 없습니다.")
     if since is not None:
@@ -156,7 +165,8 @@ def select_articles(articles: list[Article], now: datetime, *, bootstrap=False,
             raise RssError("복구 시작 시각은 시간대가 있고 미래가 아닌 값이어야 합니다.")
         start = max(since - timedelta(hours=6), now - timedelta(days=7))
     else:
-        start = now - timedelta(days=30) if bootstrap else now - timedelta(hours=24)
+        # 날짜만 있는 Source는 0시로 해석하므로 기본 기간을 하루 늘려 전날 게시분 누락을 막는다 (D-025).
+        start = now - timedelta(days=30) if bootstrap else now - timedelta(hours=48 if date_only else 24)
     unknown = [article for article in articles if article.published_at is None]
     dated = [article for article in articles
              if article.published_at is not None and start <= article.published_at <= now]

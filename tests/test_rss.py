@@ -320,7 +320,8 @@ class MultiSourceTests(unittest.TestCase):
 
     def test_source_table(self):
         self.assertEqual([s.source_id for s in SOURCES], ["cert-eu-security-advisories", "boho-security-notice",
-                                                          "cisa-cybersecurity-advisories", "the-hacker-news"])
+                                                          "cisa-cybersecurity-advisories", "the-hacker-news", "boannews",
+                                                          "boho-report-guide"])
         self.assertEqual(len(SOURCE_BY_ID), len(SOURCES))
         self.assertTrue(all(s.feed_url.startswith("https://") for s in SOURCES))
         self.assertEqual(SOURCES[0].source_id, SOURCE_ID)
@@ -343,11 +344,56 @@ class MultiSourceTests(unittest.TestCase):
         self.assertEqual(first.source_name, "KISA 보호나라")
         self.assertIsNone(articles[1].published_at)  # 잘못된 날짜는 미확인
 
+    def test_boho_report_guide_uses_boho_format(self):
+        guide = SOURCE_BY_ID["boho-report-guide"]
+        articles = parse_feed(BOHO_PAYLOAD, NOW, guide)
+        self.assertEqual((articles[0].source_id, articles[0].source_name), ("boho-report-guide", "KISA 보호나라 보고서·가이드"))
+        self.assertEqual(articles[0].published_at, datetime(2026, 10, 5, 15, tzinfo=timezone.utc))
+        notice = parse_feed(BOHO_PAYLOAD, NOW, SOURCE_BY_ID["boho-security-notice"])
+        self.assertNotEqual(articles[0].article_id, notice[0].article_id)  # 같은 링크라도 Source별 ID 분리
+
     def test_date_only_rule_is_source_specific(self):
         self.assertIsNone(publication_time(" 2026-10-06 "))
         self.assertEqual(publication_time(" 2026-10-06 ", timedelta(hours=9)), datetime(2026, 10, 5, 15, tzinfo=timezone.utc))
         self.assertIsNone(publication_time("2026-13-40", timedelta(hours=9)))
         self.assertEqual(publication_time("Tue, 06 Oct 26 12:00:00 +0000"), datetime(2026, 10, 6, 12, tzinfo=timezone.utc))
+        self.assertIsNone(publication_time("2026-10-07 18:22:36"))
+        self.assertEqual(publication_time("2026-10-07 18:22:36", timedelta(hours=9)),
+                         datetime(2026, 10, 7, 9, 22, 36, tzinfo=timezone.utc))
+        self.assertIsNone(publication_time("2026-10-07 25:00:00", timedelta(hours=9)))
+
+    def test_boannews_local_datetime_without_extended_window(self):
+        boan = SOURCE_BY_ID["boannews"]
+        self.assertEqual((boan.local_offset, boan.date_only), (timedelta(hours=9), False))
+        self.assertTrue(SOURCE_BY_ID["boho-security-notice"].date_only)
+        root = ET.fromstring(BOHO_PAYLOAD)
+        root.find("channel/item/pubDate").text = "2026-10-06 18:22:36"
+        article = parse_feed(ET.tostring(root), NOW, boan)[0]
+        self.assertEqual((article.source_id, article.source_name), ("boannews", "보안뉴스"))
+        self.assertEqual(article.published_at, datetime(2026, 10, 6, 9, 22, 36, tzinfo=timezone.utc))
+
+    def test_date_only_source_uses_48_hour_default_window(self):
+        boho = SOURCE_BY_ID["boho-security-notice"]
+        article = parse_feed(BOHO_PAYLOAD, NOW, boho)[0]  # 2026-10-05 15:00 UTC
+        for hours, normal, date_only in ((24, 1, 1), (36, 0, 1), (48, 0, 1), (49, 0, 0)):
+            now = article.published_at + timedelta(hours=hours)
+            with self.subTest(hours=hours):
+                self.assertEqual(len(select_articles([article], now)[0]), normal)
+                self.assertEqual(len(select_articles([article], now, date_only=True)[0]), date_only)
+        later = article.published_at + timedelta(days=10)
+        self.assertEqual(len(select_articles([article], later, bootstrap=True, date_only=True)[0]), 1)  # bootstrap 불변
+        since = later - timedelta(hours=1)
+        self.assertEqual(select_articles([article], later, since=since, date_only=True)[0], [])  # since 불변
+
+    def test_cli_applies_date_only_window_only_to_date_only_source(self):
+        responses = {s.source_id: EMPTY_FEED for s in SOURCES}
+        responses["boho-security-notice"] = BOHO_PAYLOAD
+        responses["cert-eu-security-advisories"] = PAYLOAD
+        with patch("saba.__main__.select_articles", wraps=select_articles) as select:
+            self.run_cli("--collect-rss", "--dry-run", "--db", self.db, responses=responses)
+        flags = [call.kwargs["date_only"] for call in select.call_args_list]
+        self.assertEqual(flags, [s.date_only for s in SOURCES])
+        self.assertEqual([s.source_id for s in SOURCES if s.date_only], ["boho-security-notice", "boho-report-guide"])
 
     def test_fetch_uses_source_url(self):
         response = MagicMock()
@@ -364,13 +410,14 @@ class MultiSourceTests(unittest.TestCase):
     def test_one_source_failure_does_not_stop_others(self):
         responses = {"cert-eu-security-advisories": PAYLOAD, "boho-security-notice": BOHO_PAYLOAD,
                      "cisa-cybersecurity-advisories": RssError("RSS HTTP 오류: 302."),
-                     "the-hacker-news": b"<DO_NOT_LOG_RAW_BODY"}
+                     "the-hacker-news": b"<DO_NOT_LOG_RAW_BODY", "boannews": EMPTY_FEED,
+                     "boho-report-guide": EMPTY_FEED}
         with self.assertLogs(level="INFO") as logs:
             code, called = self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)
         output = "\n".join(logs.output)
         self.assertEqual(code, 1)
         self.assertEqual(called, [s.source_id for s in SOURCES])
-        self.assertIn("성공 2개 · 실패 2개", output)
+        self.assertIn("성공 4개 · 실패 2개", output)
         self.assertIn("[cisa-cybersecurity-advisories]", output)
         self.assertNotIn("DO_NOT_LOG_RAW_BODY", output)
         self.assertEqual(sorted({a.source_id for a in list_articles(self.db)}),
