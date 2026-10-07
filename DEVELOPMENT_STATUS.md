@@ -10,6 +10,7 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 17단계 첫 실제 저장 수집 (2026-10-07, `--collect-rss --bootstrap`, `data/saba.db` 신규): 5개 Source 모두 성공, 105건 저장 (CERT-EU 5, 보호나라 10, CISA 30, The Hacker News 30, 보안뉴스 30), 발행 시각 미확인 0건. The Hacker News·보안뉴스는 Source별 최대 30건 상한으로 각 20건 제외
 - 17단계 검증: unittest 216개 중 215개 통과, 1개 Skip, 실패 0개. 테스트는 가상 Fixture 사용
 - 17단계 후속 공식 RSS 묶음 (D-026): KISA 보호나라 보고서·가이드 채택 (승인 Source 6개). 취약점 정보는 게시 빈도 낮아 미채택, MSRC(2MiB 초과)·Google Security Blog(Atom)는 현재 구조로 수집 불가, Intel·AMD·NVIDIA는 공식 RSS 미확인. 검증: unittest 217개 중 216개 통과, 1개 Skip
+- 같은 사건 중복 처리 (D-027): `src/saba/issues.py` group_issues() 순수 함수. CVE 공유 자동 묶음, 제품 키워드 + 3일 이내 후보 표시 (사람 확정), 요약 기사 제외, 공식 출처 우선 대표 기사. Source 설정에 official 표시 추가. 저장 기사 105건 기준 이슈 102개, 자동 묶음 3개, 후보 5쌍. Newsletter 반영·사람 확정 결과 보관은 미구현. 검증: unittest 227개 중 226개 통과, 1개 Skip
 - Source 이용 조건(재배포·요약 사용 범위)은 미확인. 기사 본문 수집은 하지 않으며 RSS 메타데이터와 Feed 제공 발췌만 저장
 - 16단계: OpenAI API 실제 연결 및 TEST 호출 검증 (형식 기준 완료)
 - 12단계 기록: Newsletter Template 및 Preview 완료 승인 (D-011). 실제 이메일 호환성·발송 검증 완료를 의미하지 않음
