@@ -1,7 +1,7 @@
 # SABA DEVELOPMENT STATUS
 
 ## 목적
-SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적한다. 작업 시작 전 `PROJECT_RULES.md`, `TESTING_RULES.md`와 함께 확인한다.
+SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적한다. 작업 시작 전 `PROJECT_RULES.md`, `harness/` 아래의 모든 규칙 파일, 현재 작업 경로에 적용되는 `AGENTS.md`를 읽고 적용한다.
 
 ## 현재 확인된 상태
 ### 완료/구현 확인
@@ -25,7 +25,12 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 현재는 합성 분석 결과의 형식, 입력 연결, 근거 연결을 검증하는 구조다.
 - 분석 결과 저장·조회 기능은 구현됐으며 현재 저장 검증은 합성 결과 기반이다.
 - 실제 AI API는 연결하지 않았고 Provider/Model도 확정하지 않았다.
+- 현재 승인 상태: AI Provider 미확정, AI Model 미확정, 유료 AI API 사용 미승인.
+- 개인 비용 부담을 전제로 하지 않으며 무료 API를 우선 검토한다. 무료라는 이유만으로 사용을 승인하지 않는다.
+- 회사 데이터 외부 전송 적합성은 확인이 필요하다. 이전 특정 Provider/Model 및 실제 연결 제안은 현재 실행 승인이 아니다.
 - 실제 기사 AI 분석 실행과 그 결과의 저장은 별도 승인 대상이다.
+- Article 수집·정규화·저장은 AI와 독립적이다. AI는 선택적 보강 계층이며 AI 없이도 가능한 Core Pipeline 완성을 목표로 한다.
+- 실제 AI API 구현·호출은 미승인이다. 기존 Analysis Schema·검증·Storage·관련 테스트와 Fixture는 보존한다.
 
 ### 미구현/별도 승인 대상
 - 실제 AI API 연결
@@ -48,7 +53,9 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 ## 수집 구조 원칙
 Source와 Newsletter Category를 분리한다.
 
-여러 승인 Source → 수집 → 공통 Article Schema → 정규화/중복 판단 → AI 분석·분류 → 뉴스레터 Category 배치 → 중요 기사 재선별 → Newsletter 생성
+Core Pipeline 목표: 승인 Source → 수집 → 공통 Article 정규화 → 저장 → 승인된 비AI 처리 → Newsletter 생성 → Mail 발송 → Scheduler
+
+AI 분석·분류는 선택적 보강 경로다. 비AI 처리·Newsletter·Mail·Scheduler는 아직 구현되지 않았으며, AI 장애 격리도 현재는 설계 원칙이다. 원본에 없는 요약·중요도·부서·시사점 등을 임의 생성하지 않는다.
 
 특정 Source를 특정 Newsletter Category에 1:1로 고정하지 않는다.
 `SABA_NEWS_SOURCES.md`에 존재한다는 사실만으로 구현 또는 네트워크 접근이 승인된 것은 아니다.
@@ -71,7 +78,7 @@ Source와 Newsletter Category를 분리한다.
 1. 새 단계 시작 전 실제 Git 상태와 기존 테스트를 확인한다.
 2. 완료된 기능을 단계 번호 때문에 다시 구현하지 않는다.
 3. 설계 → 구현 → 실행 → 결과 확인 → 수정 → 사용자 확인 순으로 진행한다.
-4. 각 구현 단계는 `TESTING_RULES.md`를 반드시 적용한다.
+4. 각 단계는 `harness/` 아래의 모든 규칙 파일을 읽고 현재 작업에 관련된 범위에서 적용한다.
 5. 필수 테스트 실패를 숨기거나 다음 단계로 넘어가지 않는다.
 6. 단계 완료 후 실제 검증 결과에 맞는 문서 갱신안을 제시하고 사용자 승인 후 반영한다.
 7. 다음 단계 프롬프트 작성 자체는 다음 단계 실행 승인이 아니다.
