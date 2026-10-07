@@ -43,6 +43,7 @@ _SECTION_PREFIX = {
     "ai_tech": "ai",
     "other": "other",
 }
+BRIEF_MAX_PER_GROUP = 5  # 오늘의 브리핑 분야당 최대 건수 (D-033). 입력 순서(공식 우선 → 최신)를 따른다.
 LONG_EXCERPT_CHARS = 600  # ponytail: 화면 확인 기준 고정값, 실제 메일 표시 확인 후 조정
 _IMPORTANCE_BADGE_CLASS = {
     "높음": "urgent",
@@ -431,9 +432,13 @@ def build_newsletter_html(
         brief_key = "security"
         if deep_section == "ai_tech":
             brief_key = "ai_tech"
+        elif view.has_full_analysis and view.category == "산업·시장·기업":
+            brief_key = "market"
         elif deep_section == "other":
             brief_key = "other"
-        brief_groups[view.sample_brief_group or brief_key].append(view)
+        group = brief_groups[view.sample_brief_group or brief_key]
+        if len(group) < BRIEF_MAX_PER_GROUP:
+            group.append(view)
 
     brief_summary = _render_brief_summary(brief_groups)
     brief_detail = _render_brief_detail(brief_groups, anchors)

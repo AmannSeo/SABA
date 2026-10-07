@@ -54,11 +54,13 @@ class MailTests(unittest.TestCase):
         self.assertNotIn("<script", self.html)
         self.assertIn((ROOT / "SAMPLE/Codex/v09/style_review_v9.css").read_text(encoding="utf-8")[:200], self.html)
 
-    def test_detail_view_fixed(self):
+    def test_summary_then_detail_shown_without_switch(self):
         content = body(self.html)
-        for removed in ("brief-view-switch", "brief-summary-view", "data-brief", " hidden"):
+        for removed in ("brief-view-switch", "brief-view-button", "data-brief", " hidden"):
             self.assertNotIn(removed, content)
-        self.assertRegex(content, r'<div class="brief-detail-view">\s*<div class="brief-list">')
+        summary = content.index('<h3 class="brief-view-label">간략 보기</h3>\n<div class="brief-summary-view">')
+        detail = content.index('<h3 class="brief-view-label">자세히 보기</h3>\n<div class="brief-detail-view">')
+        self.assertLess(summary, detail)
 
     def test_logo_and_signature_use_cid(self):
         self.assertIn(f'<img class="header-logo" src="cid:{LOGO_CID}"', self.html)
@@ -67,12 +69,15 @@ class MailTests(unittest.TestCase):
         self.assertNotIn("sign_img.jpg", body(self.html))
 
     def test_newsletter_text_preserved(self):
-        # 의도적으로 제거한 보기 전환 버튼과 간략 보기만 빼고 모든 본문 문구가 그대로 남아야 한다.
-        expected = re.sub(r'<div class="brief-view-switch".*?</div>|'
-                          r'<div class="brief-summary-view".*?</div>\s*(?=<div class="brief-detail-view")',
-                          "", self.newsletter, flags=re.S)
-        self.assertIn(visible_text(expected), visible_text(self.html))
-        self.assertNotIn("간략 보기", visible_text(self.html))
+        # 보기 전환 버튼만 빠지고 간략·자세히 보기 문구는 모두 남는다 (D-033).
+        expected = re.sub(r'<div class="brief-view-switch".*?</div>', "", self.newsletter, flags=re.S)
+        actual = visible_text(self.html).replace("간략 보기 ", "", 1).replace("자세히 보기 ", "", 1)
+        self.assertIn(visible_text(expected), actual)
+
+    def test_signature_inside_newsletter_width(self):
+        content = body(self.html)
+        self.assertLess(content.index('<div class="mail-signature">'), content.index("</main>"))
+        self.assertIn(".mail-signature .signature-table", self.html)
 
     def test_signature_text_matches_original(self):
         original = visible_text((ROOT / "sign/sign.html").read_text(encoding="utf-8"))

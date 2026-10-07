@@ -35,7 +35,7 @@ def signature_body() -> str:
 
 
 def to_mail_html(newsletter_html: str) -> str:
-    """외부 CSS를 style 블록으로 포함하고 script·보기 전환을 없애 자세히 보기로 고정한다.
+    """외부 CSS를 style 블록으로 포함하고 script·보기 전환 버튼을 없앤 뒤 간략 보기와 자세히 보기를 차례로 보여 준다 (D-033).
 
     ponytail: CSS는 style 블록 포함까지만 한다. Outlook 데스크톱 등 style 블록을 일부 무시하는
     메일 앱 대응(완전 inline style)은 실제 표시 확인 후 필요하면 별도 승인으로 추가한다.
@@ -44,12 +44,13 @@ def to_mail_html(newsletter_html: str) -> str:
     html = _replace_once(newsletter_html, r'<link href="[^"]*" rel="stylesheet"/>', f"<style>\n{css}\n</style>", "외부 CSS")
     html = _replace_once(html, r"\s*<script>.*?</script>", "", "script")
     html = _replace_once(html, r'<div class="brief-view-switch".*?</div>\s*', "", "보기 전환 버튼")
-    html = _replace_once(html, r'<div class="brief-summary-view" data-brief-panel="summary">.*?</div>\s*'
-                               r'(?=<div class="brief-detail-view")', "", "간략 보기")
+    html = _replace_once(html, r'<div class="brief-summary-view" data-brief-panel="summary">',
+                         '<h3 class="brief-view-label">간략 보기</h3>\n<div class="brief-summary-view">', "간략 보기")
     html = _replace_once(html, r'<div class="brief-detail-view" data-brief-panel="detail" hidden>',
-                         '<div class="brief-detail-view">', "자세히 보기")
+                         '<h3 class="brief-view-label">자세히 보기</h3>\n<div class="brief-detail-view">', "자세히 보기")
     html = _replace_once(html, r'<img class="header-logo" src="[^"]*"', f'<img class="header-logo" src="cid:{LOGO_CID}"', "로고")
-    return _replace_once(html, r"</body>", signature_body() + "\n</body>", "본문 끝")
+    # 서명은 뉴스레터 폭(main) 안에 두고 가운데 정렬한다 (D-033).
+    return _replace_once(html, r"</main>", f'<div class="mail-signature">{signature_body()}</div>\n</main>', "본문 끝")
 
 
 def build_message(mail_html: str, subject: str) -> EmailMessage:

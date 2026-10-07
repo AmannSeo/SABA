@@ -1848,6 +1848,13 @@ a.pick-item:hover .pick-text strong {
 }
 
 </style>
+<style>
+/* SABA 보완 스타일 (D-033). SAMPLE 원본 CSS는 수정하지 않는다. */
+.source-name, .source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-signature { margin: 32px 0 0; }
+.mail-signature .signature-table { margin: 0 auto; }
+.brief-view-label { margin: 18px 0 8px; font-size: 14px; color: #374151; }
+</style>
 </head>
 <body>
 <main class="newsletter">
@@ -1880,6 +1887,38 @@ a.pick-item:hover .pick-text strong {
 </div>
 </div>
 
+<h3 class="brief-view-label">간략 보기</h3>
+<div class="brief-summary-view">
+<div class="brief-compact-group schedule">
+<span class="brief-compact-label">🗓️ 일정</span>
+<p><strong>0건</strong> 제공된 정보가 없습니다</p>
+</div>
+<div class="brief-compact-group hot">
+<span class="brief-compact-label">🔥 핫이슈</span>
+<p><strong>0건</strong> 제공된 정보가 없습니다</p>
+</div>
+<div class="brief-compact-group market">
+<span class="brief-compact-label">📈 보안시장 동향</span>
+<p><strong>0건</strong> 제공된 정보가 없습니다</p>
+</div>
+<div class="brief-compact-group security">
+<span class="brief-compact-label">🛡️ 보안 뉴스</span>
+<p><strong>5건</strong> 2026-015: Critical Vulnerability in Multiple Atlassian Products (분석 대기 중), Johnson Controls EasyIO FG (분석 대기 중), Hitachi Energy RTU500 (분석 대기 중)</p>
+</div>
+<div class="brief-compact-group company">
+<span class="brief-compact-label">🏢 기업 소식</span>
+<p><strong>0건</strong> 제공된 정보가 없습니다</p>
+</div>
+<div class="brief-compact-group tech">
+<span class="brief-compact-label">⚙️ 테크(Tech)</span>
+<p><strong>0건</strong> 제공된 정보가 없습니다</p>
+</div>
+<div class="brief-compact-group economy">
+<span class="brief-compact-label">📊 경제 지표</span>
+<p><strong>0건</strong> 제공된 정보가 없습니다</p>
+</div>
+</div>
+<h3 class="brief-view-label">자세히 보기</h3>
 <div class="brief-detail-view">
 <div class="brief-list">
 <div class="brief-group">
@@ -1920,20 +1959,6 @@ a.pick-item:hover .pick-text strong {
 <li><a href="#news-overseas-3">Hitachi Energy RTU500</a> · CISA · 2026.10.06 <em>(분석 대기 중)</em></li>
 <li><a href="#news-overseas-4">Hitachi Energy Asset Suite</a> · CISA · 2026.10.06 <em>(분석 대기 중)</em></li>
 <li><a href="#news-overseas-5">Hitachi Energy SOI</a> · CISA · 2026.10.06 <em>(분석 대기 중)</em></li>
-<li><a href="#news-overseas-6">Hitachi Energy REB500</a> · CISA · 2026.10.06 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-1"> Apache 제품 보안 업데이트 권고 </a> · KISA 보호나라 · 2026.10.05 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-2"> 금융권 등 개인정보 유출 사고 피해보상금 지급 등 사칭 피싱 주의 권고 </a> · KISA 보호나라 · 2026.10.05 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-3"> Citrix 제품 보안 업데이트 권고 </a> · KISA 보호나라 · 2026.10.05 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-4"> 보안인증 소프트웨어 취약점 관련 클리닝 서비스 가동 안내 </a> · KISA 보호나라 · 2026.10.05 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-5">“공격자가 토큰 더 쓰게 만든다”... 에버스핀, AI 자동화 공격 대응 전략 제시</a> · 보안뉴스 · 2026.10.07 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-6">“코어뱅킹 밖을 노려라”… 해커 먹잇감 된 모집인·영업지원 시스템</a> · 보안뉴스 · 2026.10.07 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-7">위키미디어 “오픈AI 에이전트, 이더패드 장악 시도”</a> · 보안뉴스 · 2026.10.07 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-8">로그인 없이 서버 파일 열람... 아틀라시안 지라·컨플루언스 등 8개 제품서 치명적 결함</a> · 보안뉴스 · 2026.10.07 <em>(분석 대기 중)</em></li>
-<li><a href="#news-overseas-7">Anthropic Expands Claude Access for Vetted Cyber Teams as Glasswing Finds 129,000 Flaws</a> · The Hacker News · 2026.10.07 <em>(분석 대기 중)</em></li>
-<li><a href="#news-domestic-9">[카드뉴스] &quot;공장 멈춘 주범이 5년 전 공유기?&quot;… 제조업 랜섬웨어 64% 뚫은 &#x27;구형 VPN&#x27; 실태</a> · 보안뉴스 · 2026.10.07 <em>(분석 대기 중)</em></li>
-<li><a href="#news-overseas-8">100+ Compromised Websites Use Fake Cloudflare Checks to Deliver LunexStealer</a> · The Hacker News · 2026.10.07 <em>(분석 대기 중)</em></li>
-<li><a href="#news-overseas-9">Fake ChatGPT, Gemini, and Claude Ad Portals Capture Credentials and MFA Codes</a> · The Hacker News · 2026.10.06 <em>(분석 대기 중)</em></li>
-<li><a href="#news-overseas-10">Linux Backdoors Impersonate Email Security Tools to Evade Detection in Korea and Taiwan</a> · The Hacker News · 2026.10.06 <em>(분석 대기 중)</em></li>
 </ul>
 </div>
 <div class="brief-group">
@@ -2313,13 +2338,24 @@ a.pick-item:hover .pick-text strong {
 <article class="news-card" id="news-overseas-10">
 <div class="news-top">
 <div class="news-badges">
-<span class="badge neutral">일반 기사</span>
+<span class="badge ai-badge">위협 동향</span><span class="badge neutral">Linux</span><span class="badge neutral">백도어</span><span class="badge neutral">보안</span><span class="badge neutral">한국</span><span class="badge neutral">대만</span>
 </div>
 <span class="article-datetime">발행일 · 2026.10.06</span>
 </div>
-<h3 class="news-title">Linux Backdoors Impersonate Email Security Tools to Evade Detection in Korea and Taiwan</h3>
-<div class="article-content"><p>Linux backdoors targeting telecom and network appliances in South Korea and Taiwan have been disguising their traffic as email services and seemingly legitimate processes to blend in and evade detection. Threat actors are known to name their malicious software after a legitimate operating system component or a process as a defense evasion measure. By borrowing the name of a real binary, it may</p></div>
-
+<h3 class="news-title">Linux 백도어, 이메일 보안 도구로 위장해 탐지 회피</h3>
+<div class="article-content">
+<p>The Hacker News에 따르면 한국과 대만의 통신 및 네트워크 장비를 겨냥한 Linux 백도어가 이메일 서비스와 합법적인 프로세스로 위장하여 탐지를 회피하고 있다. 이러한 공격은 실제 운영 체제 구성 요소의 이름을 사용하여 방어 회피 수단으로 활용된다.</p>
+</div>
+<div class="insight-box">
+<h4>핵심 사실</h4>
+<div class="content-block">
+<ul>
+<li>Linux 백도어가 이메일 서비스로 위장</li>
+<li>한국과 대만의 통신 장비를 타겟</li>
+<li>악성 소프트웨어가 합법적인 프로세스 이름 사용</li>
+</ul>
+</div>
+</div>
 <div class="insight-box"><h4><span>💡</span> 시사점</h4><p>분석 정보가 없습니다.</p></div>
 <div class="department-impact"><h4><span>🏢</span> 우리 업무와의 연결</h4><p>검토된 업무 연결 정보가 없습니다.</p></div>
 <div class="source-related"><h4><span>🔗</span> 출처 · 관련 기사</h4><a class="source-row" href="https://thehackernews.com/2026/10/linux-backdoors-impersonate-email.html" target="_blank" rel="noopener noreferrer"><span class="source-name">The Hacker News</span><span class="source-title">Linux Backdoors Impersonate Email Security Tools to Evade Detection in Korea and Taiwan</span><span class="source-date">2026.10.06 →</span></a></div>
@@ -2331,7 +2367,7 @@ a.pick-item:hover .pick-text strong {
 </div>
 <span class="category-count">0건</span>
 </div>
-<p class="news-lead">AI 분석 전이라 분류된 기사가 없습니다.</p>
+<p class="news-lead">수집된 기사가 없습니다.</p>
 </section>
 
 <section class="security-habit-section">
@@ -2401,8 +2437,7 @@ a.pick-item:hover .pick-text strong {
     </p>
 </footer>
 
-</main>
-<style>
+<div class="mail-signature"><style>
 /* =========================
    기본 설정
 ========================= */
@@ -2978,6 +3013,7 @@ a {
 
 </div>
 
-
+</div>
+</main>
 </body>
 </html>
