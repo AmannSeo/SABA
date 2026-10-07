@@ -144,8 +144,13 @@ def sentence_units(request: AnalysisRequest) -> list[tuple[str, str]]:
 
 def evidence_runs(target: str, ids: object, units: list[tuple[str, str]]) -> list[dict]:
     """문장 번호를 같은 필드의 연속 구간별 v1 근거로 바꾼다. 범위 밖·잘못된 번호는 거절한다."""
-    if not isinstance(ids, list) or not ids or any(type(i) is not int or not 1 <= i <= len(units) for i in ids):
-        raise AdapterError("근거 문장 번호가 유효하지 않습니다.")
+    # 실패 사유는 항목 이름과 종류만 남긴다 (내용 미기록).
+    if not isinstance(ids, list) or any(type(i) is not int for i in ids):
+        raise AdapterError(f"근거 문장 번호가 유효하지 않습니다 ({target}: 형식).")
+    if not ids:
+        raise AdapterError(f"근거 문장 번호가 유효하지 않습니다 ({target}: 비어 있음).")
+    if any(not 1 <= i <= len(units) for i in ids):
+        raise AdapterError(f"근거 문장 번호가 유효하지 않습니다 ({target}: 범위 밖, 문장 {len(units)}개).")
     runs: list[list[int]] = []
     for i in sorted(set(ids)):
         if runs and i == runs[-1][-1] + 1 and units[i - 1][0] == units[runs[-1][-1] - 1][0]:

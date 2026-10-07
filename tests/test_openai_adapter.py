@@ -134,8 +134,9 @@ class OpenAIAdapterTests(unittest.TestCase):
             (api_response(content=[{'type': 'output_text', 'text': '{broken'}]), 'json_decode_error'),
             (api_response(output=model_output() | {'category': '미승인 분류'}), 'category:literal_error'),
             (api_response(output=model_output() | {'summary': '하나. 둘. 셋.'}), '2문장'),
-            (api_response(output=model_output() | {'summary_ids': [99]}), '근거 문장 번호'),
-            (api_response(output=model_output() | {'summary_ids': []}), '근거 문장 번호'),
+            (api_response(output=model_output() | {'summary_ids': [99]}), 'summary: 범위 밖, 문장 3개'),
+            (api_response(output=model_output() | {'summary_ids': []}), 'summary: 비어 있음'),
+            (api_response(output=model_output() | {'summary_ids': ['2']}), 'summary: 형식'),
             (api_response(output=model_output() | {'importance_reason_ids': [2]}), '값이 없는 항목'),
         ]
         for response, expected in cases:
