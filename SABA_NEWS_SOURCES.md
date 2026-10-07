@@ -30,6 +30,24 @@
                                                       동향
   ---------------------------------------------------------------------------
 
+
+### 국내 정책 / 개인정보 / 인증 추가 후보
+
+> CELA 정보보안 소식에서 확인한 공식 출처 중 기존 목록에 없던 출처를 추가한 조사 후보입니다.
+> 기존 KISA는 이미 등록되어 있으므로 중복 추가하지 않습니다.
+> 실제 채택 전 RSS/API, 이용 조건, 안정성 등을 별도로 확인합니다.
+
+| 출처 | 주소 | 주요 수집 대상 |
+|---|---|---|
+| KISIA 한국정보보호산업협회 | https://www.kisia.or.kr/ks/kisia_index.php | 정보보호 산업·기업·정책·사업·행사 동향 |
+| 개인정보보호위원회 | https://www.pipc.go.kr/ | 개인정보보호 정책·법령·가이드라인·유출 대응 |
+| 개인정보보호 포털 | https://www.privacy.go.kr/ | 개인정보보호 제도·교육·가이드·지원 정보 |
+| 과학기술정보통신부 | https://www.msit.go.kr/ | 정보보호·AI·디지털 정책·법제·산업 동향 |
+| KISA ISMS-P 인증 | https://isms.kisa.or.kr/ | ISMS·ISMS-P 인증제도·기준·공지·가이드 |
+| 방송통신위원회 | https://www.kcc.go.kr/ | 방송통신 정책·이용자 보호·관련 법제 |
+| 금융위원회 | https://www.fsc.go.kr/ | 금융보안·전자금융·금융정책·제도 |
+| 금융감독원 | https://www.fss.or.kr/ | 전자금융 감독·금융보안·감독규정·가이드 |
+
 ## 해외 보안
 
   --------------------------------------------------------------------------------------------------------------
@@ -72,6 +90,16 @@
   Anthropic News          https://www.anthropic.com/news     LLM, Agent, AI Safety
   ----------------------------------------------------------------------------------
 
+## 커뮤니티 / 실시간 동향 보조 출처
+
+> 아래 출처는 공식 사실 확인의 1차 근거보다 **이슈 조기 발견·현업 반응·실시간 동향 탐색용 보조 출처**로 우선 검토합니다.
+> 발견한 이슈는 가능하면 공식 기관, Vendor Advisory, CVE/NVD, 원문 보도 등으로 교차 확인한 뒤 뉴스레터에 사용합니다.
+
+| 출처 | 주소 | 주요 수집 대상 / 주의사항 |
+|---|---|---|
+| Reddit | https://www.reddit.com/ | 보안·AI 커뮤니티 이슈, 현업 반응, 신규 취약점·사건 조기 발견. subreddit 선별 및 원문 교차 확인 필요 |
+| X | https://x.com/ | 보안 연구자·Vendor·AI 기업의 실시간 발표 및 초기 이슈 탐지. 계정 allowlist, 오정보 검증, API 비용 검토 필요 |
+
 ## 경제 / 산업 참고
 
   출처                 주소                      주요 수집 대상
@@ -94,9 +122,13 @@
 ``` text
 [수집원]
 보안뉴스 / KISA / KrCERT / CISA / NVD
+개인정보보호위원회 / 개인정보보호 포털 / 과학기술정보통신부
+KISA ISMS-P 인증 / 방송통신위원회 / 금융위원회 / 금융감독원
 The Hacker News / BleepingComputer / SecurityWeek
 전자신문 / ZDNet Korea
-OpenAI / Google / Microsoft / Anthropic
+OpenAI / Google / Microsoft / Anthropic / xAI
+Intel Product Security / AMD Product Security
+Reddit / X (보조 출처)
 한국은행 / KOSIS ...
         ↓
 [수집]
