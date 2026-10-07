@@ -1,6 +1,6 @@
-# NEXT PROMPT TEMPLATE
+﻿# NEXT PROMPT TEMPLATE
 
-후속 프롬프트를 쓸 때 사용하는 양식이다. (`Prompt_validation.md` 13절)
+후속 프롬프트를 쓸 때 사용하는 양식이다. (`PROMPT_VALIDATION.md` 13절)
 
 - 공통 규칙은 복사하지 않는다. 아래 "적용 규칙"처럼 파일명으로 참조한다.
 - 이번 실행에서 **바뀐 내용**만 구체적으로 채운다.
@@ -20,7 +20,7 @@
 A 다음 실행 / B 결정 및 계속 진행 / C 보완 / D 외부 조건 후 계속 진행 중 하나
 
 [적용 규칙]
-PROJECT_RULES.md, DEVELOPMENT_STATUS.md, harness/rules/Decisions.md 와
+PROJECT_RULES.md, DEVELOPMENT_STATUS.md, harness/rules/DECISIONS.md 와
 harness/ 아래 적용되는 규칙 파일을 모두 따른다.
 작업을 시작하기 전에 현재 Repository 상태를 먼저 확인한다.
 
@@ -32,7 +32,7 @@ harness/ 아래 적용되는 규칙 파일을 모두 따른다.
 - 실패 또는 미확인 사항:
 
 [승인된 결정]
-- harness/rules/Decisions.md 항목 ID 와 내용:
+- harness/rules/DECISIONS.md 항목 ID 와 내용:
 
 [미승인 사항]
 - (승인되지 않아 실행하면 안 되는 것)
@@ -84,7 +84,7 @@ harness/ 아래 적용되는 규칙 파일을 모두 따른다.
 
 [결정 후 진행]
 - 사용자가 답하면 현재 Repository 상태에서 이어서 진행한다. 처음부터 다시 하지 않는다.
-- 결정 내용을 harness/rules/Decisions.md 에 기록하도록 제안한다. (기록은 사용자 승인 후)
+- 결정 내용을 harness/rules/DECISIONS.md 에 기록하도록 제안한다. (기록은 사용자 승인 후)
 ```
 
 **C. 보완**

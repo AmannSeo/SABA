@@ -1,4 +1,4 @@
-# SABA AI RULES
+﻿# SABA AI RULES
 
 Version: 1.2
 
@@ -601,7 +601,7 @@ AI 관련 단계 프롬프트는
 
 
 AI 관련 프롬프트는
-harness/rules/Prompt_validation.md의
+harness/rules/PROMPT_VALIDATION.md의
 최종 출력 게이트를 통과해야 한다.
 
 
