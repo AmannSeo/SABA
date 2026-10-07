@@ -70,6 +70,13 @@ INSTRUCTIONS = """너는 SABA 보안·AI 뉴스레터의 기사 분석기다.
 - status가 "검토 필요"이면 newsletter_title과 summary를 반드시 채운다.
 - summary: 한국어로 쓰고, 마침표·물음표·느낌표로 끝나는 문장은 최대 2개, 250자 이내로 쓴다. 출처 이름이나 "에 따르면"을 쓰지 않는다. 시스템이 앞에 출처를 붙인다.
 - tags 최대 5개, key_points 최대 3개, 각각 중복 없이 쓴다.
+- category는 다음 정의로 고른다.
+  보안 사고: 실제 발생한 침해·유출·장애
+  취약점·권고: 취약점 공개·패치·보안 권고
+  위협 동향: 공격 캠페인·악성코드·피싱 등 위협 활동
+  AI 보안: AI 시스템을 노리는 공격·방어·안전 (프롬프트 주입 포함)
+  AI·기술: 보안 위협과 무관한 AI·기술 발표
+  산업·시장·기업: 투자·인수·정책·시장
 - importance와 importance_reason은 둘 다 채우거나 둘 다 null로 둔다.
 - evidence: 채운 항목마다 근거를 하나 이상 넣는다. tags를 n개 쓰면 tags[0]부터 tags[n-1]까지, key_points를 n개 쓰면 key_points[0]부터 key_points[n-1]까지 각각 근거가 있어야 한다. newsletter_title, summary, category, importance_reason도 값이 있으면 각각 근거가 필요하다.
 - quote는 input_field로 지정한 texts 값에서 그대로 복사한 연속 문자열이어야 하며, 그 값 안에서 한 번만 나타나야 한다. 단어나 구절만 인용하지 말고, 문장부호로 끝나는 문장 하나 전체를 그대로 인용한다.
@@ -92,6 +99,18 @@ class LiveOutcome:
     input_tokens: int | None = None
     output_tokens: int | None = None
     cost_usd: float | None = None
+    warnings: tuple[str, ...] = ()
+
+
+LOW_EVIDENCE_DIVERSITY = "근거 다양성 낮음"
+
+
+def evidence_warnings(result: AnalysisResult) -> tuple[str, ...]:
+    """거절하지 않고 사람 검토 신호만 낸다. 대상 3개 이상이 모두 같은 인용 위치를 쓰면 경고한다."""
+    # ponytail: 위치 동일성만 본다. 의미 일치 판단은 사람 검토로 한다.
+    spans = {(e.input_field, e.start, e.end) for e in result.evidence}
+    targets = {e.target for e in result.evidence}
+    return (LOW_EVIDENCE_DIVERSITY,) if len(targets) >= 3 and len(spans) == 1 else ()
 
 
 Transport = Callable[[dict], object]
@@ -287,6 +306,8 @@ def run_openai(article: Article, *, ledger_path: Path = DEFAULT_LEDGER, max_call
                 parsed["summary"] = f"{request.snapshot.source_name}에 따르면 {parsed['summary']}"
             result = convert_response(article, request, parsed)
             status = "valid"
+            if warnings := evidence_warnings(result):
+                entry["warnings"] = list(warnings)
         except ValueError as error:  # AdapterError, JSON 오류 포함
             status = "response_invalid"
             entry["detail"] = failure_detail(error)
@@ -294,4 +315,5 @@ def run_openai(article: Article, *, ledger_path: Path = DEFAULT_LEDGER, max_call
                 entry["quote_occurrences"] = quote_occurrences(parsed, request.snapshot.texts)
     entry["status"] = status
     write_ledger(ledger_path, entries)
-    return LiveOutcome(status, result, input_tokens, output_tokens, entry["cost_usd"])
+    return LiveOutcome(status, result, input_tokens, output_tokens, entry["cost_usd"],
+                       tuple(entry.get("warnings", ())))

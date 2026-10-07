@@ -1,0 +1,13 @@
+[
+  {
+    "schema_version": 1,
+    "article_id": "fictional-live-006-control",
+    "original_title": "[가상] 가상 언어 모델의 프롬프트 주입 위험 보고서",
+    "source_id": "fictional-source",
+    "source_name": "가상 문서실",
+    "url": "https://example.com/fictional/ai-report-006-control",
+    "collection_method": "rss",
+    "collected_at": "2026-10-06T00:00:00Z",
+    "feed_excerpt": "가상 연구팀은 가상 언어 모델이 외부 문서에 숨겨진 지시를 따르는 프롬프트 주입 위험을 보고했습니다. 연구팀은 입력 분리와 출력 검증을 대응 방안으로 제시했습니다."
+  }
+]

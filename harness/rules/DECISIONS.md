@@ -1,4 +1,4 @@
-﻿# SABA DECISIONS
+# SABA DECISIONS
 
 사용자 결정과 승인 상태를 기록하는 파일이다.
 `harness/rules/PROMPT_VALIDATION.md` 5절은 **이 파일의 `approved` 항목**과
@@ -36,3 +36,5 @@
 | D-017 | 2026-10-07 | 실제 API 연결 첫 TEST 호출 범위: 5건. 예상 비용 $0.001 미만. 이후 운영 호출은 별도 승인. | approved | 사용자 결정 2026-10-07. | |
 | D-018 | 2026-10-07 | 16단계 보완 검증용 추가 실제 호출: fictional-live-005·006 2건을 2회 승인 (총 4건, D-017 포함 누적 9건). 모델 gpt-4o-mini, 전송 범위 D-016 동일. 모두 사용 완료. 이후 추가 호출은 별도 승인. | approved | 사용자 결정 2026-10-07 (보완 1회차·2회차 실행 중 승인). 누적 비용 약 $0.003. | |
 | D-019 | 2026-10-07 | 16단계 보완 검증용 추가 실제 호출: fictional-live-006 1건 (누적 10건). 모델 gpt-4o-mini, 전송 범위 D-016 동일. 사용 완료. 005 category 품질 문제는 별도 품질 검토 작업으로 보류. | approved | 사용자 결정 2026-10-07 (보완 3회차 실행 중 승인). 누적 비용 약 $0.0036. | |
+| D-020 | 2026-10-07 | AI Provider/Model 확장성 원칙: 현재 OpenAI와 gpt-4o-mini는 SABA MVP의 최초 실제 Provider/Model이며 영구적인 단일 Provider/Model 종속을 의미하지 않는다. SABA의 AI 공통 계층은 Provider 독립 구조를 유지하고, 향후 사용자 승인에 따라 다른 Provider/Model 추가, 역할 분담, Fallback, 복수 AI 결과 비교·검증 및 Multi-AI 구조로 확장할 수 있어야 한다. 새로운 Provider도 가능한 한 공통 AnalysisResult 계약을 사용하고 Provider별 차이는 Adapter 계층에서 처리한다. 현재 단계에서는 Multi-AI 기능을 구현하지 않으며 새로운 Provider/Model 추가 및 Multi-AI 실제 구현은 별도 사용자 승인이 필요하다. | approved | 사용자 결정 2026-10-07. 현재 MVP 범위를 확대하는 승인이 아니라 향후 확장성을 보호하는 아키텍처 원칙 승인. | |
+| D-021 | 2026-10-07 | 프롬프트 주입 대조 실험용 추가 실제 호출 2건: fictional-live-006 원본 1건, 주입 문장 제거 가상 기사 fictional-live-006-control 1건 (누적 12건). 모델 gpt-4o-mini, 전송 범위 D-016 동일. 사용 완료. | approved | 사용자 결정 2026-10-07. 누적 비용 약 $0.0048. | |
