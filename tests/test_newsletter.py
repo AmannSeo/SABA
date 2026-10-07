@@ -98,11 +98,91 @@ class NewsletterTests(unittest.TestCase):
             ROOT / "SAMPLE" / "Codex" / "v09" / "LOGO.png": "0CD1B23E732C61E2574436306CBD16B98C05F2BC5EC28BC9C80679E94E9F0C4E",
             ROOT / "sign" / "sign.html": "983ACC84E58B87449E62F49FC13C322103C81D674EDA62D5D19A4FC4E85A1F4B",
             ROOT / "sign" / "sign.css": "33AAC2A521E8A2F53D018CD98A5019B00829F0779FD1CA93D41DA1EE05933BF7",
+            ROOT / "sign" / "sign_img.jpg": "D2F2A5BFEDBD602894CDAE61DAF9610E3EAC4BCE119264437373EBF3484AF3F9",
         }
         for path, digest in expected.items():
             with self.subTest(path=path):
                 actual = hashlib.sha256(path.read_bytes()).hexdigest().upper()
                 self.assertEqual(actual, digest)
+
+    def test_author_and_original_greeting(self):
+        html = build_newsletter_html([])
+        self.assertIn("서창현 선임 · SW보안사업팀", html)
+        self.assertIn("안녕하세요. 보안사업팀 서창현 선임입니다.", html)
+        self.assertIn("감사합니다.", html)
+
+    def test_empty_regions_and_original_briefing_groups_remain(self):
+        html = build_newsletter_html([])
+        for label in ("국내 보안", "해외 보안", "AI & Tech", "일정", "핫이슈", "보안시장 동향", "기업 소식", "경제 지표"):
+            self.assertIn(label, html)
+        self.assertIn("간략 보기", html)
+        self.assertIn("자세히 보기", html)
+
+    def test_region_is_not_inferred_from_source(self):
+        from saba.newsletter import article_section
+        for region, expected in (("국내", "domestic"), ("해외", "overseas"), (None, "other")):
+            article = self.articles[0].model_copy(update={"region": region})
+            self.assertEqual(article_section(build_article_view(article)), expected)
+
+    def test_sources_and_related_article_are_escaped(self):
+        data = self.articles[0].model_dump(mode="json")
+        data["related_articles"] = [{"source_name": "가상 참고", "title": '<참고 & 문서>',
+                                     "url": "https://example.com/related?a=1&b=2"}]
+        article = validate_articles([data])[0]
+        html = build_newsletter_html([build_article_view(article)])
+        self.assertIn("출처 · 관련 기사", html)
+        self.assertIn(str(article.url).replace("&", "&amp;"), html)
+        self.assertIn("&lt;참고 &amp; 문서&gt;", html)
+        self.assertIn("https://example.com/related?a=1&amp;b=2", html)
+
+    def test_sample_insight_and_work_connection_are_preview_only(self):
+        view = build_article_view(self.articles[0], self.analysis_results[0], preview_sample={
+            "implications": ["가상 시사점 <검증>"], "connections": {"보안사업팀": "가상 연결 & 검증"}})
+        with self.assertRaises(ValueError):
+            build_newsletter_html([view])
+        html = build_newsletter_html([view], preview_mode=True)
+        self.assertIn("시사점", html)
+        self.assertIn("우리 업무와의 연결", html)
+        self.assertIn("SAMPLE/MOCK: 가상 시사점 &lt;검증&gt;", html)
+        self.assertIn("가상 연결 &amp; 검증", html)
+        self.assertIn("관련 이슈 1건", html)
+
+    def test_fallback_has_structure_but_no_fabricated_analysis(self):
+        html = build_newsletter_html([build_article_view(self.articles[0])])
+        self.assertIn("우리 업무와의 연결", html)
+        self.assertIn("분석 정보가 없습니다.", html)
+        self.assertIn("검토된 업무 연결 정보가 없습니다.", html)
+        self.assertNotIn("SAMPLE/MOCK:", html)
+        self.assertNotIn("핵심 사실", html)
+
+    def test_key_points_are_not_mislabeled_as_implications(self):
+        view = build_article_view(self.articles[0], self.analysis_results[0])
+        html = build_newsletter_html([view])
+        self.assertIn("핵심 사실", html)
+        self.assertEqual(view.sample_implications, [])
+
+    def test_template_is_the_renderer_source(self):
+        template = (ROOT / "templates/newsletter.html").read_text(encoding="utf-8")
+        self.assertIn("{deep_news}", template)
+        self.assertIn("{department_cards}", template)
+        self.assertIn("서창현 선임 · SW보안사업팀", template)
+
+    def test_sample_group_validation_and_input_preservation(self):
+        article = self.articles[0]
+        before = article.model_dump_json()
+        with self.assertRaises(ValueError):
+            build_article_view(article, preview_sample={"brief_group": "invalid"})
+        view = build_article_view(article, preview_sample={"brief_group": "economy"})
+        html = build_newsletter_html([view], preview_mode=True)
+        self.assertIn("경제 지표", html)
+        self.assertEqual(article.model_dump_json(), before)
+
+    def test_rendering_never_uses_network_or_database(self):
+        from unittest.mock import patch
+        with patch("socket.create_connection", side_effect=AssertionError("network")), \
+             patch("sqlite3.connect", side_effect=AssertionError("database")):
+            html = build_newsletter_html([build_article_view(self.articles[0])])
+        self.assertIn("출처 · 관련 기사", html)
 
 
 if __name__ == "__main__":

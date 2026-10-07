@@ -1,221 +1,144 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SABA Newsletter Template Reference</title>
-  <link rel="stylesheet" href="../SAMPLE/Codex/v09/style_review_v9.css" />
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>SABA Newsletter</title>
+<link href="{css_href}" rel="stylesheet"/>
 </head>
 <body>
-  <main class="newsletter">
-    <!-- TEMPLATE: header [DYNAMIC] -->
-    <header class="header">
-      <div class="header-top">
-        <div>
-          <p class="eyebrow">DAILY SECURITY · AI · TECHNOLOGY</p>
-          <h1>Security &amp; AI Briefing</h1>
-        </div>
-        <img class="header-logo" src="../SAMPLE/Codex/v09/LOGO.png" alt="TBELL SECURITY" />
-      </div>
-      <div class="meta">
-        <span>2026년 10월 7일 수요일</span>
-        <span>작성자 : SABA Newsletter</span>
-      </div>
-    </header>
+<main class="newsletter">
+<header class="header">
+<div class="header-top">
+<div>
+<p class="eyebrow">DAILY SECURITY · AI · TECHNOLOGY</p>
+<h1>Security &amp; AI Briefing</h1>
+</div>
+<img class="header-logo" src="{logo_src}" alt="TBELL SECURITY"/>
+</div>
+<div class="meta">
+<span>{today_display}</span>
+<span>작성자 : 서창현 선임 · SW보안사업팀</span>
+</div>
+</header>
 
-    <!-- TEMPLATE: greeting [STATIC] -->
-    <section class="greeting">
-      <p>안녕하세요. 오늘의 주요 보안·AI 이슈를 정리해드립니다.</p>
-      <p>업무 참고용 브리핑으로 활용하시고, 자세한 내용은 원문 링크를 확인해주세요.</p>
-    </section>
+<section class="greeting">
+<p>안녕하세요. 보안사업팀 서창현 선임입니다.</p>
+<p>오늘의 주요 보안·AI 이슈와 업무 관련 시사점을 전달드립니다. 감사합니다.</p>
+</section>
+{preview_notice}
 
-    <!-- TEMPLATE: daily_briefing [DYNAMIC] -->
-    <section class="section briefing-section">
-      <div class="section-heading briefing-section-heading">
-        <span class="section-icon">📰</span>
-        <div>
-          <h2>오늘의 브리핑 <span class="heading-count">3건</span></h2>
-          <p>보안·AI 업계의 오늘을 분야별로 빠르게 훑어보세요.</p>
-        </div>
-      </div>
+<section class="section briefing-section">
+<div class="section-heading briefing-section-heading">
+<span class="section-icon">📰</span>
+<div>
+<h2>오늘의 브리핑 <span class="heading-count">{article_count}건</span></h2>
+<p>보안·AI 업계의 오늘을 분야별로 빠르게 훑어보세요.</p>
+</div>
+</div>
 
-      <div class="brief-view-switch" role="tablist" aria-label="오늘의 브리핑 보기 방식">
-        <button class="brief-view-button active" type="button" data-brief-view="summary" aria-selected="true">간략 보기</button>
-        <button class="brief-view-button" type="button" data-brief-view="detail" aria-selected="false">자세히 보기</button>
-      </div>
+<div class="brief-view-switch" role="tablist" aria-label="오늘의 브리핑 보기 방식">
+<button class="brief-view-button active" type="button" data-brief-view="summary" aria-selected="true">간략 보기</button>
+<button class="brief-view-button" type="button" data-brief-view="detail" aria-selected="false">자세히 보기</button>
+</div>
 
-      <div class="brief-summary-view" data-brief-panel="summary">
-        <!-- TEMPLATE: briefing_summary_rows [DYNAMIC] -->
-        <div class="brief-compact-group">
-          <span class="brief-compact-label">🛡️ 보안 뉴스</span>
-          <p><strong>1건</strong> 예시 기사 제목</p>
-        </div>
-        <div class="brief-compact-group">
-          <span class="brief-compact-label">⚙️ AI·기술</span>
-          <p><strong>1건</strong> 분석 대기 기사 예시 (분석 대기 중)</p>
-        </div>
-        <div class="brief-compact-group">
-          <span class="brief-compact-label">🗂️ 기타</span>
-          <p><strong>1건</strong> 기타 기사 예시</p>
-        </div>
-      </div>
+<div class="brief-summary-view" data-brief-panel="summary">
+{brief_summary}
+</div>
 
-      <div class="brief-detail-view" data-brief-panel="detail" hidden>
-        <div class="brief-list">
-          <!-- TEMPLATE: briefing_detail_groups [DYNAMIC] -->
-          <div class="brief-group">
-            <div class="brief-heading security">
-              <span>🛡️</span>
-              <h3>보안 뉴스</h3>
-            </div>
-            <ul>
-              <li><a href="#news-domestic-1">예시 기사 제목</a> · 예시 출처 · 2026.10.07</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </section>
+<div class="brief-detail-view" data-brief-panel="detail" hidden>
+<div class="brief-list">
+{brief_detail}
+</div>
+</div>
+</section>
 
-    <!-- TEMPLATE: department_cards [DYNAMIC] -->
-    <section class="section department-section">
-      <div class="section-heading">
-        <span class="section-icon">🏢</span>
-        <div>
-          <h2>부서별 주요 이슈</h2>
-          <p>오늘 우리 부서에서 한 번쯤 확인해볼 만한 소식입니다.</p>
-        </div>
-      </div>
-      <div class="department-grid">
-        <article class="department-card strategy">
-          <div class="department-header">
-            <div class="department-title">
-              <span class="department-icon">📊</span>
-              <div><h3>경영전략팀</h3></div>
-            </div>
-            <span class="department-count">관련 이슈 0건</span>
-          </div>
-          <div class="department-content">
-            <div class="department-news-item">
-              <p class="card-summary">이번 브리핑에서 분류된 기사가 없습니다.</p>
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
+<section class="section department-section">
+<div class="section-heading">
+<span class="section-icon">🏢</span>
+<div>
+<h2>부서별 주요 이슈</h2>
+<p>오늘 우리 부서에서 한 번쯤 확인해볼 만한 소식입니다.</p>
+</div>
+</div>
+<div class="department-grid">
+{department_cards}
+</div>
+</section>
 
-    <!-- TEMPLATE: deep_news_sections [DYNAMIC] -->
-    <section class="section deep-section">
-      <div class="section-heading">
-        <span class="section-icon">🔎</span>
-        <div>
-          <h2>보안 심층 뉴스</h2>
-          <p>오늘 업무에 참고할 만한 이슈를 조금 더 자세히 살펴봅니다.</p>
-        </div>
-      </div>
+<section class="section deep-section">
+<div class="section-heading">
+<span class="section-icon">🔎</span>
+<div>
+<h2>보안 심층 뉴스</h2>
+<p>오늘 업무에 참고할 만한 이슈를 조금 더 자세히 살펴봅니다.</p>
+</div>
+</div>
+{deep_news}
+</section>
 
-      <div class="news-category-heading">
-        <div>
-          <span class="category-icon">🇰🇷</span>
-          <h3>국내 보안</h3>
-        </div>
-        <span class="category-count">1건</span>
-      </div>
+<section class="security-habit-section">
+<div class="security-habit-box">
+<div class="security-habit-icon">🔐</div>
+<div class="security-habit-content">
+<div class="security-habit-heading">
+<span>오늘의 보안 습관</span>
+<strong>클린 데스크 · 클린 디스크 생활화</strong>
+</div>
+<p>PC와 책상 위에 보안 관련 주요 정보를 불필요하게 보관하지 말고, 계정 ID·비밀번호를 적은 포스트잇을 모니터나 책상에 붙여두지 마세요.</p>
+</div>
+</div>
+</section>
 
-      <article class="news-card" id="news-domestic-1">
-        <div class="news-top">
-          <div class="news-badges">
-            <span class="badge important">보통</span>
-            <span class="badge ai-badge">AI·기술</span>
-            <span class="badge neutral">예시 태그</span>
-          </div>
-          <span class="article-datetime">발행일 · 2026.10.07</span>
-        </div>
-        <h3 class="news-title"><a href="https://example.com" target="_blank" rel="noopener noreferrer">예시 기사 제목</a></h3>
-        <div class="news-meta">
-          <span>예시 출처</span>
-          <span><a href="https://example.com" target="_blank" rel="noopener noreferrer">https://example.com</a></span>
-        </div>
-        <p class="news-lead">원문 발췌 예시</p>
-        <div class="article-content">
-          <p>AI 요약 예시</p>
-        </div>
-        <div class="insight-box">
-          <h4><span>💡</span> 시사점</h4>
-          <div class="content-block">
-            <ul>
-              <li>핵심 포인트 1</li>
-              <li>핵심 포인트 2</li>
-            </ul>
-          </div>
-        </div>
-      </article>
-    </section>
+<section class="source-policy">
+<div class="policy-block">
+<h3><span>📋</span> 선정 기준</h3>
+<p>제공된 기사와 출처 정보를 표시합니다. 자동 교차 확인·업무 관련도 선정·실제 AI 분석은 수행하지 않았습니다.</p>
+</div>
+<div class="policy-block">
+<h3><span>🔗</span> 주요 출처</h3>
+<div class="source-grid">
+<div>
+<strong>국내</strong>
+<p>공식 기관 · CERT · 보안 전문 언론 · 주요 IT/경제 언론</p>
+</div>
+<div>
+<strong>해외</strong>
+<p>CERT · 보안기관 · Vendor Advisory · Security 전문매체 · AI 공식 블로그</p>
+</div>
+</div>
+</div>
+<div class="feedback">
+<strong>브리핑에 의견이 있으신가요?</strong>
+<p>분류가 맞지 않거나 추가로 다루길 원하는 주제가 있다면 회신으로 알려주시면 감사하겠습니다.</p>
+</div>
+</section>
 
-    <!-- TEMPLATE: security_habit [STATIC] -->
-    <section class="security-habit-section">
-      <div class="security-habit-box">
-        <div class="security-habit-icon">🔐</div>
-        <div class="security-habit-content">
-          <div class="security-habit-heading">
-            <span>오늘의 보안 습관</span>
-            <strong>클린 데스크 · 클린 디스크 생활화</strong>
-          </div>
-          <p>민감한 정보를 노출된 장소에 두지 마세요.</p>
-        </div>
-      </div>
-    </section>
+<footer class="footer">
+<div>
+<strong>Security &amp; AI Briefing</strong>
+<p>Security · AI · Technology Daily Briefing</p>
+</div>
+<p class="footer-notice">본 브리핑은 공개 자료를 업무 참고 목적으로 요약·정리하여 제공합니다. 정확한 세부 내용은 연결된 공식 자료 및 기사 원문을 확인해주세요.</p>
+</footer>
+</main>
 
-    <!-- TEMPLATE: selection_policy [STATIC] -->
-    <section class="source-policy">
-      <div class="policy-block">
-        <h3><span>📋</span> 선정 기준</h3>
-        <p>공식 기관 발표 또는 신뢰할 수 있는 전문 매체를 우선 확인합니다.</p>
-      </div>
-      <div class="policy-block">
-        <h3><span>🔗</span> 주요 출처</h3>
-        <div class="source-grid">
-          <div>
-            <strong>국내</strong>
-            <p>공식 기관 · CERT · 보안 전문 언론</p>
-          </div>
-          <div>
-            <strong>해외</strong>
-            <p>CERT · Vendor Advisory · Security 전문매체</p>
-          </div>
-        </div>
-      </div>
-      <div class="feedback">
-        <strong>브리핑에 의견이 있으신가요?</strong>
-        <p>분류가 맞지 않거나 추가로 다루길 원하는 주제가 있다면 회신으로 알려주세요.</p>
-      </div>
-    </section>
+<script>
+  document.querySelectorAll('.brief-view-button').forEach(function (button) {{
+    button.addEventListener('click', function () {{
+      var view = button.getAttribute('data-brief-view');
 
-    <!-- TEMPLATE: footer [STATIC] -->
-    <footer class="footer">
-      <div>
-        <strong>Security &amp; AI Briefing</strong>
-        <p>Security · AI · Technology Daily Briefing</p>
-      </div>
-      <p class="footer-notice">본 파일은 구조 참고용 정적 템플릿입니다.</p>
-    </footer>
-  </main>
+      document.querySelectorAll('.brief-view-button').forEach(function (item) {{
+        var isActive = item === button;
+        item.classList.toggle('active', isActive);
+        item.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      }});
 
-  <script>
-    document.querySelectorAll('.brief-view-button').forEach(function (button) {
-      button.addEventListener('click', function () {
-        var view = button.getAttribute('data-brief-view');
-
-        document.querySelectorAll('.brief-view-button').forEach(function (item) {
-          var isActive = item === button;
-          item.classList.toggle('active', isActive);
-          item.setAttribute('aria-selected', isActive ? 'true' : 'false');
-        });
-
-        document.querySelectorAll('[data-brief-panel]').forEach(function (panel) {
-          panel.hidden = panel.getAttribute('data-brief-panel') !== view;
-        });
-      });
-    });
-  </script>
+      document.querySelectorAll('[data-brief-panel]').forEach(function (panel) {{
+        panel.hidden = panel.getAttribute('data-brief-panel') !== view;
+      }});
+    }});
+  }});
+</script>
 </body>
 </html>
