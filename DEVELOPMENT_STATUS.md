@@ -5,13 +5,14 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 
 ## 현재 확인된 상태
 ### 현재 단계와 승인 상태
-- 공식 개발 단계: 12단계 — Newsletter Template 및 Preview
-- 완료된 하위 작업: 12-C — v09 시각적 일치 및 Preview 오류 수정
-- 12-C 구현·검증 기록: UTF-8 한글 보존, v09 기반 Template, 부서당 최대 3건, AI SAMPLE 및 비AI Preview 생성
-- 직전 12-C 검증 기록: Newsletter 테스트 27개와 전체 unittest 139개 통과, 실패·오류·Skip 0개, 종료 코드 0. 현재 문서 갱신에서는 테스트를 다시 실행하지 않음
-- 최신 사용자 결정: 추가 수정 없음. 수정 Preview 승인 및 공식 12단계 완료 기록 승인됨. 실제 이메일 호환성·발송 검증 완료를 의미하지 않음
-- DEVELOPMENT_STATUS.md와 DECISIONS.md에 현재 결정 및 직전 검증 기록 반영은 사용자 승인됨
-- 다음 공식 단계: 13단계 — OpenAI 선택적 AI 보강 계층 설계. 설계 프롬프트 작성만 승인됐으며 해당 단계 실행·API 구현·호출은 아직 미승인
+- 공식 개발 단계: 16단계 — OpenAI API 실제 연결 및 TEST 호출 검증 (형식 기준 완료)
+- 12단계 기록: Newsletter Template 및 Preview 완료 승인 (D-011). 실제 이메일 호환성·발송 검증 완료를 의미하지 않음
+- 13~15단계: 선택적 AI 보강 계층 설계, Provider 독립 오프라인 어댑터와 Mock 검증 (`src/saba/ai_adapter.py`), Provider·Model·비용·데이터·TEST 범위 결정 (D-013~D-017)
+- 16단계 구현: `src/saba/openai_adapter.py` (stdlib urllib, Responses API, gpt-4o-mini 고정, Structured Output strict, store=false, 재시도 없음), 사용량 기록 `data/openai_usage.json`, 월 $3 로컬 방어선, 변환 실패 진단 detail·quote_occurrences (기사 내용 미기록)
+- 16단계 실제 호출: 가상 Fixture 기사 5건, 누적 10건 (D-017 5건, D-018 4건, D-019 1건), 비용 약 $0.0036 (코드 단가 기준). 보완 3회 후 5건 모두 AnalysisResult v1 변환 성공
+- 16단계 검증: 2026-10-07 HEAD 753834e 기준 unittest 199개 중 198개 통과, 1개 Skip (실제 호출 테스트), 실패 0개
+- 남은 품질 검토: 근거 의미 일치, category 분류, 프롬프트 주입 저항. 형식 검증 통과는 분석 품질 승인을 의미하지 않음
+- 다음 작업: AI 분석 품질 검토 기준 설계. 설계안 승인 전 코드·검증 규칙 변경 없음
 
 ### 완료/구현 확인
 - Python 실행 골격
@@ -31,19 +32,16 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 2026-10-07 검증: Python 3.12.14에서 unittest 전체 112개 통과. 임시 DB만 사용했고 실제 AI API는 호출하지 않음
 
 ### 현재 AI 상태
-- `analysis.py`는 실제 AI API 호출 기능이 아니다.
-- 현재는 합성 분석 결과의 형식, 입력 연결, 근거 연결을 검증하는 구조다.
-- 분석 결과 저장·조회 기능은 구현됐으며 현재 저장 검증은 합성 결과 기반이다.
-- 실제 AI API는 연결하지 않았고 Provider/Model도 확정하지 않았다.
-- 현재 승인 상태: AI Provider 미확정, AI Model 미확정, 유료 AI API 사용 미승인.
-- 개인 비용 부담을 전제로 하지 않으며 무료 API를 우선 검토한다. 무료라는 이유만으로 사용을 승인하지 않는다.
-- 회사 데이터 외부 전송 적합성은 확인이 필요하다. 이전 특정 Provider/Model 및 실제 연결 제안은 현재 실행 승인이 아니다.
-- 실제 기사 AI 분석 실행과 그 결과의 저장은 별도 승인 대상이다.
+- 승인: Provider OpenAI (D-013), Model gpt-4o-mini (D-014), 월 최대 $3 (D-015), 전송 데이터 original_title + feed_excerpt만 (D-016), TEST·보완 호출 누적 10건 (D-017~D-019, 모두 소진)
+- 실제 호출은 가상 Fixture 기사로만 수행했다. 실제 운영 기사 AI 분석, 분석 결과 DB 저장, Newsletter 반영은 미승인이다.
+- 추가 실제 호출은 건별 사용자 승인이 필요하다. extracted_text 전송과 다른 모델 사용은 미승인이다.
+- API Key는 환경변수 `OPENAI_API_KEY`로만 읽으며 코드·로그·사용량 기록에 남기지 않는다.
 - Article 수집·정규화·저장은 AI와 독립적이다. AI는 선택적 보강 계층이며 AI 없이도 가능한 Core Pipeline 완성을 목표로 한다.
-- 실제 AI API 구현·호출은 미승인이다. 기존 Analysis Schema·검증·Storage·관련 테스트와 Fixture는 보존한다.
+- 기존 Analysis Schema·검증·Storage·관련 테스트와 Fixture는 보존한다.
 
 ### 미구현/별도 승인 대상
-- 실제 AI API 연결
+- 실제 운영 기사 AI 분석 및 결과 저장·Newsletter 반영
+- AI 분석 품질 검토 기준 (근거 의미 일치, category 분류, 프롬프트 주입 저항)
 - 추가 Source 수집
 - 필요한 Source의 Web Crawling
 - 사건 단위 중복 통합
