@@ -1,16 +1,57 @@
 # SABA AI RULES
 
-Version: 1.1
+Version: 1.2
 
-## 1. 목적
+
+==================================================
+CRITICAL AI RULE
+==================================================
+
+AI MUST NOT be a required dependency of the SABA Core Pipeline.
+
+The Core Pipeline must remain capable of operating without an
+AI provider whenever the required source data is available.
+
+Do NOT select, implement, or call an AI provider or model
+without explicit user approval.
+
+Do NOT assume that the user will personally pay for an AI API.
+
+Do NOT silently switch from a free AI service to a paid service.
+
+AI failure, missing API credentials, usage limits, cost limits,
+or provider outages MUST NOT automatically cause the entire
+SABA Core Pipeline to fail when a valid non-AI path exists.
+
+Do NOT fabricate AI-generated information when AI is disabled
+or unavailable.
+
+Original source information and AI-generated information MUST
+remain distinguishable.
+
+All model-authored user-facing natural-language explanations,
+progress messages, reports, and generated prompts MUST be
+written in Korean and MUST NOT contain CJK ideographs.
+
+
+==================================================
+1. 목적
+==================================================
 
 이 문서는 SABA에서 사용하는 AI 기능,
 AI Provider, Model, 비용, 외부 데이터 전송,
 API 호출, Secret 관리 및 AI 장애 처리에 대한
 공통 하네스 규칙을 정의한다.
 
-AI 관련 설계, 구현, 테스트, 실행 및
-후속 프롬프트에는 이 규칙을 적용한다.
+AI 관련:
+
+- 설계
+- 구현
+- 테스트
+- 실행
+- 후속 프롬프트
+
+에는 이 규칙을 적용한다.
 
 
 ==================================================
@@ -21,21 +62,23 @@ AI는 SABA Core Pipeline의
 필수 실행 의존성이 아니다.
 
 SABA는 AI를 사용할 수 없는 상태에서도
-가능한 범위의 Core Pipeline을 계속 수행할 수 있도록 설계한다.
+가능한 범위의 Core Pipeline을
+계속 수행할 수 있도록 설계한다.
 
 AI는 기사 분석과 뉴스레터 품질을 높이는
 선택적 보강 기능으로 취급한다.
 
-AI를 사용할 수 없다는 이유만으로
+AI를 사용할 수 없다는 이유로
 Source 원본에 존재하지 않는 내용을
-임의로 생성하거나 추측하여 대체하지 않는다.
+임의 생성하거나 추측하여 대체하지 않는다.
 
 
 ==================================================
 3. SABA Core Pipeline
 ==================================================
 
-SABA의 Core Pipeline은 다음 개념을 기준으로 한다.
+SABA Core Pipeline은
+다음 개념을 기준으로 한다.
 
 뉴스 Source
 → 수집
@@ -45,6 +88,7 @@ SABA의 Core Pipeline은 다음 개념을 기준으로 한다.
 → Newsletter 생성
 → Mail 발송
 → Scheduler
+
 
 Core Pipeline은 가능한 범위에서
 AI Provider와 독립적으로 동작하도록 설계한다.
@@ -56,12 +100,13 @@ AI Provider와 독립적으로 동작하도록 설계한다.
 - AI Provider 미선정
 - AI Model 미선정
 - API Key 없음
-- 무료 한도 초과
+- 무료 사용 한도 초과
 - 비용 제한
 - AI Provider 장애
 - AI 요청 실패
 
-단, AI 없이 수행할 수 없는 기능을
+단,
+AI 없이 수행할 수 없는 기능을
 거짓 데이터로 채우지 않는다.
 
 
@@ -80,13 +125,14 @@ AI Provider와 독립적으로 동작하도록 설계한다.
 - 실제 AI API 구현: 미승인
 - 실제 AI API 호출: 미승인
 
+
 과거 프롬프트,
 과거 설계 문서,
 과거 제안에
 특정 Provider 또는 Model이 적혀 있다는 이유만으로
 현재 승인된 것으로 간주하지 않는다.
 
-최신 사용자 승인 상태를 우선한다.
+사용자의 최신 명시적 승인 상태를 우선한다.
 
 
 ==================================================
@@ -108,7 +154,8 @@ AI는 다음과 같은 보강 기능에 사용할 수 있다.
 - 관련 부서 판단
 - 유사 사건 판단 보조
 
-이 목록은 사용 가능한 후보 기능을 의미한다.
+이 목록은
+사용 가능한 후보 기능을 의미한다.
 
 목록에 존재한다는 이유만으로
 현재 구현 또는 사용이 승인된 것은 아니다.
@@ -135,6 +182,7 @@ AI를 사용하지 않는 경우에도
 - 공식 API Metadata
 - 승인된 수집 과정에서 확보한 정보
 
+
 비AI 처리는
 명시적이고 검증 가능한 규칙만 사용한다.
 
@@ -149,7 +197,9 @@ AI를 사용하지 않는 경우에도
 - 발행 시각
 - 승인된 우선순위
 
-비AI 규칙만으로 의미를 확정할 수 없다면
+
+비AI 규칙만으로
+기사 의미를 확정할 수 없다면
 추측하지 않는다.
 
 필요한 경우:
@@ -185,7 +235,8 @@ AI가 생성한 것처럼 보이는 다음 정보를
 - 왜 봐야 하는지
 - 의미 기반 Category
 
-Source가 직접 제공한 Summary 또는 Description은
+Source가 직접 제공한
+Summary 또는 Description은
 AI Summary와 구분한다.
 
 
@@ -201,21 +252,27 @@ Core Pipeline과 분리한다.
 Article
 → AI 사용 가능 여부 확인
 
+
 AI 사용 가능:
+
 → AI 분석
 → 분석 결과 검증
 → Newsletter 보강
 
+
 AI 사용 불가:
+
 → AI 분석 생략
 → Source 원본 정보 및 승인된 비AI 규칙 사용
 → Core Pipeline 계속
+
 
 AI 전용 필드가 존재하지 않는다는 이유만으로
 Newsletter 전체 생성이 반드시 실패하도록
 설계하지 않는다.
 
-AI 데이터가 없을 때의 실제 Newsletter 표시 방식은
+AI 데이터가 없을 때의
+실제 Newsletter 표시 방식은
 Newsletter 구현 단계에서 결정한다.
 
 
@@ -244,7 +301,8 @@ Provider 또는 Model을 결정하기 전에
 - Python 연동 난이도
 - Secret 관리 방법
 
-선택이 필요한 경우 사용자에게:
+
+선택이 필요한 경우 사용자에게 다음을 제시한다.
 
 - 가능한 방법
 - 장점
@@ -254,7 +312,6 @@ Provider 또는 Model을 결정하기 전에
 - 추천 방법
 - 추천 이유
 
-를 제시한다.
 
 사용자 승인 전
 Provider와 Model을 확정하지 않는다.
@@ -265,7 +322,8 @@ Provider와 Model을 확정하지 않는다.
 ==================================================
 
 현재 SABA MVP는
-사용자의 개인 비용 발생을 기본 전제로 하지 않는다.
+사용자의 개인 비용 발생을
+기본 전제로 하지 않는다.
 
 사용자의 명시적 승인 없이:
 
@@ -276,6 +334,7 @@ Provider와 Model을 확정하지 않는다.
 
 을 하지 않는다.
 
+
 무료 API를 사용하는 경우에도:
 
 - 무료 한도
@@ -284,6 +343,7 @@ Provider와 Model을 확정하지 않는다.
 - 무료 초과 시 동작
 
 을 확인한다.
+
 
 무료 한도를 초과했을 때
 자동으로 유료 호출로 전환하지 않는다.
@@ -330,6 +390,7 @@ Provider 또는 Model을 자동 승인하지 않는다.
 - Secret 준비
 - 실제 호출 범위 승인
 
+
 하나라도 미확정이면
 실제 API 호출을 하지 않는다.
 
@@ -359,6 +420,7 @@ Mock 성공을
 - 기존 분석 결과
 - 불필요한 Metadata
 
+
 Provider가 입력 데이터를
 학습 또는 제품 개선에 사용할 수 있다면
 회사 데이터 사용 적합성을 별도로 검토한다.
@@ -379,6 +441,7 @@ Provider가 입력 데이터를
 - Client Secret
 - Password
 
+
 환경변수 또는
 승인된 Secret 관리 방식을 사용한다.
 
@@ -392,6 +455,7 @@ Provider가 입력 데이터를
 - 대화
 
 에 출력하지 않는다.
+
 
 .env를 사용할 경우
 Git에 Commit하지 않는다.
@@ -427,7 +491,7 @@ Provider 또는 Model 변경을
 ==================================================
 
 AI 관련 구현은
-harness/ 아래의 테스트 규칙을 함께 적용한다.
+harness/TESTING_RULES.md를 함께 적용한다.
 
 최소 다음을 구분한다.
 
@@ -440,12 +504,14 @@ harness/ 아래의 테스트 규칙을 함께 적용한다.
 
 각 결과를 서로 대체하지 않는다.
 
+
 AI 선택 기능이 구현되는 경우
 가능한 범위에서 다음 경로를 각각 검증한다.
 
 1. AI 사용 경로
 2. AI 미사용 경로
 3. AI 실패 경로
+
 
 AI 미사용 경로는
 실제 외부 AI Network 요청 없이
@@ -464,10 +530,12 @@ AI 전용 데이터가 없다는 이유만으로
 전체 생성이 반드시 실패하도록 설계하지 않는다.
 
 AI 분석이 없는 경우
-Source 원본 정보와 승인된 비AI 데이터만 사용한다.
+Source 원본 정보와
+승인된 비AI 데이터만 사용한다.
 
 AI 결과가 없는 필드를
 임의의 AI 결과로 채우지 않는다.
+
 
 AI가 없는 경우의:
 
@@ -487,14 +555,13 @@ AI가 없는 경우의:
 AI가 없다는 이유로
 기사 전체 본문을 Newsletter에 복사하지 않는다.
 
-Source별로:
+Source별로 다음을 확인한다.
 
 - RSS 제공 범위
 - 공식 API 제공 범위
 - 이용 조건
 - 본문 수집 허용 여부
 
-를 확인한다.
 
 Newsletter에서는 가능한 범위에서:
 
@@ -523,14 +590,15 @@ AI 관련 단계 프롬프트는
 미확정 상태를
 승인된 값으로 바꾸지 않는다.
 
-다음 표현은
-사용자 승인 근거가 있을 때만 사용할 수 있다.
+다음은 사용자 승인 근거가 있을 때만
+확정할 수 있다.
 
-- Provider 확정
-- Model 확정
+- Provider
+- Model
 - 유료 API 사용
 - 실제 API 호출
 - 회사 데이터 외부 전송
+
 
 AI 관련 프롬프트는
 harness/PROMPT_VALIDATION.md의
@@ -544,7 +612,7 @@ harness/PROMPT_VALIDATION.md의
 이 문서의 현재 승인 상태는
 사용자의 최신 결정에 따라 변경할 수 있다.
 
-변경할 때는:
+변경할 때 다음을 명확하게 기록한다.
 
 - 무엇이 승인되었는지
 - 무엇이 여전히 미확정인지
@@ -552,7 +620,6 @@ harness/PROMPT_VALIDATION.md의
 - 데이터 영향
 - Core Pipeline 영향
 
-을 명확하게 기록한다.
 
 과거 프롬프트에 적힌 값만을 근거로
 현재 상태를 자동 변경하지 않는다.
@@ -563,7 +630,8 @@ harness/PROMPT_VALIDATION.md의
 ==================================================
 
 이 문서의 규칙을
-테스트 또는 구현 편의를 위해 임의로 약화하지 않는다.
+테스트 또는 구현 편의를 위해
+임의로 약화하지 않는다.
 
 규칙 변경이 필요한 경우:
 
@@ -575,6 +643,7 @@ harness/PROMPT_VALIDATION.md의
 을 사용자에게 보고한다.
 
 사용자의 최신 명시적 결정과
-이 문서가 충돌한다면
-최신 사용자 결정을 우선하되
-문서 갱신 필요성을 보고한다.
+이 문서가 충돌하면
+사용자의 최신 결정을 우선한다.
+
+필요한 문서 갱신을 함께 보고한다.
