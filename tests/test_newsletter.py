@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import re
 from pathlib import Path
 import unittest
 
@@ -183,6 +184,75 @@ class NewsletterTests(unittest.TestCase):
              patch("sqlite3.connect", side_effect=AssertionError("database")):
             html = build_newsletter_html([build_article_view(self.articles[0])])
         self.assertIn("출처 · 관련 기사", html)
+
+    def test_utf8_preview_label_roundtrip_and_charset(self):
+        html = build_newsletter_html([], preview_mode=True)
+        restored = html.encode("utf-8").decode("utf-8")
+        self.assertIn("SAMPLE/MOCK 미리보기", restored)
+        self.assertIn("서창현 선임 · SW보안사업팀", restored)
+        self.assertIn("감사합니다.", restored)
+        self.assertIn('charset="utf-8"', restored)
+        self.assertNotIn("SAMPLE/MOCK Preview ?", restored)
+        self.assertNotIn("\ufffd", restored)
+        header = re.search(r'<header\b.*?</header>', restored, re.S)[0]
+        self.assertNotIn("?", header)  # 원본 피드백의 정상 질문 문구는 보존한다.
+
+    def test_header_dom_matches_original_and_greeting_is_preserved(self):
+        from html.parser import HTMLParser
+        class Structure(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.tags = []
+            def handle_starttag(self, tag, attrs):
+                self.tags.append((tag, dict(attrs).get("class")))
+            def handle_endtag(self, tag):
+                self.tags.append(("/" + tag, None))
+        original = (ROOT / "SAMPLE/Codex/v09/layout_review_v9.html").read_text(encoding="utf-8")
+        rendered = build_newsletter_html([])
+        structures = []
+        for document in (original, rendered):
+            parser = Structure()
+            parser.feed(re.search(r'<header\b.*?</header>', document, re.S)[0])
+            structures.append(parser.tags)
+        self.assertEqual(*structures)
+        greeting = re.search(r'<section class="greeting">.*?</section>', original, re.S)[0]
+        self.assertIn(greeting, rendered)
+
+    def test_department_limit_three_preserves_order_and_input(self):
+        views = [build_article_view(self.articles[0].model_copy(update={"article_id": f"limit-{i}",
+                 "original_title": f"limit-title-{i}"}), preview_sample={"connections": {
+                 name: "가상 배정" for name in ("경영전략팀", "기술개발연구소", "보안사업팀", "STE본")}})
+                 for i in range(5)]
+        before = copy.deepcopy(views)
+        html = build_newsletter_html(views, preview_mode=True)
+        cards = re.findall(r'<article class="department-card .*?</article>', html, re.S)
+        self.assertEqual(len(cards), 4)
+        for card in cards:
+            self.assertEqual(card.count('class="department-news-item"'), 3)
+            self.assertIn("관련 이슈 3건", card)
+            self.assertLess(card.index("limit-title-0"), card.index("limit-title-1"))
+            self.assertLess(card.index("limit-title-1"), card.index("limit-title-2"))
+            self.assertNotIn("limit-title-3", card)
+            self.assertNotIn("limit-title-4", card)
+            self.assertIn('class="card-meta-row"', card)
+            self.assertIn('class="card-actions"', card)
+        self.assertEqual(views, before)
+        self.assertIn("limit-title-4", html)  # 상세 목록은 새 상한을 적용하지 않는다.
+
+    def test_preview_label_does_not_add_a_top_level_warning(self):
+        html = build_newsletter_html([], preview_mode=True)
+        header = re.search(r'<header\b.*?</header>', html, re.S)[0]
+        self.assertIn("SAMPLE/MOCK 미리보기", header)
+        self.assertNotIn("SAMPLE/MOCK 미리보기", build_newsletter_html([]))
+        between = html.split('</section>', 1)[1].split('<section', 1)[0]
+        self.assertNotIn('<p', between)
+
+    def test_summary_does_not_duplicate_source_excerpt(self):
+        view = build_article_view(self.articles[0], self.analysis_results[0])
+        html = build_newsletter_html([view])
+        card = re.search(r'<article class="news-card".*?</article>', html, re.S)[0]
+        self.assertIn(self.analysis_results[0].summary, card)
+        self.assertNotIn('<div class="news-meta">', card)
 
 
 if __name__ == "__main__":

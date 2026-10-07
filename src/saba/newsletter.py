@@ -205,6 +205,8 @@ def _render_brief_summary(groups: dict[str, list[ArticleView]]) -> str:
     for group_key in _BRIEF_GROUP_META:
         label, icon, _heading_class = _BRIEF_GROUP_META[group_key]
         views = groups[group_key]
+        if group_key == "other" and not views:
+            continue
         if views:
             titles = []
             for view in views[:3]:
@@ -228,6 +230,8 @@ def _render_brief_detail(groups: dict[str, list[ArticleView]], anchors: dict[str
     for group_key in _BRIEF_GROUP_META:
         label, icon, heading_class = _BRIEF_GROUP_META[group_key]
         views = groups[group_key]
+        if group_key == "other" and not views:
+            continue
         if views:
             items = []
             for view in views:
@@ -260,12 +264,16 @@ def _render_brief_detail(groups: dict[str, list[ArticleView]], anchors: dict[str
 def _render_department_cards(views: list[ArticleView], anchors: dict[str, str]) -> str:
     cards: list[str] = []
     for name, icon, css_class in _DEPARTMENT_CARDS:
-        assigned = [view for view in views if name in view.sample_connections]
+        assigned = [view for view in views if name in view.sample_connections][:3]
         content = "\n".join(
             '<div class="department-news-item">'
+            '<div class="card-meta-row"><div class="card-badges">'
+            f'<span class="type-badge">{_safe_escape(view.category or "미분류")}</span>'
+            f'</div><span class="card-date">{_safe_escape(view.date_display)}</span></div>'
             f'<h4>{_safe_escape(view.title)}</h4>'
             f'<p class="card-summary">SAMPLE/MOCK: {_safe_escape(view.sample_connections[name])}</p>'
-            f'<a class="card-button" href="#{_safe_escape(anchors[view.article_id])}">관련 뉴스 보기 →</a></div>'
+            f'<div class="card-actions"><span class="card-source-bottom">{_safe_escape(view.source_name)}</span>'
+            f'<a class="card-button" href="#{_safe_escape(anchors[view.article_id])}">관련 뉴스 보기 →</a></div></div>'
             for view in assigned
         ) or '<div class="department-news-item"><p class="card-summary">이번 브리핑에서 분류된 기사가 없습니다.</p></div>'
         cards.append(
@@ -304,8 +312,6 @@ def _render_badges(view: ArticleView) -> str:
 
 def _render_article_body(view: ArticleView) -> str:
     blocks: list[str] = []
-    if view.excerpt is not None:
-        blocks.append(f'<p class="news-lead">{_safe_escape(view.excerpt)}</p>')
     if view.has_full_analysis and view.summary is not None:
         blocks.append(
             f"""
@@ -313,6 +319,8 @@ def _render_article_body(view: ArticleView) -> str:
 <p>{_safe_escape(view.summary)}</p>
 </div>""".strip()
         )
+    elif view.excerpt is not None:
+        blocks.append(f'<div class="article-content"><p>{_safe_escape(view.excerpt)}</p></div>')
     return "\n".join(blocks)
 
 
@@ -342,7 +350,7 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
         for view in views:
             anchor = anchors.get(view.article_id, "")
             body = _render_article_body(view)
-            key_points = _render_key_points(view)
+            key_points = _render_key_points(view) if not view.sample_implications else ""
             implications = "".join(f'<p>SAMPLE/MOCK: {_safe_escape(text)}</p>' for text in view.sample_implications)
             implications = implications or '<p>분석 정보가 없습니다.</p>'
             connections = "".join(
@@ -365,11 +373,7 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
 </div>
 <span class="article-datetime">{_safe_escape(view.date_label)} · {_safe_escape(view.date_display)}</span>
 </div>
-<h3 class="news-title"><a href="{_safe_escape(view.url)}" target="_blank" rel="noopener noreferrer">{_safe_escape(view.title)}</a></h3>
-<div class="news-meta">
-<span>{_safe_escape(view.source_name)}</span>
-<span><a href="{_safe_escape(view.url)}" target="_blank" rel="noopener noreferrer">{_safe_escape(view.url)}</a></span>
-</div>
+<h3 class="news-title">{_safe_escape(view.title)}</h3>
 {body}
 {key_points}
 <div class="insight-box"><h4><span>💡</span> 시사점</h4>{implications}</div>
@@ -430,5 +434,5 @@ def build_newsletter_html(
         article_count=len(safe_views), brief_summary=brief_summary,
         brief_detail=brief_detail, deep_news=deep_news,
         department_cards=_render_department_cards(safe_views, anchors),
-        preview_notice='<p class="news-lead">SAMPLE/MOCK Preview ? ?? ????? ????? ?? AI ????? ?? ??? ????.</p>' if preview_mode else '',
+        preview_label=' · SAMPLE/MOCK 미리보기' if preview_mode else '',
     )
