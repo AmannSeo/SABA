@@ -58,6 +58,21 @@ class NewsletterTests(unittest.TestCase):
         html = build_newsletter_html([])
         self.assertIn("수집된 기사가 없습니다", html)
 
+    def test_long_excerpt_collapsed_without_truncation(self):
+        from saba.newsletter import LONG_EXCERPT_CHARS
+        long_text = "가상 발췌 " * 200
+        article = self.articles[0].model_copy(update={"feed_excerpt": long_text + "<b>END_MARKER</b>"})
+        html = build_newsletter_html([build_article_view(article)])
+        self.assertIn('<details class="article-content"><summary>원문 발췌 펼치기', html)
+        self.assertIn("END_MARKER", html)  # 자르지 않고 전체 포함
+        boundary = self.articles[0].model_copy(update={"feed_excerpt": "가" * LONG_EXCERPT_CHARS})
+        self.assertNotIn("<details", build_newsletter_html([build_article_view(boundary)]))
+
+    def test_empty_ai_section_explains_no_analysis(self):
+        html = build_newsletter_html([build_article_view(self.articles[0])])
+        self.assertIn("AI 분석 전이라 분류된 기사가 없습니다.", html)
+        self.assertIn("AI 분석 전이라 분류된 기사가 없습니다.", build_newsletter_html([]))
+
     def test_special_chars_html_escaped(self):
         article = self.articles[0].model_copy(update={"original_title": '<script>alert(1)</script>'})
         view = build_article_view(article)

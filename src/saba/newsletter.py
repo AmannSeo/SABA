@@ -43,6 +43,7 @@ _SECTION_PREFIX = {
     "ai_tech": "ai",
     "other": "other",
 }
+LONG_EXCERPT_CHARS = 600  # ponytail: 화면 확인 기준 고정값, 실제 메일 표시 확인 후 조정
 _IMPORTANCE_BADGE_CLASS = {
     "높음": "urgent",
     "보통": "important",
@@ -319,6 +320,12 @@ def _render_article_body(view: ArticleView) -> str:
 <p>{_safe_escape(view.summary)}</p>
 </div>""".strip()
         )
+    elif view.excerpt is not None and len(view.excerpt) > LONG_EXCERPT_CHARS:
+        # 긴 발췌는 자르지 않고 접어서 표시한다 (D-003, D-030). details를 지원하지 않는 메일 앱은 전체를 펼쳐 보여 준다.
+        blocks.append(
+            f'<details class="article-content"><summary>원문 발췌 펼치기 ({len(view.excerpt):,}자)</summary>'
+            f'<p>{_safe_escape(view.excerpt)}</p></details>'
+        )
     elif view.excerpt is not None:
         blocks.append(f'<div class="article-content"><p>{_safe_escape(view.excerpt)}</p></div>')
     return "\n".join(blocks)
@@ -339,8 +346,16 @@ def _render_key_points(view: ArticleView) -> str:
 </div>""".strip()
 
 
+def _empty_section_text(group_key: str, analyzed: bool) -> str:
+    # AI & Tech는 AI 분석 결과로만 채워지므로, 분석 전이면 기사가 없는 이유를 함께 밝힌다 (D-030).
+    if group_key == "ai_tech" and not analyzed:
+        return "AI 분석 전이라 분류된 기사가 없습니다."
+    return "수집된 기사가 없습니다."
+
+
 def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, str]) -> str:
     sections: list[str] = []
+    analyzed = any(view.has_full_analysis for views in groups.values() for view in views)
     for group_key in ("domestic", "overseas", "ai_tech", "other"):
         views = groups[group_key]
         if not views and group_key == "other":
@@ -390,7 +405,7 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
 </div>
 <span class="category-count">{len(views)}건</span>
 </div>
-{chr(10).join(cards) if cards else '<p class="news-lead">수집된 기사가 없습니다.</p>'}""".strip()
+{chr(10).join(cards) if cards else f'<p class="news-lead">{_empty_section_text(group_key, analyzed)}</p>'}""".strip()
         )
     if not sections:
         return '<p class="news-lead">수집된 기사가 없습니다.</p>'

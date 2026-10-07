@@ -12,6 +12,7 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 17단계 후속 공식 RSS 묶음 (D-026): KISA 보호나라 보고서·가이드 채택 (승인 Source 6개). 취약점 정보는 게시 빈도 낮아 미채택, MSRC(2MiB 초과)·Google Security Blog(Atom)는 현재 구조로 수집 불가, Intel·AMD·NVIDIA는 공식 RSS 미확인. 검증: unittest 217개 중 216개 통과, 1개 Skip
 - 같은 사건 중복 처리 (D-027): `src/saba/issues.py` group_issues() 순수 함수. CVE 공유 자동 묶음, 제품 키워드 + 3일 이내 후보 표시 (사람 확정), 요약 기사 제외, 공식 출처 우선 대표 기사. Source 설정에 official 표시 추가. 저장 기사 105건 기준 이슈 102개, 자동 묶음 3개, 후보 5쌍. Newsletter 반영·사람 확정 결과 보관은 미구현. 검증: unittest 227개 중 226개 통과, 1개 Skip
 - 실제 수집 기사 비AI Newsletter Preview (D-028, D-029): `src/saba/issues.py` select_issues()·preview_article(), Source region 필드, `output/build_collected_preview.py` → `output/newsletter_preview_collected.html`. 기준 시각 2026-10-07 09:41 UTC: 기간 안 40건, 표시 이슈 19건 (국내 9, 해외 10, AI & Tech 0), Source 상한 제외 18건, 섹션 상한 제외 3건, 같은 사건 후보 1쌍. 가장 긴 카드 약 14,000자 (CISA 발췌, D-003 자동 절단 금지). 사용자 Preview 확인 전. 검증: unittest 232개 중 231개 통과, 1개 Skip
+- Preview 보완 (D-030): 600자 초과 발췌 접기·펼치기 (내용 유지), AI 분석 전 AI & Tech 빈 섹션 안내 문구, 상한 유지. 사용자 Preview 확인 완료. 메일 앱 실제 표시는 미검증. 검증: unittest 234개 중 233개 통과, 1개 Skip
 - Source 이용 조건(재배포·요약 사용 범위)은 미확인. 기사 본문 수집은 하지 않으며 RSS 메타데이터와 Feed 제공 발췌만 저장
 - 16단계: OpenAI API 실제 연결 및 TEST 호출 검증 (형식 기준 완료)
 - 12단계 기록: Newsletter Template 및 Preview 완료 승인 (D-011). 실제 이메일 호환성·발송 검증 완료를 의미하지 않음
