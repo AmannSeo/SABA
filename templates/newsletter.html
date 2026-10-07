@@ -11,7 +11,14 @@
 .source-name, .source-title {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
 .mail-signature {{ margin: 32px 0 0; }}
 .mail-signature .signature-table {{ margin: 0 auto; }}
-.brief-view-label {{ margin: 18px 0 8px; font-size: 14px; color: #374151; }}
+/* 간략·자세히 보기 전환: script 없이 radio + CSS 로 동작 (D-036). 지원하지 않는 메일 앱은 간략 보기만 보인다. */
+.brief-view-radio {{ display: none; }}
+.brief-view-button {{ cursor: pointer; }}
+.brief-detail-view {{ display: none; }}
+#brief-view-detail:checked ~ .brief-summary-view {{ display: none; }}
+#brief-view-detail:checked ~ .brief-detail-view {{ display: block; }}
+#brief-view-summary:checked ~ .brief-view-switch .brief-view-summary-tab,
+#brief-view-detail:checked ~ .brief-view-switch .brief-view-detail-tab {{ background: #ffffff; color: #111827; box-shadow: 0 1px 2px rgba(17, 24, 39, 0.08); }}
 </style>
 </head>
 <body>
@@ -45,15 +52,17 @@
 </div>
 </div>
 
-<div class="brief-view-switch" role="tablist" aria-label="오늘의 브리핑 보기 방식">
-<button class="brief-view-button active" type="button" data-brief-view="summary" aria-selected="true">간략 보기</button>
-<button class="brief-view-button" type="button" data-brief-view="detail" aria-selected="false">자세히 보기</button>
+<input class="brief-view-radio" type="radio" name="brief-view" id="brief-view-summary" checked/>
+<input class="brief-view-radio" type="radio" name="brief-view" id="brief-view-detail"/>
+<div class="brief-view-switch" aria-label="오늘의 브리핑 보기 방식">
+<label class="brief-view-button brief-view-summary-tab" for="brief-view-summary">간략 보기</label>
+<label class="brief-view-button brief-view-detail-tab" for="brief-view-detail">자세히 보기</label>
 </div>
 
-<div class="brief-summary-view" data-brief-panel="summary">
+<div class="brief-summary-view">
 {brief_summary}
 </div>
-<div class="brief-detail-view" data-brief-panel="detail" hidden>
+<div class="brief-detail-view">
 <div class="brief-list">
 {brief_detail}
 </div>
@@ -154,22 +163,5 @@
 
 </main>
 
-<script>
-  document.querySelectorAll('.brief-view-button').forEach(function (button) {{
-    button.addEventListener('click', function () {{
-      var view = button.getAttribute('data-brief-view');
-
-      document.querySelectorAll('.brief-view-button').forEach(function (item) {{
-        var isActive = item === button;
-        item.classList.toggle('active', isActive);
-        item.setAttribute('aria-selected', isActive ? 'true' : 'false');
-      }});
-
-      document.querySelectorAll('[data-brief-panel]').forEach(function (panel) {{
-        panel.hidden = panel.getAttribute('data-brief-panel') !== view;
-      }});
-    }});
-  }});
-</script>
 </body>
 </html>

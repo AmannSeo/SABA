@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from html import escape
@@ -44,7 +45,6 @@ _SECTION_PREFIX = {
     "other": "other",
 }
 BRIEF_MAX_PER_GROUP = 5  # 오늘의 브리핑 분야당 최대 건수 (D-033). 입력 순서(공식 우선 → 최신)를 따른다.
-LONG_EXCERPT_CHARS = 600  # ponytail: 화면 확인 기준 고정값, 실제 메일 표시 확인 후 조정
 _IMPORTANCE_BADGE_CLASS = {
     "높음": "urgent",
     "보통": "important",
@@ -202,52 +202,39 @@ def _build_anchor_map(views: list[ArticleView]) -> dict[str, str]:
     return anchors
 
 
+def _first_sentence(text: str) -> str:
+    return re.split(r"(?<=[.!?])\s+", text.strip(), maxsplit=1)[0]
+
+
 def _render_brief_summary(groups: dict[str, list[ArticleView]]) -> str:
+    # SAMPLE 형식: 분야마다 한 줄. 기사가 없는 분야는 표시하지 않는다 (D-036).
     items: list[str] = []
-    for group_key in _BRIEF_GROUP_META:
-        label, icon, _heading_class = _BRIEF_GROUP_META[group_key]
+    for group_key, (label, icon, css_class) in _BRIEF_GROUP_META.items():
         views = groups[group_key]
-        if group_key == "other" and not views:
+        if not views:
             continue
-        if views:
-            titles = []
-            for view in views[:3]:
-                suffix = "" if view.has_full_analysis else " (분석 대기 중)"
-                titles.append(f"{view.title}{suffix}")
-            message = f"<strong>{len(views)}건</strong> " + ", ".join(_safe_escape(title) for title in titles)
-        else:
-            message = "<strong>0건</strong> 제공된 정보가 없습니다"
-        items.append(
-            f"""
-<div class="brief-compact-group { _BRIEF_GROUP_META[group_key][2] }">
-<span class="brief-compact-label">{icon} {label}</span>
-<p>{message}</p>
-</div>""".strip()
-        )
+        head, *rest = [_safe_escape(view.title) for view in views[:2]]
+        message = f"<strong>{head}</strong>" + "".join(f" · {title}" for title in rest)
+        if len(views) > 2:
+            message += f" 외 {len(views) - 2}건"
+        items.append(f'<div class="brief-compact-group {css_class}">\n'
+                     f'<span class="brief-compact-label">{icon} {label}</span>\n<p>{message}</p>\n</div>')
     return "\n".join(items)
 
 
 def _render_brief_detail(groups: dict[str, list[ArticleView]], anchors: dict[str, str]) -> str:
+    # SAMPLE 형식: 기사 제목 링크 + 설명 한 문장 (AI 요약 첫 문장). 요약이 없으면 출처만 붙인다.
     blocks: list[str] = []
-    for group_key in _BRIEF_GROUP_META:
-        label, icon, heading_class = _BRIEF_GROUP_META[group_key]
+    for group_key, (label, icon, heading_class) in _BRIEF_GROUP_META.items():
         views = groups[group_key]
-        if group_key == "other" and not views:
+        if not views:
             continue
-        if views:
-            items = []
-            for view in views:
-                anchor = anchors.get(view.article_id, "")
-                title = _safe_escape(view.title)
-                source = _safe_escape(view.source_name)
-                date_display = _safe_escape(view.date_display)
-                pending = " <em>(분석 대기 중)</em>" if not view.has_full_analysis else ""
-                items.append(
-                    f'<li><a href="#{_safe_escape(anchor)}">{title}</a> · {source} · {date_display}{pending}</li>'
-                )
-            list_html = "\n".join(items)
-        else:
-            list_html = "<li>수집된 기사가 없습니다</li>"
+        items = []
+        for view in views:
+            link = f'<a href="#{_safe_escape(anchors.get(view.article_id, ""))}">{_safe_escape(view.title)}</a>'
+            detail = _first_sentence(view.summary) if view.has_full_analysis and view.summary else view.source_name
+            items.append(f"<li>{link}<br/>{_safe_escape(detail)}</li>")
+        list_html = "\n".join(items)
         blocks.append(
             f"""
 <div class="brief-group">
@@ -313,38 +300,10 @@ def _render_badges(view: ArticleView) -> str:
 
 
 def _render_article_body(view: ArticleView) -> str:
-    blocks: list[str] = []
+    # 본문은 AI 한국어 요약(3~5문장)만 표시한다. 원문 발췌·펼치기는 표시하지 않는다 (D-036).
     if view.has_full_analysis and view.summary is not None:
-        blocks.append(
-            f"""
-<div class="article-content">
-<p>{_safe_escape(view.summary)}</p>
-</div>""".strip()
-        )
-    elif view.excerpt is not None and len(view.excerpt) > LONG_EXCERPT_CHARS:
-        # 긴 발췌는 자르지 않고 접어서 표시한다 (D-003, D-030). details를 지원하지 않는 메일 앱은 전체를 펼쳐 보여 준다.
-        blocks.append(
-            f'<details class="article-content"><summary>원문 발췌 펼치기 ({len(view.excerpt):,}자)</summary>'
-            f'<p>{_safe_escape(view.excerpt)}</p></details>'
-        )
-    elif view.excerpt is not None:
-        blocks.append(f'<div class="article-content"><p>{_safe_escape(view.excerpt)}</p></div>')
-    return "\n".join(blocks)
-
-
-def _render_key_points(view: ArticleView) -> str:
-    if not (view.has_full_analysis and view.key_points):
-        return ""
-    items = "\n".join(f"<li>{_safe_escape(point)}</li>" for point in view.key_points)
-    return f"""
-<div class="insight-box">
-<h4>핵심 사실</h4>
-<div class="content-block">
-<ul>
-{items}
-</ul>
-</div>
-</div>""".strip()
+        return f'<div class="article-content">\n<p>{_safe_escape(view.summary)}</p>\n</div>'
+    return ""
 
 
 def _empty_section_text(group_key: str, analyzed: bool) -> str:
@@ -366,7 +325,6 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
         for view in views:
             anchor = anchors.get(view.article_id, "")
             body = _render_article_body(view)
-            key_points = _render_key_points(view) if not view.sample_implications else ""
             implications = "".join(f'<p>SAMPLE/MOCK: {_safe_escape(text)}</p>' for text in view.sample_implications)
             implications = implications or '<p>분석 정보가 없습니다.</p>'
             connections = "".join(
@@ -391,7 +349,6 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
 </div>
 <h3 class="news-title">{_safe_escape(view.title)}</h3>
 {body}
-{key_points}
 <div class="insight-box"><h4><span>💡</span> 시사점</h4>{implications}</div>
 <div class="department-impact"><h4><span>🏢</span> 우리 업무와의 연결</h4>{connections}</div>
 <div class="source-related"><h4><span>🔗</span> 출처 · 관련 기사</h4>{sources}</div>

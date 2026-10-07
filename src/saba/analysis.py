@@ -134,7 +134,7 @@ class AnalysisResult(BaseModel):
     importance: Literal["높음", "보통", "낮음"] | None
     importance_reason: Text | None
     newsletter_title: Text | None
-    summary: Annotated[Text, Field(max_length=300)] | None
+    summary: Annotated[Text, Field(max_length=600)] | None  # 3~5줄 (D-036)
     key_points: Annotated[list[Text], Field(max_length=3)]
     evidence: list[EvidenceSpan]
 
@@ -153,8 +153,8 @@ class AnalysisResult(BaseModel):
         if self.summary is not None:
             # ponytail: 문장부호 기반 형식 검사, 실제 문장·번역 품질 평가는 별도 수행한다.
             pieces = re.split(r'[.!?。！？]+["\u201d\u2019)\]]*(?:\s+|$)', self.summary)
-            if sum(bool(piece.strip()) for piece in pieces) > 2:
-                raise ValueError("요약은 문장부호 기준 최대 2문장이어야 합니다")
+            if sum(bool(piece.strip()) for piece in pieces) > 5:
+                raise ValueError("요약은 문장부호 기준 최대 5문장이어야 합니다")
         return self
 
 

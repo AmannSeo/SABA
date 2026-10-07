@@ -58,15 +58,15 @@ class NewsletterTests(unittest.TestCase):
         html = build_newsletter_html([])
         self.assertIn("수집된 기사가 없습니다", html)
 
-    def test_long_excerpt_collapsed_without_truncation(self):
-        from saba.newsletter import LONG_EXCERPT_CHARS
-        long_text = "가상 발췌 " * 200
-        article = self.articles[0].model_copy(update={"feed_excerpt": long_text + "<b>END_MARKER</b>"})
+    def test_no_original_excerpt_without_ai_summary(self):
+        # 원문 발췌·펼치기 버튼은 표시하지 않고, 본문은 AI 한국어 요약만 쓴다 (D-036).
+        article = self.articles[0].model_copy(update={"feed_excerpt": "가상 발췌 " * 200 + "END_MARKER"})
         html = build_newsletter_html([build_article_view(article)])
-        self.assertIn('<details class="article-content"><summary>원문 발췌 펼치기', html)
-        self.assertIn("END_MARKER", html)  # 자르지 않고 전체 포함
-        boundary = self.articles[0].model_copy(update={"feed_excerpt": "가" * LONG_EXCERPT_CHARS})
-        self.assertNotIn("<details", build_newsletter_html([build_article_view(boundary)]))
+        self.assertNotIn("<details", html)
+        self.assertNotIn("원문 발췌", html)
+        self.assertNotIn("END_MARKER", html)
+        analyzed = build_newsletter_html([build_article_view(self.articles[0], self.analysis_results[0])])
+        self.assertIn(f"<p>{self.analysis_results[0].summary}</p>", analyzed)
 
     def test_empty_ai_section_explains_no_analysis(self):
         html = build_newsletter_html([build_article_view(self.articles[0])])
@@ -127,12 +127,21 @@ class NewsletterTests(unittest.TestCase):
         self.assertIn("안녕하세요. 보안사업팀 서창현 선임입니다.", html)
         self.assertIn("감사합니다.", html)
 
-    def test_empty_regions_and_original_briefing_groups_remain(self):
+    def test_empty_regions_remain_and_empty_briefing_groups_hidden(self):
         html = build_newsletter_html([])
-        for label in ("국내 보안", "해외 보안", "AI & Tech", "일정", "핫이슈", "보안시장 동향", "기업 소식", "경제 지표"):
+        for label in ("국내 보안", "해외 보안", "AI & Tech", "간략 보기", "자세히 보기"):
             self.assertIn(label, html)
-        self.assertIn("간략 보기", html)
-        self.assertIn("자세히 보기", html)
+        for label in ("일정", "핫이슈", "보안시장 동향", "제공된 정보가 없습니다"):
+            self.assertNotIn(label, html)
+
+    def test_brief_views_follow_sample_format(self):
+        analyzed = build_article_view(self.articles[0], self.analysis_results[0])
+        html = build_newsletter_html([analyzed])
+        self.assertIn(f"<strong>{analyzed.title}</strong>", html)  # 간략 보기: 분야별 한 줄
+        first = analyzed.summary.split(". ")[0]
+        self.assertIn(first, html.split('class="brief-detail-view"')[1].split("</section>")[0])  # 자세히 보기: 설명 문장
+        self.assertNotIn("<script", html)
+        self.assertIn('id="brief-view-summary" checked', html)  # script 없는 CSS 전환
 
     def test_region_is_not_inferred_from_source(self):
         from saba.newsletter import article_section
@@ -171,10 +180,10 @@ class NewsletterTests(unittest.TestCase):
         self.assertNotIn("SAMPLE/MOCK:", html)
         self.assertNotIn("핵심 사실", html)
 
-    def test_key_points_are_not_mislabeled_as_implications(self):
+    def test_key_points_box_not_shown(self):
+        # SAMPLE 에 없는 "핵심 사실" 상자는 표시하지 않는다 (D-036).
         view = build_article_view(self.articles[0], self.analysis_results[0])
-        html = build_newsletter_html([view])
-        self.assertIn("핵심 사실", html)
+        self.assertNotIn("핵심 사실", build_newsletter_html([view]))
         self.assertEqual(view.sample_implications, [])
 
     def test_template_is_the_renderer_source(self):

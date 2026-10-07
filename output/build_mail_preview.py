@@ -6,7 +6,7 @@ from pathlib import Path
 
 from saba.analysis_storage import DEFAULT_ANALYSIS_DB
 from saba.briefing import build_views
-from saba.mail import build_message, to_mail_html
+from saba.mail import browser_preview, build_message, to_mail_html
 from saba.newsletter import build_newsletter_html
 from saba.storage import DEFAULT_DB
 
@@ -32,11 +32,11 @@ def main() -> int:
     local = now.astimezone()
     today = f"{local.year}년 {local.month}월 {local.day}일 {WEEKDAYS[local.weekday()]}요일"
     html = to_mail_html(build_newsletter_html(views, today=today))
-    HTML_OUTPUT.write_text(html, encoding="utf-8")
+    HTML_OUTPUT.write_text(browser_preview(html), encoding="utf-8")
     message = build_message(html, f"[TEST] Security & AI Briefing · {today}")
     EML_OUTPUT.write_bytes(message.as_bytes())
     print(f"표시 이슈 {len(views)}건 · 메일 HTML {len(html.encode('utf-8')):,} bytes · .eml {EML_OUTPUT.stat().st_size:,} bytes")
-    print(f"생성: {HTML_OUTPUT.relative_to(ROOT)} (브라우저에서는 CID 이미지가 보이지 않음)")
+    print(f"생성: {HTML_OUTPUT.relative_to(ROOT)} (브라우저 확인용, 이미지는 원본 파일 경로)")
     print(f"생성: {EML_OUTPUT.relative_to(ROOT)} (메일 앱에서 열어 확인, 발송하지 않음)")
     if stats is not None:
         print(f"AI 분석: 재사용 {stats.reused} · 신규 호출 {stats.called} · 검토 필요 {stats.valid} · 대상 밖 제외 {stats.out_of_scope}"

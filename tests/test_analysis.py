@@ -62,8 +62,8 @@ class AnalysisTests(unittest.TestCase):
             with self.subTest(missing=field), self.assertRaises(ValidationError):
                 AnalysisResult.model_validate(data)
 
-    def test_summary_300_character_boundary(self):
-        for length, valid in ((299, True), (300, True), (301, False)):
+    def test_summary_600_character_boundary(self):
+        for length, valid in ((599, True), (600, True), (601, False)):
             data = self.data[0] | {"summary": "가" * length}
             if valid:
                 AnalysisResult.model_validate(data)
@@ -74,7 +74,8 @@ class AnalysisTests(unittest.TestCase):
     def test_sentence_rule_and_decimal(self):
         for summary in ("첫 문장입니다.", "첫 문장입니다. 둘째 문장입니다.", "버전 1.2 안내입니다. 업데이트입니다!", '첫 문장입니다.” 둘째 문장입니다.'):
             AnalysisResult.model_validate(self.data[0] | {"summary": summary})
-        for summary in ("하나. 둘. 셋.", "하나! 둘? 셋", "하나。 둘！ 셋"):
+        AnalysisResult.model_validate(self.data[0] | {"summary": "하나. 둘. 셋. 넷. 다섯."})  # 최대 5문장 (D-036)
+        for summary in ("하나. 둘. 셋. 넷. 다섯. 여섯.", "하나! 둘? 셋. 넷. 다섯. 여섯", "하나。 둘！ 셋。 넷。 다섯。 여섯"):
             with self.assertRaises(ValidationError):
                 AnalysisResult.model_validate(self.data[0] | {"summary": summary})
 

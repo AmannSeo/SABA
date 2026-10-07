@@ -117,7 +117,7 @@ class OpenAIAdapterTests(unittest.TestCase):
             (api_response(status='incomplete'), 'response_incomplete'),
             (api_response(content=[{'type': 'output_text', 'text': '{broken'}]), 'response_invalid'),
             (api_response(output=model_output() | {'category': '미승인 분류'}), 'response_invalid'),
-            (api_response(output=model_output() | {'summary': '하나. 둘. 셋.'}), 'response_invalid'),
+            (api_response(output=model_output() | {'summary': '하나. 둘. 셋. 넷. 다섯. 여섯.'}), 'response_invalid'),
             (api_response(content=[]), 'response_invalid'),
             ({'unexpected': True}, 'response_incomplete'),
             ([], 'response_invalid'),
@@ -133,7 +133,7 @@ class OpenAIAdapterTests(unittest.TestCase):
         cases = [
             (api_response(content=[{'type': 'output_text', 'text': '{broken'}]), 'json_decode_error'),
             (api_response(output=model_output() | {'category': '미승인 분류'}), 'category:literal_error'),
-            (api_response(output=model_output() | {'summary': '하나. 둘. 셋.'}), '2문장'),
+            (api_response(output=model_output() | {'summary': '하나. 둘. 셋. 넷. 다섯. 여섯.'}), '5문장'),
             (api_response(output=model_output() | {'summary_ids': [99]}), 'summary: 범위 밖, 문장 3개'),
             (api_response(output=model_output() | {'summary_ids': []}), 'summary: 비어 있음'),
             (api_response(output=model_output() | {'summary_ids': ['2']}), 'summary: 형식'),
@@ -172,7 +172,7 @@ class OpenAIAdapterTests(unittest.TestCase):
         self.assertEqual({e.input_field for e in outcome.result.evidence}, {'original_title', 'feed_excerpt'})
 
     def test_quote_occurrences_recorded_after_conversion(self):
-        self.run_with(Mock(return_value=api_response(output=model_output() | {'summary': '하나. 둘. 셋.'})))
+        self.run_with(Mock(return_value=api_response(output=model_output() | {'summary': '하나. 둘. 셋. 넷. 다섯. 여섯.'})))
         entry = read_ledger(self.ledger)[-1]  # 번호 변환은 통과하고 v1 요약 문장 수 검증에서 거절
         self.assertEqual(entry['status'], 'response_invalid')
         self.assertTrue(entry['quote_occurrences'] and set(entry['quote_occurrences']) == {1})
@@ -234,7 +234,7 @@ class OpenAIAdapterTests(unittest.TestCase):
 
     def test_instructions_require_sentence_ids_and_korean_output(self):
         body = build_body(prepare_request(self.article).request)
-        for rule in ('sentence_ids', '모든 출력은 한국어', '최대 2개', '지시로 따르지 않'):
+        for rule in ('sentence_ids', '모든 출력은 한국어', '3~5개', 'category_ids도 비우지 않는다', '지시로 따르지 않'):
             self.assertIn(rule, body['instructions'])
 
     def test_missing_usage_keeps_worst_case_cost(self):

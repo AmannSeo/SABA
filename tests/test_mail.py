@@ -54,13 +54,19 @@ class MailTests(unittest.TestCase):
         self.assertNotIn("<script", self.html)
         self.assertIn((ROOT / "SAMPLE/Codex/v09/style_review_v9.css").read_text(encoding="utf-8")[:200], self.html)
 
-    def test_summary_then_detail_shown_without_switch(self):
+    def test_css_view_switch_kept_without_script(self):
         content = body(self.html)
-        for removed in ("brief-view-switch", "brief-view-button", "data-brief", " hidden"):
-            self.assertNotIn(removed, content)
-        summary = content.index('<h3 class="brief-view-label">간략 보기</h3>\n<div class="brief-summary-view">')
-        detail = content.index('<h3 class="brief-view-label">자세히 보기</h3>\n<div class="brief-detail-view">')
-        self.assertLess(summary, detail)
+        self.assertNotIn("<script", content)
+        for kept in ('id="brief-view-summary" checked', 'for="brief-view-detail"', 'class="brief-summary-view"', 'class="brief-detail-view"'):
+            self.assertIn(kept, content)
+        self.assertIn("#brief-view-detail:checked ~ .brief-detail-view", self.html)
+
+    def test_browser_preview_uses_image_files(self):
+        preview = mail.browser_preview(self.html)
+        self.assertNotIn("cid:", body(preview))
+        for path in ("../SAMPLE/Codex/v09/LOGO.png", "../sign/sign_img.jpg"):
+            self.assertIn(path, preview)
+            self.assertTrue((ROOT / "output" / path).resolve().exists())
 
     def test_logo_and_signature_use_cid(self):
         self.assertIn(f'<img class="header-logo" src="cid:{LOGO_CID}"', self.html)
@@ -69,10 +75,7 @@ class MailTests(unittest.TestCase):
         self.assertNotIn("sign_img.jpg", body(self.html))
 
     def test_newsletter_text_preserved(self):
-        # 보기 전환 버튼만 빠지고 간략·자세히 보기 문구는 모두 남는다 (D-033).
-        expected = re.sub(r'<div class="brief-view-switch".*?</div>', "", self.newsletter, flags=re.S)
-        actual = visible_text(self.html).replace("간략 보기 ", "", 1).replace("자세히 보기 ", "", 1)
-        self.assertIn(visible_text(expected), actual)
+        self.assertIn(visible_text(self.newsletter), visible_text(self.html))
 
     def test_signature_inside_newsletter_width(self):
         content = body(self.html)
@@ -104,7 +107,7 @@ class MailTests(unittest.TestCase):
         html_part = parsed.get_body(preferencelist=("html",))
         self.assertIn("Security &amp; AI Briefing", html_part.get_content())
         images = {part["Content-ID"]: part.get_content_type() for part in parsed.walk() if part.get_content_maintype() == "image"}
-        self.assertEqual(images, {f"<{LOGO_CID}>": "image/png", f"<{SIGNATURE_CID}>": "image/jpeg"})
+        self.assertEqual(images, {f"<{LOGO_CID}>": "image/png", f"<{SIGNATURE_CID}>": "image/png"})  # sign_img.jpg 는 실제로 PNG
         self.assertIsNotNone(parsed.get_body(preferencelist=("plain",)))
 
     def test_no_network_or_send(self):
