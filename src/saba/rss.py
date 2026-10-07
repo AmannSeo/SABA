@@ -29,6 +29,8 @@ class Source:
     date_only: bool = False
     # 공식 기관 출처. 같은 사건 묶음의 대표 기사 선택에 우선한다 (D-027).
     official: bool = False
+    # 출처 국가 기준 국내·해외. Preview 섹션 배치에만 쓰며 사건 발생 지역이 아니다 (D-029).
+    region: str = "해외"
 
 
 KST = timedelta(hours=9)  # 한국 표준시, 일광 절약 시간 없음
@@ -36,13 +38,13 @@ SOURCES = (
     Source("cert-eu-security-advisories", "CERT-EU", "https://cert.europa.eu/publications/security-advisories-rss",
            official=True),
     Source("boho-security-notice", "KISA 보호나라", "https://www.boho.or.kr/kr/rss.do?bbsId=B0000133",
-           local_offset=KST, date_only=True, official=True),
+           local_offset=KST, date_only=True, official=True, region="국내"),
     Source("cisa-cybersecurity-advisories", "CISA", "https://www.cisa.gov/cybersecurity-advisories/all.xml",
            official=True),
     Source("the-hacker-news", "The Hacker News", "https://feeds.feedburner.com/TheHackersNews"),
-    Source("boannews", "보안뉴스", "https://www.boannews.com/rss/allArticle.xml", local_offset=KST),
+    Source("boannews", "보안뉴스", "https://www.boannews.com/rss/allArticle.xml", local_offset=KST, region="국내"),
     Source("boho-report-guide", "KISA 보호나라 보고서·가이드", "https://www.boho.or.kr/kr/rss.do?bbsId=B0000127",
-           local_offset=KST, date_only=True, official=True),
+           local_offset=KST, date_only=True, official=True, region="국내"),
 )
 SOURCE_BY_ID = {source.source_id: source for source in SOURCES}
 CERT_EU = SOURCES[0]

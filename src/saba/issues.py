@@ -7,7 +7,7 @@ import re
 
 from saba.analysis import FeedTextParser, normalize_text
 from saba.rss import SOURCE_BY_ID
-from saba.schema import Article
+from saba.schema import Article, SourceReference
 
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
 # 여러 사건을 함께 다루는 요약 기사 표지. 제목에 있으면 묶지 않는다.
@@ -126,3 +126,58 @@ def group_issues(articles: list[Article]) -> tuple[list[Issue], list[Candidate]]
         if any(abs(x - y) <= CANDIDATE_WINDOW for x, y in dates):
             candidates.append(Candidate(first, second, sorted(shared)[0]))
     return issues, candidates
+
+
+# Preview 선별 (D-029). 중요도 판단이 아닌 기계적 상한이다. 값은 실제 Preview를 보고 조정한다.
+MAX_PER_SOURCE = 5
+MAX_PER_SECTION = 10
+
+
+@dataclass(frozen=True)
+class Selection:
+    issues: list[Issue]
+    candidates: list[Candidate]
+    in_window: int
+    excluded_by_source_cap: int
+    excluded_by_section_cap: int
+
+
+def in_window(article: Article, now) -> bool:
+    source = SOURCE_BY_ID.get(article.source_id)
+    hours = 48 if source is not None and source.date_only else 24
+    return article.published_at is not None and now - timedelta(hours=hours) <= article.published_at <= now
+
+
+def select_issues(articles: list[Article], now) -> Selection:
+    """기간 안 기사를 묶고, 공식 출처 우선 → 최신 순으로 Source별·섹션(출처 국가)별 상한을 적용한다."""
+    window = [article for article in articles if in_window(article, now)]
+    issues, candidates = group_issues(window)
+    ordered = sorted(issues, key=lambda issue: (not is_official(issue.representative),
+                                                -issue.representative.published_at.timestamp(),
+                                                issue.representative.article_id))
+    per_source: dict[str, int] = {}
+    per_section: dict[str, int] = {}
+    selected, source_cut, section_cut = [], 0, 0
+    for issue in ordered:
+        source = SOURCE_BY_ID[issue.representative.source_id]
+        if per_source.get(source.source_id, 0) >= MAX_PER_SOURCE:
+            source_cut += 1
+            continue
+        if per_section.get(source.region, 0) >= MAX_PER_SECTION:
+            section_cut += 1
+            continue
+        per_source[source.source_id] = per_source.get(source.source_id, 0) + 1
+        per_section[source.region] = per_section.get(source.region, 0) + 1
+        selected.append(issue)
+    return Selection(selected, candidates, len(window), source_cut, section_cut)
+
+
+def preview_article(issue: Issue) -> Article:
+    """대표 기사 사본에 출처 국가와 같은 사건 관련 보도를 붙인다. 원본과 DB는 바꾸지 않는다."""
+    representative = issue.representative
+    related = [SourceReference(source_name=a.source_name, title=a.original_title, url=a.url,
+                               published_at=a.published_at) for a in issue.related]
+    return representative.model_copy(update={
+        "region": SOURCE_BY_ID[representative.source_id].region,
+        "related_articles": [*representative.related_articles, *related],
+    })
