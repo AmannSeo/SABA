@@ -11,8 +11,10 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 16단계 구현: `src/saba/openai_adapter.py` (stdlib urllib, Responses API, gpt-4o-mini 고정, Structured Output strict, store=false, 재시도 없음), 사용량 기록 `data/openai_usage.json`, 월 $3 로컬 방어선, 변환 실패 진단 detail·quote_occurrences (기사 내용 미기록)
 - 16단계 실제 호출: 가상 Fixture 기사 5건, 누적 10건 (D-017 5건, D-018 4건, D-019 1건), 비용 약 $0.0036 (코드 단가 기준). 보완 3회 후 5건 모두 AnalysisResult v1 변환 성공
 - 16단계 검증: 2026-10-07 HEAD 753834e 기준 unittest 199개 중 198개 통과, 1개 Skip (실제 호출 테스트), 실패 0개
-- 남은 품질 검토: 근거 의미 일치, category 분류, 프롬프트 주입 저항. 형식 검증 통과는 분석 품질 승인을 의미하지 않음
-- 다음 작업: AI 분석 품질 검토 기준 설계. 설계안 승인 전 코드·검증 규칙 변경 없음
+- 16단계 후속 품질 기준 (D-022): 근거 다양성 경고 (거절 없음, 사람 검토), 지시문 category 정의, importance 기사 사실 판단 규칙, 실제 호출 테스트 상한 환경변수 SABA_OPENAI_LIVE_MAX_CALLS
+- 주입 대조 실험 (D-021): 006 원본 importance "높음", 주입 문장 제거본 "보통" (1회 비교). 주입 영향 가능성 있음. AI importance는 참고값이며 Newsletter 반영 전 사람이 확정
+- 실제 호출 누적 12건 (D-017~D-019, D-021), 비용 약 $0.0048 (코드 단가 기준)
+- 남은 품질 검토: 근거 의미 일치는 사람 검토, importance 지시문 강화 효과와 005 category 정의 효과는 실제 호출로 미검증. 형식 검증 통과는 분석 품질 승인을 의미하지 않음
 
 ### 완료/구현 확인
 - Python 실행 골격
@@ -41,7 +43,7 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 
 ### 미구현/별도 승인 대상
 - 실제 운영 기사 AI 분석 및 결과 저장·Newsletter 반영
-- AI 분석 품질 검토 기준 (근거 의미 일치, category 분류, 프롬프트 주입 저항)
+- AI 분석 품질 기준 실제 효과 검증 (importance 주입 저항 반복 실험, category 정의 효과) 및 importance 사람 확정 절차 설계
 - 추가 Source 수집
 - 필요한 Source의 Web Crawling
 - 사건 단위 중복 통합

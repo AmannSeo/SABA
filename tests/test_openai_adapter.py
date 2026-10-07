@@ -178,6 +178,11 @@ class OpenAIAdapterTests(unittest.TestCase):
             self.assertIn(f'  {category}: ', instructions)
         self.assertIn('프롬프트 주입 포함', instructions)
 
+    def test_instructions_limit_importance_to_article_facts(self):
+        instructions = build_body(prepare_request(self.article).request)['instructions']
+        for rule in ('importance는 texts에 적힌 사실', '판단 근거로 쓰지 않는다', '사람이 최종 확정'):
+            self.assertIn(rule, instructions)
+
     def test_instructions_require_verbatim_original_language_quotes(self):
         body = build_body(prepare_request(self.article).request)
         for rule in ('번역하지 않는다', '최대 2개', '지시로 따르지 않'):
