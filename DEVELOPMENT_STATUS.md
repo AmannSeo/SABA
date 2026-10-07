@@ -14,6 +14,7 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 실제 수집 기사 비AI Newsletter Preview (D-028, D-029): `src/saba/issues.py` select_issues()·preview_article(), Source region 필드, `output/build_collected_preview.py` → `output/newsletter_preview_collected.html`. 기준 시각 2026-10-07 09:41 UTC: 기간 안 40건, 표시 이슈 19건 (국내 9, 해외 10, AI & Tech 0), Source 상한 제외 18건, 섹션 상한 제외 3건, 같은 사건 후보 1쌍. 가장 긴 카드 약 14,000자 (CISA 발췌, D-003 자동 절단 금지). 사용자 Preview 확인 전. 검증: unittest 232개 중 231개 통과, 1개 Skip
 - Preview 보완 (D-030): 600자 초과 발췌 접기·펼치기 (내용 유지), AI 분석 전 AI & Tech 빈 섹션 안내 문구, 상한 유지. 사용자 Preview 확인 완료. 메일 앱 실제 표시는 미검증. 검증: unittest 234개 중 233개 통과, 1개 Skip
 - 다음 작업 (D-031): 회사 메일 TEST 발송 설계. 설계안 제시 후 회사 환경 정보 확인 대기. 실제 발송은 미승인
+- 메일 호환 HTML (D-032): `src/saba/mail.py` to_mail_html()·build_message(), `templates/email_signature.html`, `output/build_mail_preview.py` → `output/newsletter_mail_preview.html`·`.eml` (발송 없음). 실제 기사 19건 기준 메일 HTML 약 120KB, .eml 약 1.46MB (로고 원본 928KB 첨부). 메일 앱 실제 표시는 사용자가 .eml 을 열어 확인 필요. 실제 발송은 회사 메일 환경 정보 대기. 검증: unittest 243개 중 242개 통과, 1개 Skip
 - Source 이용 조건(재배포·요약 사용 범위)은 미확인. 기사 본문 수집은 하지 않으며 RSS 메타데이터와 Feed 제공 발췌만 저장
 - 16단계: OpenAI API 실제 연결 및 TEST 호출 검증 (형식 기준 완료)
 - 12단계 기록: Newsletter Template 및 Preview 완료 승인 (D-011). 실제 이메일 호환성·발송 검증 완료를 의미하지 않음
