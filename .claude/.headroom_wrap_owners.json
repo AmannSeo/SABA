@@ -10,17 +10,5 @@
         "inherited": false
       }
     ]
-  },
-  "ANTHROPIC_BASE_URL": {
-    "original": null,
-    "holders": [
-      {
-        "pid": 16216,
-        "start_src": null,
-        "start_time": null,
-        "port": 8787,
-        "inherited": false
-      }
-    ]
   }
 }
