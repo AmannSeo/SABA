@@ -130,6 +130,18 @@ class BriefingTests(unittest.TestCase):
         self.assertEqual(shown.summary, result.summary)
         self.assertEqual(shown.input_hash, analysis_input(article)[2])
 
+    def test_display_result_replaces_company_hanja_only_in_copy(self):
+        from saba.briefing import COMPANY_HANJA
+        article = self.articles[0]
+        result = convert_response(article, prepare_request(article).request, response())
+        hanja = result.model_copy(update={"summary": result.summary.replace("가상 웹 서버", "가상" + COMPANY_HANJA + " 서버"),
+                                          "tags": ["가상" + COMPANY_HANJA]})
+        shown = display_result(hanja)
+        self.assertNotIn(COMPANY_HANJA, shown.summary + "".join(shown.tags))
+        self.assertIn("가상사 서버", shown.summary)
+        self.assertIn(COMPANY_HANJA, hanja.summary)  # 원본 결과는 그대로
+        self.assertEqual(shown.evidence, hanja.evidence)
+
 
 if __name__ == "__main__":
     unittest.main()
