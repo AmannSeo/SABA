@@ -80,6 +80,30 @@ class SendMailTests(unittest.TestCase):
                     self.assertNotIn(secret, str(caught.exception))
                 self.assertEqual(make.call_count, 1)
 
+    def test_response_error_reports_stage_and_code_only(self):
+        for stage, method in (("로그인", "login"), ("발송", "send_message")):
+            with self.subTest(stage=stage):
+                make, server = factory()
+                getattr(server, method).side_effect = smtplib.SMTPResponseException(
+                    552, b"size limit for fictional-user FAKE-SECRET-PW-0000")
+                with self.assertRaises(SendError) as caught:
+                    send_test(message(), send=True, env=ENV, smtp_factory=make)
+                text = str(caught.exception)
+                self.assertIn(f"{stage} 단계", text)
+                self.assertIn("응답 코드 552", text)
+                for private in ("size limit", "fictional-user", "FAKE-SECRET"):
+                    self.assertNotIn(private, text)
+                self.assertEqual(make.call_count, 1)
+
+    def test_quit_error_after_send_reported_as_sent_with_warning(self):
+        make, server = factory()
+        server.__exit__.side_effect = smtplib.SMTPResponseException(451, b"fictional-user")
+        result = send_test(message(), send=True, env=ENV, smtp_factory=make)
+        server.send_message.assert_called_once()
+        self.assertIn("발송 완료 1회", result)
+        self.assertIn("종료(QUIT) 응답 비정상 (응답 코드 451)", result)
+        self.assertNotIn("fictional-user", result)
+
     def test_refused_recipient_reported(self):
         make, server = factory()
         server.send_message.return_value = {TEST_ADDRESS: (550, b"no")}

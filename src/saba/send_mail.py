@@ -49,17 +49,27 @@ def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, st
         return "드라이런 (접속·발송 안 함): " + summary
     if not all(present.values()):
         raise SendError("SMTP 환경 변수가 설정되지 않았습니다. " + summary)
+    stage = "연결"
     try:
         with smtp_factory(env[ENV_HOST].strip(), PORT, context=ssl.create_default_context(),
                           timeout=TIMEOUT) as server:
+            stage = "로그인"
             server.login(env[ENV_USER].strip(), env[ENV_PASSWORD])
+            stage = "발송"
             refused = server.send_message(message, from_addr=TEST_ADDRESS, to_addrs=[TEST_ADDRESS])
+            stage = "종료"  # 여기부터의 오류는 with 종료 시 QUIT 응답이다. 메시지는 이미 서버가 받았다.
     except smtplib.SMTPAuthenticationError:
         raise SendError("SMTP 인증 실패 (아이디·비밀번호·SMTP 사용 설정 확인)") from None
     except smtplib.SMTPException as error:
-        raise SendError(f"SMTP 오류: {type(error).__name__}") from None
+        # 단계와 응답 코드 숫자만 남긴다. 서버 응답 문장은 계정 정보를 담을 수 있어 표시하지 않는다.
+        code = getattr(error, "smtp_code", None)
+        code_text = f"응답 코드 {code}" if isinstance(code, int) else "응답 코드 없음"
+        if stage != "종료":
+            raise SendError(f"SMTP 오류: {stage} 단계, {type(error).__name__}, {code_text}") from None
+        refused = {}
+        summary += f" · 종료(QUIT) 응답 비정상 ({code_text}), 받은 편지함 확인 필요"
     except (OSError, ssl.SSLError) as error:
-        raise SendError(f"SMTP 연결 실패: {type(error).__name__} (서버명·포트·네트워크 확인)") from None
+        raise SendError(f"SMTP 연결 실패: {stage} 단계, {type(error).__name__} (서버명·포트·네트워크 확인)") from None
     if refused:
         raise SendError("수신 서버가 TEST 주소를 거부했습니다.")
     return "발송 완료 1회: " + summary
