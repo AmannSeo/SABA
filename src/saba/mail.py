@@ -5,6 +5,8 @@ from email.policy import SMTP
 from pathlib import Path
 import re
 
+from css_inline import CSSInliner
+
 ROOT = Path(__file__).resolve().parents[2]
 CSS_PATH = ROOT / "SAMPLE/Codex/v09/style_review_v9.css"
 LOGO_PATH = ROOT / "SAMPLE/Codex/v09/LOGO.png"
@@ -12,6 +14,9 @@ SIGNATURE_PATH = ROOT / "templates/email_signature.html"
 SIGNATURE_IMAGE_PATH = ROOT / "sign/sign_img.jpg"
 LOGO_CID = "saba-logo"
 SIGNATURE_CID = "saba-signature"
+
+
+INLINER = CSSInliner(keep_at_rules=True, load_remote_stylesheets=False)
 
 
 class MailFormatError(ValueError):
@@ -37,14 +42,15 @@ def signature_body() -> str:
 def to_mail_html(newsletter_html: str) -> str:
     """외부 CSS를 style 블록으로 포함하고 로고·서명을 CID 이미지로 바꾼다. 보기 전환은 script 없는 CSS 방식이라 그대로 둔다 (D-036).
 
-    ponytail: CSS는 style 블록 포함까지만 한다. Outlook 데스크톱 등 style 블록을 일부 무시하는
-    메일 앱 대응(완전 inline style)은 실제 표시 확인 후 필요하면 별도 승인으로 추가한다.
+    한비로메일 웹메일은 style 블록을 지우므로 마지막에 CSS 를 각 요소 style 속성으로 옮긴다 (D-052).
+    @media 규칙은 style 블록에 남기고, :checked 같은 가상 선택자는 inline 할 수 없어 메일에서는 간략 보기가 기본이다.
     """
     css = CSS_PATH.read_text(encoding="utf-8")
     html = _replace_once(newsletter_html, r'<link href="[^"]*" rel="stylesheet"/>', f"<style>\n{css}\n</style>", "외부 CSS")
     html = _replace_once(html, r'<img class="header-logo" src="[^"]*"', f'<img class="header-logo" src="cid:{LOGO_CID}"', "로고")
     # 서명은 뉴스레터 폭(main) 안에 두고 가운데 정렬한다 (D-033).
-    return _replace_once(html, r"</main>", f'<div class="mail-signature">{signature_body()}</div>\n</main>', "본문 끝")
+    html = _replace_once(html, r"</main>", f'<div class="mail-signature">{signature_body()}</div>\n</main>', "본문 끝")
+    return INLINER.inline(html)
 
 
 def build_message(mail_html: str, subject: str) -> EmailMessage:

@@ -49,17 +49,22 @@ class MailTests(unittest.TestCase):
         self.newsletter = build_newsletter_html(views, today="2026년 10월 7일 수요일")
         self.html = to_mail_html(self.newsletter)
 
-    def test_external_css_and_script_removed_and_css_embedded(self):
+    def test_css_inlined_and_only_at_rules_kept_in_style_block(self):
+        # 한비로메일 웹메일은 style 블록을 지우므로 CSS 는 각 요소 style 속성으로 옮긴다 (D-052).
         self.assertNotIn("<link", self.html)
         self.assertNotIn("<script", self.html)
-        self.assertIn((ROOT / "SAMPLE/Codex/v09/style_review_v9.css").read_text(encoding="utf-8")[:200], self.html)
+        self.assertRegex(self.html, r'<main class="newsletter" style="[^"]*max-width: 780px')
+        self.assertRegex(self.html, r'<article class="news-card"[^>]*style="[^"]*border: 1px solid #e5e7eb')
+        blocks = re.findall(r"<style[^>]*>(.*?)</style>", self.html, re.S)
+        self.assertTrue(blocks)
+        self.assertTrue(all(block.strip().startswith("@") for block in blocks))  # @media 등 inline 불가 규칙만
 
-    def test_css_view_switch_kept_without_script(self):
+    def test_brief_summary_shown_detail_hidden_without_script(self):
         content = body(self.html)
         self.assertNotIn("<script", content)
-        for kept in ('id="brief-view-summary" checked', 'for="brief-view-detail"', 'class="brief-summary-view"', 'class="brief-detail-view"'):
-            self.assertIn(kept, content)
-        self.assertIn("#brief-view-detail:checked ~ .brief-detail-view", self.html)
+        self.assertRegex(content, r'<div class="brief-detail-view" style="[^"]*display: none')
+        self.assertNotRegex(content, r'<div class="brief-summary-view" style="[^"]*display: none')
+        self.assertIn("간략 보기", content)
 
     def test_browser_preview_uses_image_files(self):
         preview = mail.browser_preview(self.html)
@@ -69,7 +74,7 @@ class MailTests(unittest.TestCase):
             self.assertTrue((ROOT / "output" / path).resolve().exists())
 
     def test_logo_and_signature_use_cid(self):
-        self.assertIn(f'<img class="header-logo" src="cid:{LOGO_CID}"', self.html)
+        self.assertRegex(self.html, rf'<img class="header-logo"[^>]*src="cid:{LOGO_CID}"')
         self.assertIn(f'src="cid:{SIGNATURE_CID}"', self.html)
         self.assertNotIn("../SAMPLE", body(self.html))
         self.assertNotIn("sign_img.jpg", body(self.html))
@@ -79,8 +84,9 @@ class MailTests(unittest.TestCase):
 
     def test_signature_inside_newsletter_width(self):
         content = body(self.html)
-        self.assertLess(content.index('<div class="mail-signature">'), content.index("</main>"))
-        self.assertIn(".mail-signature .signature-table", self.html)
+        start = re.search(r'<div class="mail-signature"', content).start()
+        self.assertLess(start, content.index("</main>"))
+        self.assertRegex(content, r'<table class="signature-table"[^>]*style="[^"]*margin: 0 auto')
 
     def test_signature_text_matches_original(self):
         original = visible_text((ROOT / "sign/sign.html").read_text(encoding="utf-8"))
