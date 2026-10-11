@@ -76,6 +76,15 @@ class MailTests(unittest.TestCase):
             self.assertIn(f'<strong>{view.title}</strong>', self.html)
         self.assertIn('font-weight: 700;line-height: 1.5"><strong>', self.html)
 
+    def test_brief_summary_then_detail(self):
+        # 버튼 전환 대신 간략 보기 아래에 자세히 보기를 이어서 표시한다 (D-055).
+        summary, detail = self.html.index("<strong>간략 보기</strong>"), self.html.index("<strong>자세히 보기</strong>")
+        self.assertLess(summary, detail)
+        self.assertLess(detail, self.html.index("부서별 주요 이슈"))
+        brief = self.html[detail:self.html.index("부서별 주요 이슈")]
+        for view in self.views:
+            self.assertIn(f'href="{view.url}"', brief.replace("&amp;", "&"))
+
     def test_sample_views_rejected(self):
         sample = build_article_view(validate_articles(copy.deepcopy(ARTICLES))[0], preview_sample={"implications": ["가상"]})
         with self.assertRaises(ValueError):

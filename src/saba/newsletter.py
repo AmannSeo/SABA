@@ -466,6 +466,24 @@ def _mail_brief_rows(groups: dict[str, list[ArticleView]]) -> str:
     return "\n".join(rows) or '<tr><td style="padding:11px 0;color:#9ca3af;font-size:13px;">수집된 기사가 없습니다.</td></tr>'
 
 
+def _mail_brief_detail(groups: dict[str, list[ArticleView]]) -> str:
+    # 분야별 기사 제목(원문 링크) + AI 요약 첫 문장. 웹메일은 메일 안 이동 링크를 바꾸므로 원문으로 연결한다.
+    blocks = []
+    for key, (label, icon, _css) in _BRIEF_GROUP_META.items():
+        if not groups[key]:
+            continue
+        items = "".join(
+            f'<tr><td style="padding:7px 0 7px 4px;border-bottom:1px solid #f0f1f3;font-size:13px;line-height:1.6;">'
+            f'<a href="{_safe_escape(view.url)}" target="_blank" style="color:#111827;font-weight:700;text-decoration:none;">'
+            f'<strong>{_safe_escape(view.title)}</strong></a><br/>'
+            f'<span style="color:#6b7280;">{_safe_escape(_first_sentence(view.summary) if view.has_full_analysis and view.summary else view.source_name)}</span>'
+            f'</td></tr>'
+            for view in groups[key])
+        blocks.append(f'<table {_TABLE} style="margin-bottom:14px;"><tr><td style="padding:6px 0;border-bottom:2px solid #e5e7eb;'
+                      f'color:#374151;font-size:13px;font-weight:700;"><strong>{icon} {label}</strong></td></tr>{items}</table>')
+    return "\n".join(blocks) or '<p style="margin:0;color:#9ca3af;font-size:13px;">수집된 기사가 없습니다.</p>'
+
+
 def _mail_department_card(name: str, icon: str, css_class: str, views: list[ArticleView],
                           anchors: dict[str, str]) -> str:
     assigned = [view for view in views if name in _connections(view)][:3]
@@ -564,6 +582,7 @@ def build_mail_html(views: list[ArticleView], *, today: Optional[str] = None, lo
     return template.read_text(encoding="utf-8").format(
         logo_src=_safe_escape(logo_src), today_display=_safe_escape(_format_today_display(today)),
         article_count=len(safe_views), brief_rows=_mail_brief_rows(brief_groups),
+        brief_detail=_mail_brief_detail(brief_groups),
         department_cards=_mail_departments(safe_views, anchors), deep_news=_mail_deep_news(deep_groups, anchors),
         signature=signature,
     )
