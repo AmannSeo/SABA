@@ -19,7 +19,6 @@ def message(**headers):
 
 def factory():
     server = MagicMock()
-    server.__enter__.return_value = server
     server.send_message.return_value = {}
     return MagicMock(return_value=server), server
 
@@ -97,12 +96,29 @@ class SendMailTests(unittest.TestCase):
 
     def test_quit_error_after_send_reported_as_sent_with_warning(self):
         make, server = factory()
-        server.__exit__.side_effect = smtplib.SMTPResponseException(451, b"fictional-user")
+        server.quit.side_effect = smtplib.SMTPResponseException(451, b"fictional-user")
         result = send_test(message(), send=True, env=ENV, smtp_factory=make)
         server.send_message.assert_called_once()
         self.assertIn("발송 완료 1회", result)
         self.assertIn("종료(QUIT) 응답 비정상 (응답 코드 451)", result)
         self.assertNotIn("fictional-user", result)
+
+    def test_quit_error_does_not_hide_send_error(self):
+        # 실제 사례: 발송 오류 뒤 QUIT 이 250 으로 응답해 원래 오류가 가려졌다 (D-047).
+        make, server = factory()
+        server.send_message.side_effect = smtplib.SMTPDataError(552, b"too big FAKE-SECRET-PW-0000")
+        server.quit.side_effect = smtplib.SMTPResponseException(250, b"ok")
+        with self.assertRaises(SendError) as caught:
+            send_test(message(), send=True, env=ENV, smtp_factory=make)
+        self.assertIn("발송 단계, SMTPDataError, 응답 코드 552", str(caught.exception))
+        self.assertNotIn("FAKE-SECRET", str(caught.exception))
+        server.quit.assert_called_once()
+        server.close.assert_called_once()
+
+    def test_connection_closed_after_success(self):
+        make, server = factory()
+        send_test(message(), send=True, env=ENV, smtp_factory=make)
+        server.quit.assert_called_once()
 
     def test_refused_recipient_reported(self):
         make, server = factory()
