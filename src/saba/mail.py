@@ -50,7 +50,31 @@ def to_mail_html(newsletter_html: str) -> str:
     html = _replace_once(html, r'<img class="header-logo" src="[^"]*"', f'<img class="header-logo" src="cid:{LOGO_CID}"', "로고")
     # 서명은 뉴스레터 폭(main) 안에 두고 가운데 정렬한다 (D-033).
     html = _replace_once(html, r"</main>", f'<div class="mail-signature">{signature_body()}</div>\n</main>', "본문 끝")
-    return INLINER.inline(html)
+    return flatten_layout(INLINER.inline(html))
+
+
+# 웹메일이 flex·grid 배치를 지원하지 않아 모든 영역이 깨졌다. 세로 1열로 바꾼다 (D-053).
+# ponytail: 가로 배치(로고·제목, 2열 카드, 출처 행) 는 세로가 된다. 원래 모양이 필요하면 메일 전용 table 템플릿.
+_LAYOUT_PROPS = re.compile(r"^(gap|row-gap|column-gap|grid(-.*)?|flex(-.*)?|align-(items|content|self)"
+                           r"|justify-(content|items|self)|place-.*|order)$")
+
+
+def _flat_style(match: re.Match) -> str:
+    kept = []
+    for declaration in match.group(1).split(";"):
+        name, _, value = declaration.partition(":")
+        name, value = name.strip().lower(), value.strip()
+        if not name or _LAYOUT_PROPS.match(name):
+            continue
+        if name == "display":
+            value = {"flex": "block", "grid": "block", "inline-flex": "inline-block",
+                     "inline-grid": "inline-block"}.get(value, value)
+        kept.append(f"{name}: {value}")
+    return f'style="{";".join(kept)}"'
+
+
+def flatten_layout(html: str) -> str:
+    return re.sub(r'style="([^"]*)"', _flat_style, html)
 
 
 def build_message(mail_html: str, subject: str) -> EmailMessage:

@@ -59,6 +59,15 @@ class MailTests(unittest.TestCase):
         self.assertTrue(blocks)
         self.assertTrue(all(block.strip().startswith("@") for block in blocks))  # @media 등 inline 불가 규칙만
 
+    def test_layout_flattened_to_single_column(self):
+        # 웹메일이 flex·grid 를 지원하지 않아 세로 1열로 바꾼다 (D-053).
+        styles = " ".join(re.findall(r'style="([^"]*)"', body(self.html)))
+        for banned in ("display: flex", "display: grid", "display: inline-flex", "gap:", "grid-template", "justify-content"):
+            self.assertNotIn(banned, styles)
+        self.assertIn("display: block", styles)
+        self.assertEqual(mail.flatten_layout('<p style="display: inline-flex;gap: 4px;color: red">'),
+                         '<p style="display: inline-block;color: red">')
+
     def test_brief_summary_shown_detail_hidden_without_script(self):
         content = body(self.html)
         self.assertNotIn("<script", content)
