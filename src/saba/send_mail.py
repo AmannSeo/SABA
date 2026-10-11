@@ -95,9 +95,12 @@ def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, st
         trace = trace_codes(server)
         stage = "로그인"
         ehlo_code = server.ehlo()[0]
-        auth_code = server.login(env[ENV_USER].strip(), env[ENV_PASSWORD])[0]
-        # smtplib 은 AUTH 응답 503("이미 인증됨")도 성공으로 본다. 실제 사례에서 이후 MAIL FROM 이 503 으로
-        # 거부돼 인증이 끝나지 않았던 것으로 보이므로 235 만 인증 성공으로 인정한다 (D-048).
+        # login() 의 자동 선택(CRAM-MD5 → PLAIN → LOGIN) 은 쓰지 않는다. 실제 서버가 CRAM-MD5 에 비정상 응답을
+        # 보내 이후 응답이 한 칸씩 밀렸다 (응답 순서 EHLO 250 AUTH 334 데이터 -1 AUTH 535 AUTH 235 MAIL 503, D-050).
+        # PLAIN 한 가지만 쓴다. 연결이 처음부터 SSL/TLS 라 PLAIN 도 암호화된 채로 전달된다.
+        server.user, server.password = env[ENV_USER].strip(), env[ENV_PASSWORD]
+        auth_code = server.auth("PLAIN", server.auth_plain)[0]
+        # smtplib 은 AUTH 응답 503("이미 인증됨")도 성공으로 본다. 235 만 인증 성공으로 인정한다 (D-048).
         if auth_code != 235:
             raise SendError(f"SMTP 인증 미완료: EHLO 응답 코드 {ehlo_code}, AUTH 응답 코드 {auth_code}"
                             f" (지원 인증 방식 {server.esmtp_features.get('auth', '없음').split()})")

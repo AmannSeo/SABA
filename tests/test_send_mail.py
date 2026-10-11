@@ -21,7 +21,7 @@ def factory():
     server = MagicMock()
     server.send_message.return_value = {}
     server.ehlo.return_value = (250, b"ok")
-    server.login.return_value = (235, b"ok")
+    server.auth.return_value = (235, b"ok")
     server.esmtp_features = {"auth": "LOGIN PLAIN"}
     return MagicMock(return_value=server), server
 
@@ -44,7 +44,9 @@ class SendMailTests(unittest.TestCase):
         args, kwargs = make.call_args
         self.assertEqual(args, ("smtp.fictional.invalid", PORT))
         self.assertIn("context", kwargs)
-        server.login.assert_called_once_with("fictional-user", "FAKE-SECRET-PW-0000")
+        server.auth.assert_called_once_with("PLAIN", server.auth_plain)  # 자동 선택 대신 PLAIN 만 (D-050)
+        server.login.assert_not_called()
+        self.assertEqual((server.user, server.password), ("fictional-user", "FAKE-SECRET-PW-0000"))
         server.send_message.assert_called_once()
         self.assertEqual(server.send_message.call_args.kwargs["to_addrs"], [TEST_ADDRESS])
         self.assertEqual((sent["From"], sent["To"]), (TEST_ADDRESS, TEST_ADDRESS))
@@ -74,7 +76,7 @@ class SendMailTests(unittest.TestCase):
         for error, expected in cases:
             with self.subTest(expected=expected):
                 make, server = factory()
-                server.login.side_effect = error
+                server.auth.side_effect = error
                 with self.assertRaises(SendError) as caught:
                     send_test(message(), send=True, env=ENV, smtp_factory=make)
                 self.assertIn(expected, str(caught.exception))
@@ -83,7 +85,7 @@ class SendMailTests(unittest.TestCase):
                 self.assertEqual(make.call_count, 1)
 
     def test_response_error_reports_stage_and_code_only(self):
-        for stage, method in (("로그인", "login"), ("발송", "send_message")):
+        for stage, method in (("로그인", "auth"), ("발송", "send_message")):
             with self.subTest(stage=stage):
                 make, server = factory()
                 getattr(server, method).side_effect = smtplib.SMTPResponseException(
@@ -126,7 +128,7 @@ class SendMailTests(unittest.TestCase):
     def test_auth_503_not_treated_as_login_success(self):
         # 실제 사례: AUTH 503 을 smtplib 이 성공으로 보고, 이후 MAIL FROM 이 503 으로 거부됐다 (D-048).
         make, server = factory()
-        server.login.return_value = (503, b"fictional-user FAKE-SECRET-PW-0000")
+        server.auth.return_value = (503, b"fictional-user FAKE-SECRET-PW-0000")
         with self.assertRaises(SendError) as caught:
             send_test(message(), send=True, env=ENV, smtp_factory=make)
         text = str(caught.exception)
