@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:20px;font-family:'Malgun Gothic',Arial,sans-serif;color:#1f2937;font-size:14px;">
+<h2 style="font-weight:700;">SABA 메일 기능 진단 (번호별로 동작 여부를 알려 주세요)</h2>
+<div style="margin:0 0 16px;padding:12px 14px;border:1px solid #e5e7eb;"><p style="margin:0 0 6px;font-weight:700;">T1. 접기·펼치기 (details 하나)</p>
+<details><summary>간략 보기 · 눌러서 자세히 보기 펼치기</summary><p>T1 자세히 보기 내용입니다. 이 문장이 펼쳐질 때만 보이면 T1 동작.</p></details></div>
+<div style="margin:0 0 16px;padding:12px 14px;border:1px solid #e5e7eb;"><p style="margin:0 0 6px;font-weight:700;">T2. 간략 펼침 + 자세히 접힘 (details 두 개)</p>
+<details open><summary>간략 보기</summary><p>T2 간략 보기 내용 (처음부터 보임).</p></details>
+<details><summary>자세히 보기</summary><p>T2 자세히 보기 내용 (눌렀을 때만 보이면 동작).</p></details></div>
+<div style="margin:0 0 16px;padding:12px 14px;border:1px solid #e5e7eb;"><p style="margin:0 0 6px;font-weight:700;">T3. 라디오 버튼 (style 없음)</p>
+<input type="radio" name="t3" id="t3a" checked/><label for="t3a">간략 보기</label>
+<input type="radio" name="t3" id="t3b"/><label for="t3b">자세히 보기</label>
+<p>T3: 라디오 버튼이 보이고 눌러서 선택이 바뀌는지만 알려 주세요.</p></div>
+<div style="margin:0 0 16px;padding:12px 14px;border:1px solid #e5e7eb;"><p style="margin:0 0 6px;font-weight:700;">이동 링크</p>
+<p>L1. <a href="#diag-id-target">id 방식으로 아래 목적지 L1 로 이동</a></p>
+<p>L2. <a href="#diag-name-target">name 방식으로 아래 목적지 L2 로 이동</a></p>
+<p>L3. <a href="https://www.boho.or.kr/" target="_blank">기사 원문 링크 (새 창으로 외부 사이트)</a></p></div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="1400" style="height:1400px;background:#f9fafb;border:1px dashed #d1d5db;color:#9ca3af;font-size:12px;text-align:center;">(여기는 빈 공간입니다. 링크를 누르면 이 아래 목적지로 이동해야 합니다)</td></tr></table>
+<div id="diag-id-target" style="padding:16px;border:2px solid #2563eb;"><strong>목적지 L1 (id)</strong> · L1 을 눌렀을 때 이 상자로 이동하면 L1 동작.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="1400" style="height:1400px;background:#f9fafb;border:1px dashed #d1d5db;color:#9ca3af;font-size:12px;text-align:center;">(여기는 빈 공간입니다. 링크를 누르면 이 아래 목적지로 이동해야 합니다)</td></tr></table>
+<a name="diag-name-target"></a><div style="padding:16px;border:2px solid #16a34a;"><strong>목적지 L2 (name)</strong> · L2 를 눌렀을 때 이 상자로 이동하면 L2 동작.</div>
+</body></html>

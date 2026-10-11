@@ -69,30 +69,24 @@ class MailTests(unittest.TestCase):
             self.assertIn(f'name="news-', self.html)
         self.assertEqual(self.html.count("💡 시사점"), len(self.views))
 
-    def test_in_mail_links_buttons_and_bold_titles(self):
-        # 관련 뉴스 보기·자세히 보기 링크는 샘플 의도대로 메일 안 해당 기사로 이동한다 (D-056).
-        anchors = set(re.findall(r'href="#(news-[a-z]+-\d+)"', self.html))
-        self.assertTrue(anchors)
-        for anchor in anchors:
-            self.assertIn(f'name="{anchor}"', self.html)
-        # 부서 카드 버튼은 샘플처럼 테두리 버튼 (fixture 기사에는 부서 연결이 없어 함수로 직접 확인).
+    def test_external_links_only_and_bold_titles(self):
+        # 한비로메일은 메일 안 이동 링크를 막고 외부 링크만 동작한다 (D-057 진단). 버튼은 기사 원문으로 연결 (D-058).
+        self.assertNotIn('href="#', self.html)
         from saba.newsletter import _mail_department_card
         view = self.views[0]
         view.ai_connections = {"보안사업팀": "가상 연결"}
         card = _mail_department_card("보안사업팀", "🛡️", "security-team", [view], {view.article_id: "news-other-1"})
-        self.assertRegex(card, r'<a href="#news-other-1" style="[^"]*border:1px solid #d1d5db[^"]*">관련 뉴스 보기 →</a>')
+        url = view.url.replace("&", "&amp;")
+        self.assertRegex(card, rf'<a href="{re.escape(url)}" target="_blank" style="[^"]*border:1px solid #d1d5db[^"]*">기사 원문 보기 →</a>')
         for view in self.views:
             self.assertIn(f'<strong>{view.title}</strong>', self.html)
 
-    def test_brief_summary_then_detail_like_sample(self):
-        # 간략 보기 아래에 자세히 보기를 이어서 표시하고, 제목은 샘플 전환 버튼 모양 (D-055, D-056).
-        summary, detail = self.html.index("<strong>간략 보기</strong>"), self.html.index("<strong>자세히 보기</strong>")
-        self.assertLess(summary, detail)
-        self.assertLess(detail, self.html.index("부서별 주요 이슈"))
-        brief = self.html[detail:self.html.index("부서별 주요 이슈")]
-        self.assertIn("<ul", brief)
-        self.assertEqual(brief.count("<li"), len(self.views))
-        self.assertIn("color: #2563eb;text-decoration: underline", brief)
+    def test_brief_summary_only(self):
+        # 접기·전환이 동작하지 않아 간략 보기만 표시한다 (D-058).
+        brief = self.html[self.html.index("오늘의 브리핑"):self.html.index("부서별 주요 이슈")]
+        self.assertNotIn("자세히 보기", brief)
+        self.assertNotIn("<ul", brief)
+        self.assertIn('width="118"', brief)
 
     def test_sample_views_rejected(self):
         sample = build_article_view(validate_articles(copy.deepcopy(ARTICLES))[0], preview_sample={"implications": ["가상"]})
