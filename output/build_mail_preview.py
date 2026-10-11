@@ -7,7 +7,6 @@ from pathlib import Path
 from saba.analysis_storage import DEFAULT_ANALYSIS_DB
 from saba.briefing import build_views
 from saba.mail import browser_preview, build_message, to_mail_html
-from saba.newsletter import build_newsletter_html
 from saba.storage import DEFAULT_DB
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +30,7 @@ def main() -> int:
                                           **({"max_new_calls": 0} if args.reuse_only else {}))
     local = now.astimezone()
     today = f"{local.year}년 {local.month}월 {local.day}일 {WEEKDAYS[local.weekday()]}요일"
-    html = to_mail_html(build_newsletter_html(views, today=today))
+    html = to_mail_html(views, today=today)
     HTML_OUTPUT.write_text(browser_preview(html), encoding="utf-8")
     message = build_message(html, f"[TEST] Security & AI Briefing · {today}")
     EML_OUTPUT.write_bytes(message.as_bytes())

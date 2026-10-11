@@ -1,4 +1,4 @@
-"""Newsletter를 메일 앱 호환 HTML과 .eml 메시지로 변환한다 (D-031, D-032). 발송 기능은 없다."""
+"""Newsletter를 메일 앱 호환 HTML과 .eml 메시지로 만든다 (D-031, D-032, D-054). 발송 기능은 없다."""
 
 from email.message import EmailMessage
 from email.policy import SMTP
@@ -7,8 +7,9 @@ import re
 
 from css_inline import CSSInliner
 
+from saba.newsletter import ArticleView, build_mail_html
+
 ROOT = Path(__file__).resolve().parents[2]
-CSS_PATH = ROOT / "SAMPLE/Codex/v09/style_review_v9.css"
 LOGO_PATH = ROOT / "SAMPLE/Codex/v09/LOGO.png"
 SIGNATURE_PATH = ROOT / "templates/email_signature.html"
 SIGNATURE_IMAGE_PATH = ROOT / "sign/sign_img.jpg"
@@ -20,14 +21,7 @@ INLINER = CSSInliner(keep_at_rules=True, load_remote_stylesheets=False)
 
 
 class MailFormatError(ValueError):
-    """Newsletter HTML 구조가 변환 전제와 다르다."""
-
-
-def _replace_once(text: str, pattern: str, replacement: str, label: str) -> str:
-    result, count = re.subn(pattern, lambda _: replacement, text, count=1, flags=re.S)
-    if count != 1:
-        raise MailFormatError(f"메일 변환 대상 {label}을 찾지 못했습니다.")
-    return result
+    """메일 서명 Template 구조가 변환 전제와 다르다."""
 
 
 def signature_body() -> str:
@@ -39,17 +33,13 @@ def signature_body() -> str:
     return style.group(0) + body.group(1)
 
 
-def to_mail_html(newsletter_html: str) -> str:
-    """외부 CSS를 style 블록으로 포함하고 로고·서명을 CID 이미지로 바꾼다. 보기 전환은 script 없는 CSS 방식이라 그대로 둔다 (D-036).
+def to_mail_html(views: list[ArticleView], *, today: str | None = None) -> str:
+    """메일 전용 table 템플릿으로 만든다 (D-054). 로고·서명은 CID 이미지.
 
-    한비로메일 웹메일은 style 블록을 지우므로 마지막에 CSS 를 각 요소 style 속성으로 옮긴다 (D-052).
-    @media 규칙은 style 블록에 남기고, :checked 같은 가상 선택자는 inline 할 수 없어 메일에서는 간략 보기가 기본이다.
+    한비로메일 웹메일은 style 블록을 지우므로 서명 CSS 도 각 요소 style 속성으로 옮기고 (D-052),
+    남은 flex·grid 배치는 세로 배치로 바꾼다 (D-053). 템플릿 자체는 table 배치라 영향이 없다.
     """
-    css = CSS_PATH.read_text(encoding="utf-8")
-    html = _replace_once(newsletter_html, r'<link href="[^"]*" rel="stylesheet"/>', f"<style>\n{css}\n</style>", "외부 CSS")
-    html = _replace_once(html, r'<img class="header-logo" src="[^"]*"', f'<img class="header-logo" src="cid:{LOGO_CID}"', "로고")
-    # 서명은 뉴스레터 폭(main) 안에 두고 가운데 정렬한다 (D-033).
-    html = _replace_once(html, r"</main>", f'<div class="mail-signature">{signature_body()}</div>\n</main>', "본문 끝")
+    html = build_mail_html(views, today=today, logo_src=f"cid:{LOGO_CID}", signature=signature_body())
     return flatten_layout(INLINER.inline(html))
 
 

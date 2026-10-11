@@ -9,8 +9,8 @@ import unittest
 from unittest.mock import patch
 
 import saba.mail as mail
-from saba.mail import LOGO_CID, SIGNATURE_CID, MailFormatError, build_message, to_mail_html
-from saba.newsletter import build_article_view, build_newsletter_html
+from saba.mail import LOGO_CID, SIGNATURE_CID, build_message, to_mail_html
+from saba.newsletter import build_article_view
 from saba.schema import validate_articles
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,35 +45,34 @@ def body(html: str) -> str:
 
 class MailTests(unittest.TestCase):
     def setUp(self):
-        views = [build_article_view(a) for a in validate_articles(copy.deepcopy(ARTICLES))]
-        self.newsletter = build_newsletter_html(views, today="2026년 10월 7일 수요일")
-        self.html = to_mail_html(self.newsletter)
+        self.views = [build_article_view(a) for a in validate_articles(copy.deepcopy(ARTICLES))]
+        self.html = to_mail_html(self.views, today="2026년 10월 7일 수요일")
 
-    def test_css_inlined_and_only_at_rules_kept_in_style_block(self):
-        # 한비로메일 웹메일은 style 블록을 지우므로 CSS 는 각 요소 style 속성으로 옮긴다 (D-052).
+    def test_table_layout_without_style_blocks_or_flex(self):
+        # 메일 전용 table 템플릿 (D-054): style 블록·flex·grid 없이 640px table 배치와 HTML 속성을 쓴다.
         self.assertNotIn("<link", self.html)
         self.assertNotIn("<script", self.html)
-        self.assertRegex(self.html, r'<main class="newsletter" style="[^"]*max-width: 780px')
-        self.assertRegex(self.html, r'<article class="news-card"[^>]*style="[^"]*border: 1px solid #e5e7eb')
-        blocks = re.findall(r"<style[^>]*>(.*?)</style>", self.html, re.S)
-        self.assertTrue(blocks)
-        self.assertTrue(all(block.strip().startswith("@") for block in blocks))  # @media 등 inline 불가 규칙만
-
-    def test_layout_flattened_to_single_column(self):
-        # 웹메일이 flex·grid 를 지원하지 않아 세로 1열로 바꾼다 (D-053).
-        styles = " ".join(re.findall(r'style="([^"]*)"', body(self.html)))
-        for banned in ("display: flex", "display: grid", "display: inline-flex", "gap:", "grid-template", "justify-content"):
+        self.assertNotIn("<style", self.html)
+        self.assertIn('<table role="presentation" width="640"', self.html)
+        self.assertIn('bgcolor="#111827"', self.html)  # 푸터 (style 무시 앱 대비 HTML 속성)
+        styles = " ".join(re.findall(r'style="([^"]*)"', self.html))
+        for banned in ("display: flex", "display:flex", "display: grid", "display:grid", "gap:", "grid-template"):
             self.assertNotIn(banned, styles)
-        self.assertIn("display: block", styles)
         self.assertEqual(mail.flatten_layout('<p style="display: inline-flex;gap: 4px;color: red">'),
                          '<p style="display: inline-block;color: red">')
 
-    def test_brief_summary_shown_detail_hidden_without_script(self):
-        content = body(self.html)
-        self.assertNotIn("<script", content)
-        self.assertRegex(content, r'<div class="brief-detail-view" style="[^"]*display: none')
-        self.assertNotRegex(content, r'<div class="brief-summary-view" style="[^"]*display: none')
-        self.assertIn("간략 보기", content)
+    def test_all_sections_and_articles_present(self):
+        for text in ("오늘의 브리핑", "부서별 주요 이슈", "보안 심층 뉴스", "오늘의 보안 습관", "선정 기준", "업무 범위 확인 중입니다."):
+            self.assertIn(text, self.html)
+        for view in self.views:
+            self.assertIn(view.title, visible_text(self.html))
+            self.assertIn(f'name="news-', self.html)
+        self.assertEqual(self.html.count("💡 시사점"), len(self.views))
+
+    def test_sample_views_rejected(self):
+        sample = build_article_view(validate_articles(copy.deepcopy(ARTICLES))[0], preview_sample={"implications": ["가상"]})
+        with self.assertRaises(ValueError):
+            to_mail_html([sample])
 
     def test_browser_preview_uses_image_files(self):
         preview = mail.browser_preview(self.html)
@@ -83,19 +82,15 @@ class MailTests(unittest.TestCase):
             self.assertTrue((ROOT / "output" / path).resolve().exists())
 
     def test_logo_and_signature_use_cid(self):
-        self.assertRegex(self.html, rf'<img class="header-logo"[^>]*src="cid:{LOGO_CID}"')
+        self.assertRegex(self.html, rf'<img[^>]*src="cid:{LOGO_CID}"[^>]*alt="TBELL SECURITY"')
         self.assertIn(f'src="cid:{SIGNATURE_CID}"', self.html)
         self.assertNotIn("../SAMPLE", body(self.html))
         self.assertNotIn("sign_img.jpg", body(self.html))
 
-    def test_newsletter_text_preserved(self):
-        self.assertIn(visible_text(self.newsletter), visible_text(self.html))
-
-    def test_signature_inside_newsletter_width(self):
-        content = body(self.html)
-        start = re.search(r'<div class="mail-signature"', content).start()
-        self.assertLess(start, content.index("</main>"))
-        self.assertRegex(content, r'<table class="signature-table"[^>]*style="[^"]*margin: 0 auto')
+    def test_signature_after_footer_and_centered(self):
+        self.assertLess(self.html.index("Security · AI · Technology Daily Briefing"), self.html.index("signature-table"))
+        # 서명 원본 표가 640px 본문보다 넓어 본문 표 바깥(아래)에 가운데 정렬한다.
+        self.assertRegex(self.html, r'</table>\s*</td></tr>\s*<!-- SIGNATURE[^>]*-->\s*<tr><td align="center"')
 
     def test_signature_text_matches_original(self):
         original = visible_text((ROOT / "sign/sign.html").read_text(encoding="utf-8"))
@@ -108,10 +103,6 @@ class MailTests(unittest.TestCase):
     def test_signature_css_matches_original(self):
         template = (ROOT / "templates/email_signature.html").read_text(encoding="utf-8")
         self.assertIn((ROOT / "sign/sign.css").read_text(encoding="utf-8"), template)
-
-    def test_unexpected_structure_rejected(self):
-        with self.assertRaises(MailFormatError):
-            to_mail_html("<html><body>no template</body></html>")
 
     def test_eml_structure_and_no_recipients(self):
         message = build_message(self.html, "[TEST] Security & AI Briefing")
@@ -129,7 +120,7 @@ class MailTests(unittest.TestCase):
         self.assertFalse(any(name in dir(mail) for name in ("smtplib", "send", "send_message")))
         with patch("socket.socket.connect", side_effect=AssertionError("네트워크 금지")), \
                 patch("smtplib.SMTP", side_effect=AssertionError("발송 금지")):
-            build_message(to_mail_html(self.newsletter), "TEST").as_bytes()
+            build_message(to_mail_html(self.views), "TEST").as_bytes()
 
 
 if __name__ == "__main__":
