@@ -466,35 +466,44 @@ def _mail_brief_rows(groups: dict[str, list[ArticleView]]) -> str:
     return "\n".join(rows) or '<tr><td style="padding:11px 0;color:#9ca3af;font-size:13px;">수집된 기사가 없습니다.</td></tr>'
 
 
-def _mail_brief_detail(groups: dict[str, list[ArticleView]]) -> str:
-    # 분야별 기사 제목(원문 링크) + AI 요약 첫 문장. 웹메일은 메일 안 이동 링크를 바꾸므로 원문으로 연결한다.
+_BRIEF_HEADING_COLORS = {"schedule": "#e11d48", "hot": "#ef4444", "market": "#059669", "security": "#dc2626",
+                         "company": "#7c3aed", "tech": "#4f46e5", "economy": "#0284c7"}
+
+
+def _mail_brief_detail(groups: dict[str, list[ArticleView]], anchors: dict[str, str]) -> str:
+    # 샘플 자세히 보기: 분야별 색 제목 + 글머리표 목록, 기사 제목은 메일 안 해당 기사로 이동하는 파란 밑줄 링크 (D-056).
     blocks = []
-    for key, (label, icon, _css) in _BRIEF_GROUP_META.items():
+    for key, (label, icon, css) in _BRIEF_GROUP_META.items():
         if not groups[key]:
             continue
         items = "".join(
-            f'<tr><td style="padding:7px 0 7px 4px;border-bottom:1px solid #f0f1f3;font-size:13px;line-height:1.6;">'
-            f'<a href="{_safe_escape(view.url)}" target="_blank" style="color:#111827;font-weight:700;text-decoration:none;">'
-            f'<strong>{_safe_escape(view.title)}</strong></a><br/>'
-            f'<span style="color:#6b7280;">{_safe_escape(_first_sentence(view.summary) if view.has_full_analysis and view.summary else view.source_name)}</span>'
-            f'</td></tr>'
+            f'<li style="margin:0 0 6px;">'
+            f'<a href="#{_safe_escape(anchors.get(view.article_id, ""))}" style="color:#2563eb;text-decoration:underline;">'
+            f'{_safe_escape(view.title)}</a> '
+            f'{_safe_escape(_first_sentence(view.summary) if view.has_full_analysis and view.summary else view.source_name)}</li>'
             for view in groups[key])
-        blocks.append(f'<table {_TABLE} style="margin-bottom:14px;"><tr><td style="padding:6px 0;border-bottom:2px solid #e5e7eb;'
-                      f'color:#374151;font-size:13px;font-weight:700;"><strong>{icon} {label}</strong></td></tr>{items}</table>')
-    return "\n".join(blocks) or '<p style="margin:0;color:#9ca3af;font-size:13px;">수집된 기사가 없습니다.</p>'
+        blocks.append(f'<tr><td style="padding:20px 2px;border-bottom:1px solid #e5e7eb;">'
+                      f'<p style="margin:0 0 10px;color:{_BRIEF_HEADING_COLORS.get(css, "#111827")};font-size:15px;font-weight:700;">'
+                      f'<span style="font-size:16px;">{icon}</span> <strong>{label}</strong></p>'
+                      f'<ul style="margin:0;padding-left:22px;color:#374151;font-size:14px;line-height:1.8;">{items}</ul></td></tr>')
+    rows = "".join(blocks) or '<tr><td style="padding:14px 2px;color:#9ca3af;font-size:13px;">수집된 기사가 없습니다.</td></tr>'
+    return f'<table {_TABLE} style="margin-top:14px;border-top:1px solid #e5e7eb;">{rows}</table>'
 
 
 def _mail_department_card(name: str, icon: str, css_class: str, views: list[ArticleView],
                           anchors: dict[str, str]) -> str:
     assigned = [view for view in views if name in _connections(view)][:3]
     items = "".join(
-        f'<tr><td style="padding:14px 16px;border-bottom:1px solid #eef0f2;">'
-        f'{_mail_badge(view.category or "미분류")}'
-        f'<span style="color:#9ca3af;font-size:11px;">{_safe_escape(view.date_display)}</span>'
-        f'<p style="margin:6px 0 0;color:#111827;font-size:14px;font-weight:700;line-height:1.5;"><strong>{_safe_escape(view.title)}</strong></p>'
-        f'<p style="margin:6px 0 0;color:#6b7280;font-size:12px;line-height:1.65;">{_safe_escape(_connections(view)[name])}</p>'
-        f'<p style="margin:8px 0 0;font-size:11px;"><span style="color:#9ca3af;">{_safe_escape(view.source_name)}</span>'
-        f' &nbsp;<a href="{_safe_escape(view.url)}" target="_blank" style="color:#374151;font-weight:700;text-decoration:none;">기사 원문 보기 →</a></p>'
+        f'<tr><td style="padding:18px 18px;border-bottom:1px solid #eef0f2;">'
+        f'<table {_TABLE}><tr><td>{_mail_badge(view.category or "미분류")}</td>'
+        f'<td align="right" style="color:#9ca3af;font-size:11px;white-space:nowrap;">{_safe_escape(view.date_display)}</td></tr></table>'
+        f'<p style="margin:6px 0 0;color:#111827;font-size:16px;font-weight:700;line-height:1.5;"><strong>{_safe_escape(view.title)}</strong></p>'
+        f'<p style="margin:7px 0 0;color:#6b7280;font-size:13px;line-height:1.65;">{_safe_escape(_connections(view)[name])}</p>'
+        f'<table {_TABLE} style="margin-top:13px;"><tr>'
+        f'<td style="color:#9ca3af;font-size:11px;">{_safe_escape(view.source_name)}</td>'
+        f'<td align="right"><a href="#{_safe_escape(anchors[view.article_id])}" style="display:inline-block;padding:7px 10px;'
+        f'border:1px solid #d1d5db;border-radius:5px;color:#374151;font-size:12px;font-weight:700;text-decoration:none;'
+        f'white-space:nowrap;">관련 뉴스 보기 →</a></td></tr></table>'
         f'</td></tr>'
         for view in assigned
     ) or (f'<tr><td style="padding:14px 16px;color:#9ca3af;font-size:12px;">'
@@ -573,7 +582,7 @@ def _mail_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, str
 
 
 def build_mail_html(views: list[ArticleView], *, today: Optional[str] = None, logo_src: str, signature: str) -> str:
-    """메일 전용 table 레이아웃 HTML (D-054). 웹 Preview 와 같은 기사 구성을 쓴다. SAMPLE 데이터는 받지 않는다."""
+    """메일 전용 table 레이아웃 HTML (D-054, 780px D-056). 웹 Preview 와 같은 기사 구성을 쓴다. SAMPLE 데이터는 받지 않는다."""
     safe_views = list(views or [])
     if any(view.sample_only for view in safe_views):
         raise ValueError("SAMPLE 데이터는 메일에 쓸 수 없습니다.")
@@ -582,7 +591,7 @@ def build_mail_html(views: list[ArticleView], *, today: Optional[str] = None, lo
     return template.read_text(encoding="utf-8").format(
         logo_src=_safe_escape(logo_src), today_display=_safe_escape(_format_today_display(today)),
         article_count=len(safe_views), brief_rows=_mail_brief_rows(brief_groups),
-        brief_detail=_mail_brief_detail(brief_groups),
+        brief_detail=_mail_brief_detail(brief_groups, anchors),
         department_cards=_mail_departments(safe_views, anchors), deep_news=_mail_deep_news(deep_groups, anchors),
         signature=signature,
     )

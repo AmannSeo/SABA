@@ -53,7 +53,7 @@ class MailTests(unittest.TestCase):
         self.assertNotIn("<link", self.html)
         self.assertNotIn("<script", self.html)
         self.assertNotIn("<style", self.html)
-        self.assertIn('<table role="presentation" width="640"', self.html)
+        self.assertIn('<table role="presentation" width="780"', self.html)  # 샘플 폭 (D-056)
         self.assertIn('bgcolor="#111827"', self.html)  # 푸터 (style 무시 앱 대비 HTML 속성)
         styles = " ".join(re.findall(r'style="([^"]*)"', self.html))
         for banned in ("display: flex", "display:flex", "display: grid", "display:grid", "gap:", "grid-template"):
@@ -69,21 +69,30 @@ class MailTests(unittest.TestCase):
             self.assertIn(f'name="news-', self.html)
         self.assertEqual(self.html.count("💡 시사점"), len(self.views))
 
-    def test_webmail_safe_links_and_bold_titles(self):
-        # 한비로메일은 메일 안 이동 링크(#)를 웹메일 홈으로 바꾸므로 부서 카드 버튼은 기사 원문으로 연결한다.
-        self.assertNotIn('href="#', self.html)
+    def test_in_mail_links_buttons_and_bold_titles(self):
+        # 관련 뉴스 보기·자세히 보기 링크는 샘플 의도대로 메일 안 해당 기사로 이동한다 (D-056).
+        anchors = set(re.findall(r'href="#(news-[a-z]+-\d+)"', self.html))
+        self.assertTrue(anchors)
+        for anchor in anchors:
+            self.assertIn(f'name="{anchor}"', self.html)
+        # 부서 카드 버튼은 샘플처럼 테두리 버튼 (fixture 기사에는 부서 연결이 없어 함수로 직접 확인).
+        from saba.newsletter import _mail_department_card
+        view = self.views[0]
+        view.ai_connections = {"보안사업팀": "가상 연결"}
+        card = _mail_department_card("보안사업팀", "🛡️", "security-team", [view], {view.article_id: "news-other-1"})
+        self.assertRegex(card, r'<a href="#news-other-1" style="[^"]*border:1px solid #d1d5db[^"]*">관련 뉴스 보기 →</a>')
         for view in self.views:
             self.assertIn(f'<strong>{view.title}</strong>', self.html)
-        self.assertIn('font-weight: 700;line-height: 1.5"><strong>', self.html)
 
-    def test_brief_summary_then_detail(self):
-        # 버튼 전환 대신 간략 보기 아래에 자세히 보기를 이어서 표시한다 (D-055).
+    def test_brief_summary_then_detail_like_sample(self):
+        # 간략 보기 아래에 자세히 보기를 이어서 표시하고, 제목은 샘플 전환 버튼 모양 (D-055, D-056).
         summary, detail = self.html.index("<strong>간략 보기</strong>"), self.html.index("<strong>자세히 보기</strong>")
         self.assertLess(summary, detail)
         self.assertLess(detail, self.html.index("부서별 주요 이슈"))
         brief = self.html[detail:self.html.index("부서별 주요 이슈")]
-        for view in self.views:
-            self.assertIn(f'href="{view.url}"', brief.replace("&amp;", "&"))
+        self.assertIn("<ul", brief)
+        self.assertEqual(brief.count("<li"), len(self.views))
+        self.assertIn("color: #2563eb;text-decoration: underline", brief)
 
     def test_sample_views_rejected(self):
         sample = build_article_view(validate_articles(copy.deepcopy(ARTICLES))[0], preview_sample={"implications": ["가상"]})
@@ -105,8 +114,12 @@ class MailTests(unittest.TestCase):
 
     def test_signature_after_footer_and_centered(self):
         self.assertLess(self.html.index("Security · AI · Technology Daily Briefing"), self.html.index("signature-table"))
-        # 서명 원본 표가 640px 본문보다 넓어 본문 표 바깥(아래)에 가운데 정렬한다.
-        self.assertRegex(self.html, r'</table>\s*</td></tr>\s*<!-- SIGNATURE[^>]*-->\s*<tr><td align="center"')
+        # 서명은 780px 본문 안 맨 아래 가운데 (D-056).
+        self.assertRegex(self.html, r'<!-- SIGNATURE[^>]*-->\s*<tr><td align="center"[^>]*>\s*<div')
+        # 서명이 780px 본문 표 안에 있다: 본문 표가 닫히기 전에 서명 표가 끝난다.
+        main_end = self.html.index("</table>", self.html.rindex("signature-table"))
+        self.assertLess(self.html.index('width="780"'), self.html.index("signature-table"))
+        self.assertGreater(self.html.count("</table>", main_end), 1)
 
     def test_signature_text_matches_original(self):
         original = visible_text((ROOT / "sign/sign.html").read_text(encoding="utf-8"))
