@@ -20,6 +20,9 @@ def message(**headers):
 def factory():
     server = MagicMock()
     server.send_message.return_value = {}
+    server.ehlo.return_value = (250, b"ok")
+    server.login.return_value = (235, b"ok")
+    server.esmtp_features = {"auth": "LOGIN PLAIN"}
     return MagicMock(return_value=server), server
 
 
@@ -118,6 +121,20 @@ class SendMailTests(unittest.TestCase):
     def test_connection_closed_after_success(self):
         make, server = factory()
         send_test(message(), send=True, env=ENV, smtp_factory=make)
+        server.quit.assert_called_once()
+
+    def test_auth_503_not_treated_as_login_success(self):
+        # 실제 사례: AUTH 503 을 smtplib 이 성공으로 보고, 이후 MAIL FROM 이 503 으로 거부됐다 (D-048).
+        make, server = factory()
+        server.login.return_value = (503, b"fictional-user FAKE-SECRET-PW-0000")
+        with self.assertRaises(SendError) as caught:
+            send_test(message(), send=True, env=ENV, smtp_factory=make)
+        text = str(caught.exception)
+        self.assertIn("EHLO 응답 코드 250, AUTH 응답 코드 503", text)
+        self.assertIn("['LOGIN', 'PLAIN']", text)
+        self.assertNotIn("FAKE-SECRET", text)
+        self.assertNotIn("fictional-user", text)
+        server.send_message.assert_not_called()
         server.quit.assert_called_once()
 
     def test_refused_recipient_reported(self):

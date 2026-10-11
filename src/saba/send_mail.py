@@ -71,7 +71,13 @@ def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, st
     try:
         server = smtp_factory(env[ENV_HOST].strip(), PORT, context=ssl.create_default_context(), timeout=TIMEOUT)
         stage = "로그인"
-        server.login(env[ENV_USER].strip(), env[ENV_PASSWORD])
+        ehlo_code = server.ehlo()[0]
+        auth_code = server.login(env[ENV_USER].strip(), env[ENV_PASSWORD])[0]
+        # smtplib 은 AUTH 응답 503("이미 인증됨")도 성공으로 본다. 실제 사례에서 이후 MAIL FROM 이 503 으로
+        # 거부돼 인증이 끝나지 않았던 것으로 보이므로 235 만 인증 성공으로 인정한다 (D-048).
+        if auth_code != 235:
+            raise SendError(f"SMTP 인증 미완료: EHLO 응답 코드 {ehlo_code}, AUTH 응답 코드 {auth_code}"
+                            f" (지원 인증 방식 {server.esmtp_features.get('auth', '없음').split()})")
         stage = "발송"
         refused = server.send_message(message, from_addr=TEST_ADDRESS, to_addrs=[TEST_ADDRESS])
     except smtplib.SMTPAuthenticationError:
