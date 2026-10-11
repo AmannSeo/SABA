@@ -236,7 +236,7 @@ def _render_brief_summary(groups: dict[str, list[ArticleView]]) -> str:
             continue
         message = _brief_message(views)
         items.append(f'<div class="brief-compact-group {css_class}">\n'
-                     f'<span class="brief-compact-label">{icon} {label}</span>\n<p>{message}</p>\n</div>')
+                     f'<span class="brief-compact-label">{icon} {label} {len(views)}건</span>\n<p>{message}</p>\n</div>')
     return "\n".join(items)
 
 
@@ -463,7 +463,8 @@ def _mail_brief_rows(groups: dict[str, list[ArticleView]]) -> str:
     for key, (label, icon, _css) in _BRIEF_GROUP_META.items():
         if groups[key]:
             rows.append(f'<tr><td valign="top" width="118" style="padding:11px 0;border-bottom:1px solid #eef0f2;'
-                        f'color:#374151;font-size:13px;font-weight:700;white-space:nowrap;">{icon} {label}</td>'
+                        f'color:#374151;font-size:13px;font-weight:700;white-space:nowrap;">{icon} {label}'
+                        f' <span style="color:#9ca3af;font-size:12px;font-weight:600;">{len(groups[key])}건</span></td>'
                         f'<td valign="top" style="padding:11px 0 11px 10px;border-bottom:1px solid #eef0f2;'
                         f'color:#6b7280;font-size:13px;line-height:1.65;">{_brief_message(groups[key])}</td></tr>')
     return "\n".join(rows) or '<tr><td style="padding:11px 0;color:#9ca3af;font-size:13px;">수집된 기사가 없습니다.</td></tr>'
