@@ -109,19 +109,16 @@ class ArticleView:
     ai_connections: dict[str, str] = field(default_factory=dict)
 
 
-AI_LABEL = "AI 분석: "  # AI 추론 결과임을 표시한다 (D-041)
-
-
 def _implications(view: ArticleView) -> list[str]:
     if view.sample_implications:
         return ["SAMPLE/MOCK: " + text for text in view.sample_implications]
-    return [AI_LABEL + view.ai_implication] if view.ai_implication else []
+    return [view.ai_implication] if view.ai_implication else []  # 표시 문구 없음 (D-044)
 
 
 def _connections(view: ArticleView) -> dict[str, str]:
     if view.sample_connections:
         return {name: "SAMPLE/MOCK: " + text for name, text in view.sample_connections.items()}
-    return {name: AI_LABEL + text for name, text in view.ai_connections.items()}
+    return dict(view.ai_connections)
 
 
 def _analysis_is_ready(analysis: Optional[AnalysisResult]) -> bool:
