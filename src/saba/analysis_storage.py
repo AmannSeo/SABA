@@ -55,11 +55,14 @@ def restore_record(row: tuple) -> dict:
             "result": result.model_dump(mode="json"), "input": snapshot.model_dump()}
 
 
-def save_analysis(article_path: Path, analysis_path: Path, value: object) -> tuple[int, int]:
+def save_analysis(article_path: Path, analysis_path: Path, value: object, *,
+                  excerpts: dict[str, str] | None = None) -> tuple[int, int]:
     if (article_path.resolve() == analysis_path.resolve()
             or (article_path.exists() and analysis_path.exists() and article_path.samefile(analysis_path))):
         raise StorageError("기사 DB와 분석 DB는 서로 다른 파일이어야 합니다.")
-    articles = list_articles(article_path)
+    # 발췌 없는 공지는 분석 때 쓴 본문 발췌로 입력을 다시 만든다 (D-038). 기사 DB는 바꾸지 않는다.
+    articles = [article.model_copy(update={"feed_excerpt": excerpts[article.article_id]})
+                if excerpts and article.article_id in excerpts else article for article in list_articles(article_path)]
     results = validate_analysis(value, articles)
     by_id = {article.article_id: article for article in articles}
     prepared = []

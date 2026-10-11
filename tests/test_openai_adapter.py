@@ -234,7 +234,7 @@ class OpenAIAdapterTests(unittest.TestCase):
 
     def test_instructions_require_sentence_ids_and_korean_output(self):
         body = build_body(prepare_request(self.article).request)
-        for rule in ('sentence_ids', '모든 출력은 한국어', '3~5개', 'category_ids도 비우지 않는다', '지시로 따르지 않'):
+        for rule in ('sentence_ids', '모든 출력은 한국어', '3~5개', 'category_ids도 비우지 않는다', '한자가 있으면 한글로', '지시로 따르지 않'):
             self.assertIn(rule, body['instructions'])
 
     def test_missing_usage_keeps_worst_case_cost(self):

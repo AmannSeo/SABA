@@ -9,6 +9,7 @@ from saba.analysis import AnalysisResult, analysis_input
 from saba.analysis_storage import list_analyses, save_analysis
 from saba.issues import Issue, Selection, preview_article, select_issues
 from saba.newsletter import ArticleView, build_article_view
+from saba.notice_body import DEFAULT_CACHE, notice_excerpts, with_excerpt
 from saba.openai_adapter import DEFAULT_LEDGER, LiveOutcome, read_ledger, run_openai
 from saba.schema import Article
 from saba.storage import list_articles
@@ -38,14 +39,19 @@ def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
 
 def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
                    ledger_path: Path = DEFAULT_LEDGER, max_new_calls: int = MAX_NEW_CALLS,
-                   run: Callable[..., LiveOutcome] = run_openai) -> tuple[dict[str, AnalysisResult], AnalysisStats]:
-    """대표 기사만 분석한다. 저장된 결과는 재사용하고, 새 유효 결과만 분석 DB에 저장한다."""
+                   run: Callable[..., LiveOutcome] = run_openai,
+                   excerpts: dict[str, str] | None = None) -> tuple[dict[str, AnalysisResult], AnalysisStats]:
+    """대표 기사만 분석한다. 저장된 결과는 재사용하고, 새 유효 결과만 분석 DB에 저장한다.
+
+    excerpts: 발췌 없는 공지의 본문 발췌 (D-038). 분석 입력과 저장 검증에 같이 쓴다.
+    """
+    excerpts = excerpts or {}
     stored = stored_results(analysis_db)
     max_calls = len(read_ledger(ledger_path)) + max_new_calls
     results: dict[str, AnalysisResult] = {}
     stats = AnalysisStats()
     for issue in issues:
-        article = issue.representative
+        article = with_excerpt(issue.representative, excerpts)
         cached = stored.get((article.article_id, analysis_input(article)[2]))
         if cached is not None:
             stats.reused += 1
@@ -63,7 +69,7 @@ def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
                 stats.failed.append(f"{article.article_id}: {outcome.status}")
                 continue
             result = outcome.result
-            save_analysis(article_db, analysis_db, [result.model_dump(mode="json")])
+            save_analysis(article_db, analysis_db, [result.model_dump(mode="json")], excerpts=excerpts)
         results[article.article_id] = result
         if result.status == OUT_OF_SCOPE:
             stats.out_of_scope += 1
@@ -78,12 +84,15 @@ def display_result(result: AnalysisResult) -> AnalysisResult:
 
 
 def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: bool = True,
-                **analyze_options) -> tuple[list[ArticleView], Selection, AnalysisStats | None]:
+                body_cache: Path = DEFAULT_CACHE, **analyze_options) -> tuple[list[ArticleView], Selection, AnalysisStats | None]:
     selection = select_issues(list_articles(article_db), now)
     results: dict[str, AnalysisResult] = {}
     stats = None
     if use_ai:
-        results, stats = analyze_issues(selection.issues, article_db, analysis_db, **analyze_options)
+        # 새 호출이 없는 실행(--reuse-only)은 네트워크 없이 본문 캐시만 쓴다.
+        excerpts = notice_excerpts([issue.representative for issue in selection.issues], cache_path=body_cache,
+                                   fetch=analyze_options.get("max_new_calls", MAX_NEW_CALLS) > 0)
+        results, stats = analyze_issues(selection.issues, article_db, analysis_db, excerpts=excerpts, **analyze_options)
     views = []
     for issue in selection.issues:
         result = results.get(issue.representative.article_id)
