@@ -8,10 +8,13 @@ from datetime import date, datetime
 from html import escape
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from saba.analysis import AnalysisResult
 from saba.schema import Article
+
+if TYPE_CHECKING:
+    from saba.insights import InsightResult
 
 _ANALYSIS_READY_STATUS = "검토 필요"
 _AI_TECH_CATEGORIES = {"AI·기술", "AI 보안"}
@@ -102,6 +105,23 @@ class ArticleView:
     sample_connections: dict[str, str] = field(default_factory=dict)
     sample_only: bool = False
     sample_brief_group: Optional[str] = None
+    ai_implication: Optional[str] = None
+    ai_connections: dict[str, str] = field(default_factory=dict)
+
+
+AI_LABEL = "AI 분석: "  # AI 추론 결과임을 표시한다 (D-041)
+
+
+def _implications(view: ArticleView) -> list[str]:
+    if view.sample_implications:
+        return ["SAMPLE/MOCK: " + text for text in view.sample_implications]
+    return [AI_LABEL + view.ai_implication] if view.ai_implication else []
+
+
+def _connections(view: ArticleView) -> dict[str, str]:
+    if view.sample_connections:
+        return {name: "SAMPLE/MOCK: " + text for name, text in view.sample_connections.items()}
+    return {name: AI_LABEL + text for name, text in view.ai_connections.items()}
 
 
 def _analysis_is_ready(analysis: Optional[AnalysisResult]) -> bool:
@@ -135,7 +155,7 @@ def _safe_escape(value: object) -> str:
 
 
 def build_article_view(article: Article, analysis: Optional[AnalysisResult] = None, *,
-                       preview_sample: Optional[dict] = None) -> ArticleView:
+                       preview_sample: Optional[dict] = None, insight: Optional[InsightResult] = None) -> ArticleView:
     if preview_sample is not None and preview_sample.get("brief_group") not in (None, *_BRIEF_GROUP_META):
         raise ValueError("지원하지 않는 SAMPLE 브리핑 그룹입니다.")
     has_full_analysis = _analysis_is_ready(analysis)
@@ -179,6 +199,8 @@ def build_article_view(article: Article, analysis: Optional[AnalysisResult] = No
         sample_connections=dict((preview_sample or {}).get("connections", {})),
         sample_only=preview_sample is not None,
         sample_brief_group=(preview_sample or {}).get("brief_group"),
+        ai_implication=insight.implication if insight else None,
+        ai_connections={c.department: c.text for c in insight.connections} if insight else {},
     )
 
 
@@ -253,18 +275,21 @@ def _render_brief_detail(groups: dict[str, list[ArticleView]], anchors: dict[str
 def _render_department_cards(views: list[ArticleView], anchors: dict[str, str]) -> str:
     cards: list[str] = []
     for name, icon, css_class in _DEPARTMENT_CARDS:
-        assigned = [view for view in views if name in view.sample_connections][:3]
+        assigned = [view for view in views if name in _connections(view)][:3]
         content = "\n".join(
             '<div class="department-news-item">'
             '<div class="card-meta-row"><div class="card-badges">'
             f'<span class="type-badge">{_safe_escape(view.category or "미분류")}</span>'
             f'</div><span class="card-date">{_safe_escape(view.date_display)}</span></div>'
             f'<h4>{_safe_escape(view.title)}</h4>'
-            f'<p class="card-summary">SAMPLE/MOCK: {_safe_escape(view.sample_connections[name])}</p>'
+            f'<p class="card-summary">{_safe_escape(_connections(view)[name])}</p>'
             f'<div class="card-actions"><span class="card-source-bottom">{_safe_escape(view.source_name)}</span>'
             f'<a class="card-button" href="#{_safe_escape(anchors[view.article_id])}">관련 뉴스 보기 →</a></div></div>'
             for view in assigned
-        ) or '<div class="department-news-item"><p class="card-summary">이번 브리핑에서 분류된 기사가 없습니다.</p></div>'
+        ) or ('<div class="department-news-item"><p class="card-summary">'
+              # STE본은 업무 범위 미확정이라 AI 연결 대상이 아니다 (PROJECT_RULES 10절, D-041).
+              + ("업무 범위 확인 중입니다." if name == "STE본" else "이번 브리핑에서 분류된 기사가 없습니다.")
+              + '</p></div>')
         cards.append(
             f"""
 <article class="department-card {css_class}">
@@ -325,11 +350,11 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
         for view in views:
             anchor = anchors.get(view.article_id, "")
             body = _render_article_body(view)
-            implications = "".join(f'<p>SAMPLE/MOCK: {_safe_escape(text)}</p>' for text in view.sample_implications)
+            implications = "".join(f'<p>{_safe_escape(text)}</p>' for text in _implications(view))
             implications = implications or '<p>분석 정보가 없습니다.</p>'
             connections = "".join(
-                f'<div class="impact-row"><strong>{_safe_escape(name)}</strong><span>SAMPLE/MOCK: {_safe_escape(text)}</span></div>'
-                for name, text in view.sample_connections.items()
+                f'<div class="impact-row"><strong>{_safe_escape(name)}</strong><span>{_safe_escape(text)}</span></div>'
+                for name, text in _connections(view).items()
             ) or '<p>검토된 업무 연결 정보가 없습니다.</p>'
             sources = "".join(
                 f'<a class="source-row" href="{_safe_escape(url)}" target="_blank" rel="noopener noreferrer">'

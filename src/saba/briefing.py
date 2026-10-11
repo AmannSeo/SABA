@@ -7,6 +7,7 @@ from typing import Callable
 
 from saba.analysis import AnalysisResult, analysis_input
 from saba.analysis_storage import list_analyses, save_analysis
+from saba.insights import DEFAULT_INSIGHT_DB, InsightResult, insight_hash, load_insights, run_insight, save_insight
 from saba.issues import Issue, Selection, preview_article, select_issues
 from saba.newsletter import ArticleView, build_article_view
 from saba.notice_body import DEFAULT_CACHE, notice_excerpts, with_excerpt
@@ -27,6 +28,9 @@ class AnalysisStats:
     insufficient: int = 0
     failed: list[str] = field(default_factory=list)
     skipped_by_cap: int = 0
+    insights_reused: int = 0
+    insights_called: int = 0
+    insights_failed: int = 0
 
 
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
@@ -94,8 +98,44 @@ def display_result(result: AnalysisResult) -> AnalysisResult:
         "tags": [_hangul(t) for t in result.tags], "key_points": [_hangul(p) for p in result.key_points]})
 
 
+def display_insight(insight: InsightResult) -> InsightResult:
+    return insight.model_copy(update={"implication": _hangul(insight.implication), "connections": [
+        c.model_copy(update={"text": _hangul(c.text)}) for c in insight.connections]})
+
+
+def add_insights(issues: list[Issue], results: dict[str, AnalysisResult], excerpts: dict[str, str],
+                 stats: AnalysisStats, *, insight_db: Path, ledger_path: Path, max_new_calls: int,
+                 run: Callable[..., tuple[str, InsightResult | None]] = run_insight) -> dict[str, InsightResult]:
+    """검토 필요 결과에만 시사점을 붙인다 (D-041). 저장된 것은 재사용하고 새 호출은 max_new_calls 까지."""
+    stored = load_insights(insight_db)
+    max_calls = len(read_ledger(ledger_path)) + max_new_calls
+    insights: dict[str, InsightResult] = {}
+    for issue in issues:
+        result = results.get(issue.representative.article_id)
+        if result is None or result.status != "검토 필요":
+            continue
+        article = with_excerpt(issue.representative, excerpts)
+        insight = stored.get((article.article_id, insight_hash(article, result)))
+        if insight is not None:
+            stats.insights_reused += 1
+        elif stats.insights_called < max_new_calls:
+            stats.insights_called += 1
+            status, insight = run(article, result, ledger_path=ledger_path, max_calls=max_calls)
+            if insight is None:
+                stats.insights_failed += 1
+                continue
+            save_insight(insight_db, insight)
+        else:
+            continue
+        insights[article.article_id] = insight
+    return insights
+
+
 def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: bool = True,
-                body_cache: Path = DEFAULT_CACHE, **analyze_options) -> tuple[list[ArticleView], Selection, AnalysisStats | None]:
+                body_cache: Path = DEFAULT_CACHE, insight_db: Path = DEFAULT_INSIGHT_DB, insight_calls: int = 0,
+                insight_run: Callable[..., tuple[str, InsightResult | None]] = run_insight,
+                **analyze_options) -> tuple[list[ArticleView], Selection, AnalysisStats | None]:
+    """insight_calls: 시사점 신규 호출 상한. 기본 0 이면 저장된 시사점만 쓴다 (실제 호출은 별도 승인)."""
     selection = select_issues(list_articles(article_db), now)
     results: dict[str, AnalysisResult] = {}
     stats = None
@@ -104,10 +144,17 @@ def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: b
         excerpts = notice_excerpts([issue.representative for issue in selection.issues], cache_path=body_cache,
                                    fetch=analyze_options.get("max_new_calls", MAX_NEW_CALLS) > 0)
         results, stats = analyze_issues(selection.issues, article_db, analysis_db, excerpts=excerpts, **analyze_options)
+        insights = add_insights(selection.issues, results, excerpts, stats, insight_db=insight_db,
+                                ledger_path=analyze_options.get("ledger_path", DEFAULT_LEDGER),
+                                max_new_calls=insight_calls, run=insight_run)
+    else:
+        insights = {}
     views = []
     for issue in selection.issues:
         result = results.get(issue.representative.article_id)
         if result is not None and result.status == OUT_OF_SCOPE:
             continue
-        views.append(build_article_view(preview_article(issue), display_result(result) if result else None))
+        insight = insights.get(issue.representative.article_id)
+        views.append(build_article_view(preview_article(issue), display_result(result) if result else None,
+                                        insight=display_insight(insight) if insight else None))
     return views, selection, stats

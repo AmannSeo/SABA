@@ -327,6 +327,57 @@ def quote_occurrences(parsed: object, texts: dict[str, str]) -> list[int | None]
     return counts
 
 
+@dataclass
+class Sent:
+    status: str
+    output: str | None = None
+    entry: dict | None = None
+    entries: list[dict] | None = None
+
+
+def send_once(body: dict, article_id: str, *, ledger_path: Path, max_calls: int | None,
+              transport: Transport | None, now: datetime | None, purpose: str | None = None) -> Sent:
+    """Key·호출 상한·월 예산을 확인하고 최대 1회 보낸다. 호출 전에 최악 비용을 기록한다.
+
+    status 가 "completed" 면 호출자가 출력을 검증한 뒤 entry["status"] 를 정하고 ledger 를 다시 쓴다.
+    """
+    if transport is None:
+        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            return Sent("api_key_missing")
+        transport = http_transport(api_key)
+    now = now or datetime.now(timezone.utc)
+    month = now.strftime("%Y-%m")
+    entries = read_ledger(ledger_path)
+    if max_calls is not None and len(entries) >= max_calls:
+        return Sent("call_limit_reached")
+    reserved = worst_case_cost(body)
+    if sum(e["cost_usd"] for e in entries if e["month"] == month) + reserved > MONTHLY_LIMIT_USD:
+        return Sent("budget_exceeded")
+    # 호출 전에 최악 비용을 먼저 기록해 중단·오류 시에도 한도 계산에 남긴다.
+    entry = {"at": now.isoformat(), "month": month, "model": MODEL, "article_id": article_id,
+             "status": "sent", "input_tokens": None, "output_tokens": None,
+             "cost_usd": reserved, "estimated": True}
+    if purpose:
+        entry["purpose"] = purpose
+    entries.append(entry)
+    write_ledger(ledger_path, entries)
+    try:
+        response = transport(body)
+    except ProviderError as error:
+        entry["status"] = error.kind
+        write_ledger(ledger_path, entries)
+        return Sent(error.kind, entry=entry, entries=entries)
+    status, output, input_tokens, output_tokens = parse_output(response)
+    if input_tokens is not None and output_tokens is not None:
+        entry.update(input_tokens=input_tokens, output_tokens=output_tokens, estimated=False,
+                     cost_usd=input_tokens * INPUT_PRICE + output_tokens * OUTPUT_PRICE)
+    if status != "completed":
+        entry["status"] = status
+        write_ledger(ledger_path, entries)
+    return Sent(status, output, entry, entries)
+
+
 def run_openai(article: Article, *, ledger_path: Path = DEFAULT_LEDGER, max_calls: int | None = None,
                transport: Transport | None = None, now: datetime | None = None) -> LiveOutcome:
     """최대 1회 호출하고 재시도하지 않는다. 결과 저장·Newsletter 반영은 하지 않는다."""
@@ -334,53 +385,28 @@ def run_openai(article: Article, *, ledger_path: Path = DEFAULT_LEDGER, max_call
     if prepared.request is None:
         return LiveOutcome(prepared.status, prepared.result)
     request = prepared.request
-    body = build_body(request)
-    if transport is None:
-        api_key = os.environ.get("OPENAI_API_KEY", "").strip()
-        if not api_key:
-            return LiveOutcome("api_key_missing")
-        transport = http_transport(api_key)
-    now = now or datetime.now(timezone.utc)
-    month = now.strftime("%Y-%m")
-    entries = read_ledger(ledger_path)
-    if max_calls is not None and len(entries) >= max_calls:
-        return LiveOutcome("call_limit_reached")
-    reserved = worst_case_cost(body)
-    if sum(e["cost_usd"] for e in entries if e["month"] == month) + reserved > MONTHLY_LIMIT_USD:
-        return LiveOutcome("budget_exceeded")
-    # 호출 전에 최악 비용을 먼저 기록해 중단·오류 시에도 한도 계산에 남긴다.
-    entry = {"at": now.isoformat(), "month": month, "model": MODEL, "article_id": request.snapshot.article_id,
-             "status": "sent", "input_tokens": None, "output_tokens": None,
-             "cost_usd": reserved, "estimated": True}
-    entries.append(entry)
-    write_ledger(ledger_path, entries)
-
-    try:
-        response = transport(body)
-    except ProviderError as error:
-        entry["status"] = error.kind
-        write_ledger(ledger_path, entries)
-        return LiveOutcome(error.kind, cost_usd=reserved)
-
-    status, output, input_tokens, output_tokens = parse_output(response)
-    if input_tokens is not None and output_tokens is not None:
-        entry.update(input_tokens=input_tokens, output_tokens=output_tokens, estimated=False,
-                     cost_usd=input_tokens * INPUT_PRICE + output_tokens * OUTPUT_PRICE)
+    sent = send_once(build_body(request), request.snapshot.article_id, ledger_path=ledger_path,
+                     max_calls=max_calls, transport=transport, now=now)
+    if sent.entry is None:
+        return LiveOutcome(sent.status)
+    status, output, entry, entries = sent.status, sent.output, sent.entry, sent.entries
+    input_tokens, output_tokens = entry["input_tokens"], entry["output_tokens"]
+    if status != "completed":
+        return LiveOutcome(status, None, input_tokens, output_tokens, entry["cost_usd"])
     result = parsed = None
-    if status == "completed":
-        try:
-            parsed = to_v1_response(json.loads(output), sentence_units(request))
-            if isinstance(parsed, dict) and isinstance(parsed.get("summary"), str):
-                parsed["summary"] = f"{request.snapshot.source_name}에 따르면 {parsed['summary']}"
-            result = convert_response(article, request, parsed)
-            status = "valid"
-            if warnings := evidence_warnings(result):
-                entry["warnings"] = list(warnings)
-        except ValueError as error:  # AdapterError, JSON 오류 포함
-            status = "response_invalid"
-            entry["detail"] = failure_detail(error)
-            if isinstance(error, AdapterError) and parsed is not None:
-                entry["quote_occurrences"] = quote_occurrences(parsed, request.snapshot.texts)
+    try:
+        parsed = to_v1_response(json.loads(output), sentence_units(request))
+        if isinstance(parsed, dict) and isinstance(parsed.get("summary"), str):
+            parsed["summary"] = f"{request.snapshot.source_name}에 따르면 {parsed['summary']}"
+        result = convert_response(article, request, parsed)
+        status = "valid"
+        if warnings := evidence_warnings(result):
+            entry["warnings"] = list(warnings)
+    except ValueError as error:  # AdapterError, JSON 오류 포함
+        status = "response_invalid"
+        entry["detail"] = failure_detail(error)
+        if isinstance(error, AdapterError) and parsed is not None:
+            entry["quote_occurrences"] = quote_occurrences(parsed, request.snapshot.texts)
     entry["status"] = status
     write_ledger(ledger_path, entries)
     return LiveOutcome(status, result, input_tokens, output_tokens, entry["cost_usd"],
