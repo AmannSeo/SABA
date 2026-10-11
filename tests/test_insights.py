@@ -131,7 +131,7 @@ class InsightBriefingTests(unittest.TestCase):
         self.assertIn("<p>공개 웹 서버를 쓰는 고객사의", html)
         self.assertIn("<strong>보안사업팀</strong><span>고객사 웹 서버", html)
         self.assertNotIn("AI 분석:", html)  # 표시 문구 없음 (D-044)
-        self.assertIn("업무 범위 확인 중입니다.", html)  # STE본 카드
+        self.assertIn("업무 범위 확인 중입니다.", html)  # STE본부 카드
         self.assertIn("관련 이슈 1건", html)
         self.assertNotIn("SAMPLE/MOCK", html)
 

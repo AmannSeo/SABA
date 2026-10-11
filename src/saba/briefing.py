@@ -91,9 +91,8 @@ def _hangul(text: str | None) -> str | None:
 
 def display_result(result: AnalysisResult) -> AnalysisResult:
     # 화면용 사본만 바꾼다. 저장 결과와 근거 인용(evidence)은 원문 그대로 둔다.
-    # 중요도는 사람이 확정하기 전까지 표시하지 않는다 (D-022).
+    # 중요도는 저장된 AI 결과를 그대로 표시한다 (D-059, D-022 의 사람 확정 전 미표시를 변경).
     return result.model_copy(update={
-        "importance": None, "importance_reason": None,
         "newsletter_title": _hangul(result.newsletter_title), "summary": _hangul(result.summary),
         "tags": [_hangul(t) for t in result.tags], "key_points": [_hangul(p) for p in result.key_points]})
 

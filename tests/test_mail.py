@@ -88,6 +88,22 @@ class MailTests(unittest.TestCase):
         self.assertNotIn("<ul", brief)
         self.assertIn('width="118"', brief)
 
+    def test_brief_counts_match_heading_and_importance_badge(self):
+        # 간략 보기 대표 2건 + 외 N건 합계가 제목 건수와 같다 (D-059).
+        brief = self.html[self.html.index("오늘의 브리핑"):self.html.index("부서별 주요 이슈")]
+        heading = int(re.search(r"(\d+)건</span></h2>", brief).group(1))
+        shown = 0
+        for row in re.findall(r'width="118".*?</tr>', brief, re.S):
+            shown += row.count("<strong>") - 1 + row.count(" · ") + 1  # 대표(굵게) 1 + 나머지 제목
+            more = re.search(r"외 (\d+)건", row)
+            shown += int(more.group(1)) if more else 0
+        self.assertEqual(shown, heading)
+        self.assertIn("STE본부", self.html)
+        from saba.newsletter import _mail_news_card
+        view = self.views[0]
+        view.importance = "높음"
+        self.assertIn(">긴급</span>", _mail_news_card(view, "x"))
+
     def test_sample_views_rejected(self):
         sample = build_article_view(validate_articles(copy.deepcopy(ARTICLES))[0], preview_sample={"implications": ["가상"]})
         with self.assertRaises(ValueError):

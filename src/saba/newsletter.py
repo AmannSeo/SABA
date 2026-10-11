@@ -39,7 +39,7 @@ _DEPARTMENT_CARDS = (
     ("경영전략팀", "📊", "strategy"),
     ("기술개발연구소", "💻", "development"),
     ("보안사업팀", "🛡️", "security-team"),
-    ("STE본", "⚙️", "ste"),
+    ("STE본부", "⚙️", "ste"),
 )
 _SECTION_PREFIX = {
     "domestic": "domestic",
@@ -53,6 +53,9 @@ _IMPORTANCE_BADGE_CLASS = {
     "보통": "important",
     "낮음": "reference",
 }
+# AI 중요도를 샘플 배지 이름·색으로 표시한다 (D-059): (이름, 글자색, 배경색)
+_IMPORTANCE_BADGE = {"높음": ("긴급", "#b91c1c", "#fef2f2"), "보통": ("중요", "#c2410c", "#fff7ed"),
+                     "낮음": ("참고", "#15803d", "#f0fdf4")}
 
 
 class _ExcerptHTMLParser(HTMLParser):
@@ -281,8 +284,8 @@ def _render_department_cards(views: list[ArticleView], anchors: dict[str, str]) 
             f'<a class="card-button" href="#{_safe_escape(anchors[view.article_id])}">관련 뉴스 보기 →</a></div></div>'
             for view in assigned
         ) or ('<div class="department-news-item"><p class="card-summary">'
-              # STE본은 업무 범위 미확정이라 AI 연결 대상이 아니다 (PROJECT_RULES 10절, D-041).
-              + ("업무 범위 확인 중입니다." if name == "STE본" else "이번 브리핑에서 분류된 기사가 없습니다.")
+              # STE본부는 업무 범위 미확정이라 AI 연결 대상이 아니다 (PROJECT_RULES 10절, D-041).
+              + ("업무 범위 확인 중입니다." if name == "STE본부" else "이번 브리핑에서 분류된 기사가 없습니다.")
               + '</p></div>')
         cards.append(
             f"""
@@ -308,7 +311,7 @@ def _render_badges(view: ArticleView) -> str:
     badges: list[str] = []
     if view.has_full_analysis and view.importance is not None:
         badge_class = _IMPORTANCE_BADGE_CLASS.get(view.importance, "neutral")
-        badges.append(f'<span class="badge {badge_class}">{_safe_escape(view.importance)}</span>')
+        badges.append(f'<span class="badge {badge_class}">{_safe_escape(_IMPORTANCE_BADGE[view.importance][0])}</span>')
     if view.category:
         badges.append(f'<span class="badge ai-badge">{_safe_escape(view.category)}</span>')
     for tag in view.tags:
@@ -389,8 +392,11 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
     return "\n".join(sections)
 
 
-def _group_views(views: list[ArticleView]):
-    """(앵커, 오늘의 브리핑 그룹, 심층 뉴스 그룹). 웹 Preview 와 메일이 같은 구성을 쓴다."""
+def _group_views(views: list[ArticleView], brief_cap: Optional[int] = BRIEF_MAX_PER_GROUP):
+    """(앵커, 오늘의 브리핑 그룹, 심층 뉴스 그룹). 웹 Preview 와 메일이 같은 구성을 쓴다.
+
+    brief_cap=None 이면 오늘의 브리핑 분야 그룹에 상한을 두지 않는다 (메일 간략 보기 건수 = 제목 건수, D-059).
+    """
     anchors = _build_anchor_map(views)
     brief_groups = {key: [] for key in _BRIEF_GROUP_META}
     deep_groups = {"domestic": [], "overseas": [], "ai_tech": [], "other": []}
@@ -405,7 +411,7 @@ def _group_views(views: list[ArticleView]):
         elif deep_section == "other":
             brief_key = "other"
         group = brief_groups[view.sample_brief_group or brief_key]
-        if len(group) < BRIEF_MAX_PER_GROUP:
+        if brief_cap is None or len(group) < brief_cap:
             group.append(view)
     return anchors, brief_groups, deep_groups
 
@@ -483,7 +489,7 @@ def _mail_department_card(name: str, icon: str, css_class: str, views: list[Arti
         f'</td></tr>'
         for view in assigned
     ) or (f'<tr><td style="padding:14px 16px;color:#9ca3af;font-size:12px;">'
-          f'{"업무 범위 확인 중입니다." if name == "STE본" else "이번 브리핑에서 분류된 기사가 없습니다."}</td></tr>')
+          f'{"업무 범위 확인 중입니다." if name == "STE본부" else "이번 브리핑에서 분류된 기사가 없습니다."}</td></tr>')
     return (f'<table {_TABLE} bgcolor="#ffffff" style="background:#ffffff;border:1px solid #e5e7eb;'
             f'border-top:3px solid {_DEPARTMENT_COLORS[css_class]};border-radius:8px;">'
             f'<tr><td bgcolor="#fafafa" style="padding:12px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb;">'
@@ -502,7 +508,8 @@ def _mail_departments(views: list[ArticleView], anchors: dict[str, str]) -> str:
 
 
 def _mail_news_card(view: ArticleView, anchor: str) -> str:
-    badges = "".join([_mail_badge(view.category, "#4f46e5", "#eef2ff")] if view.category else [])
+    badges = _mail_badge(*_IMPORTANCE_BADGE[view.importance]) if view.importance in _IMPORTANCE_BADGE else ""
+    badges += _mail_badge(view.category, "#4f46e5", "#eef2ff") if view.category else ""
     badges += "".join(_mail_badge(tag) for tag in view.tags) or ("" if badges else _mail_badge("일반 기사"))
     body = (f'<p style="margin:12px 0 0;color:#374151;font-size:14px;line-height:1.8;">{_safe_escape(view.summary)}</p>'
             if view.has_full_analysis and view.summary else "")
@@ -562,7 +569,7 @@ def build_mail_html(views: list[ArticleView], *, today: Optional[str] = None, lo
     safe_views = list(views or [])
     if any(view.sample_only for view in safe_views):
         raise ValueError("SAMPLE 데이터는 메일에 쓸 수 없습니다.")
-    anchors, brief_groups, deep_groups = _group_views(safe_views)
+    anchors, brief_groups, deep_groups = _group_views(safe_views, brief_cap=None)
     template = Path(__file__).resolve().parents[2] / "templates" / "newsletter_mail.html"
     return template.read_text(encoding="utf-8").format(
         logo_src=_safe_escape(logo_src), today_display=_safe_escape(_format_today_display(today)),

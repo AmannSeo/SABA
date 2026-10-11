@@ -79,7 +79,7 @@ class BriefingTests(unittest.TestCase):
         self.assertNotIn("boan", by_id)  # 대상 밖 제외
         self.assertEqual(by_id["thn"].title, "가상 웹 서버 원격 코드 실행 취약점")
         self.assertTrue(by_id["thn"].has_full_analysis)
-        self.assertIsNone(by_id["thn"].importance)  # D-022 중요도 미표시
+        self.assertEqual(by_id["thn"].importance, "높음")  # D-059 AI 중요도 표시
         self.assertEqual(article_section(by_id["ai"]), "ai_tech")
         self.assertFalse(by_id["fail"].has_full_analysis)  # 실패 시 원문 발췌
         self.assertEqual(by_id["fail"].excerpt, EXCERPT)
@@ -87,7 +87,7 @@ class BriefingTests(unittest.TestCase):
         self.assertEqual((stats.valid, stats.out_of_scope, stats.insufficient, stats.reused), (2, 1, 1, 0))
         self.assertEqual(len(stats.failed), 1)
         html = build_newsletter_html(views)
-        self.assertNotIn("높음", html)
+        self.assertIn('<span class="badge urgent">긴급</span>', html)  # 높음 → 긴급 (D-059)
         self.assertIn("가상 AI 보안 소식", html)
 
     def test_valid_results_saved_and_reused_without_new_calls(self):
@@ -121,11 +121,11 @@ class BriefingTests(unittest.TestCase):
         self.assertEqual(len(views), 5)
         self.assertFalse(self.analysis_db.exists())
 
-    def test_display_result_hides_importance_only(self):
+    def test_display_result_keeps_importance(self):
         article = self.articles[0]
         result = convert_response(article, prepare_request(article).request, response())
         shown = display_result(result)
-        self.assertIsNone(shown.importance)
+        self.assertEqual(shown.importance, "높음")
         self.assertEqual(result.importance, "높음")
         self.assertEqual(shown.summary, result.summary)
         self.assertEqual(shown.input_hash, analysis_input(article)[2])
