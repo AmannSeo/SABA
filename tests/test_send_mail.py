@@ -137,6 +137,27 @@ class SendMailTests(unittest.TestCase):
         server.send_message.assert_not_called()
         server.quit.assert_called_once()
 
+    def test_trace_records_verbs_and_codes_only(self):
+        from saba.send_mail import trace_codes
+
+        class Fake:
+            def __init__(self):
+                self.replies = iter([(250, b"hi"), (334, b"VXNlcm5hbWU6"), (235, b"ok"), (503, b"bad fictional-user")])
+
+            def putcmd(self, cmd, args=""):
+                pass
+
+            def getreply(self):
+                return next(self.replies)
+
+        fake = Fake()
+        trace = trace_codes(fake)
+        for cmd in ("ehlo fictional.host", "AUTH LOGIN", "RkFLRS1TRUNSRVQtUFctMDAwMA==", "mail FROM:<a@b>"):
+            fake.putcmd(cmd)
+            fake.getreply()
+        self.assertEqual(trace, ["EHLO", "250", "AUTH", "334", "(인증 데이터)", "235", "MAIL", "503"])
+        self.assertNotIn("RkFLRS", " ".join(trace))
+
     def test_refused_recipient_reported(self):
         make, server = factory()
         server.send_message.return_value = {TEST_ADDRESS: (550, b"no")}

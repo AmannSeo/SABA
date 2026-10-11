@@ -42,6 +42,28 @@ def _code_text(error: Exception) -> str:
     return f"응답 코드 {code}" if isinstance(code, int) else "응답 코드 없음"
 
 
+SMTP_VERBS = {"EHLO", "HELO", "AUTH", "MAIL", "RCPT", "DATA", "RSET", "NOOP", "QUIT", "STARTTLS"}
+
+
+def trace_codes(server) -> list[str]:
+    """명령 이름과 응답 코드 순서만 기록한다 (D-049). 명령 인자·인증 데이터·응답 문장은 남기지 않는다."""
+    trace: list[str] = []
+    putcmd, getreply = server.putcmd, server.getreply
+
+    def traced_putcmd(cmd, args=""):
+        verb = str(cmd).split(" ", 1)[0].upper()
+        trace.append(verb if verb in SMTP_VERBS else "(인증 데이터)")
+        return putcmd(cmd, args)
+
+    def traced_getreply():
+        reply = getreply()
+        trace.append(str(reply[0]))
+        return reply
+
+    server.putcmd, server.getreply = traced_putcmd, traced_getreply
+    return trace
+
+
 def _quit(server) -> str | None:
     """연결을 닫는다. QUIT 실패는 경고 문자열로만 돌려주고 원래 결과·오류를 바꾸지 않는다."""
     if server is None:
@@ -67,9 +89,10 @@ def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, st
     if not all(present.values()):
         raise SendError("SMTP 환경 변수가 설정되지 않았습니다. " + summary)
     # with 문은 쓰지 않는다. 발송 오류 뒤 with 종료의 QUIT 오류가 원래 오류를 덮어 원인이 가려졌다 (D-047).
-    stage, server = "연결", None
+    stage, server, trace = "연결", None, []
     try:
         server = smtp_factory(env[ENV_HOST].strip(), PORT, context=ssl.create_default_context(), timeout=TIMEOUT)
+        trace = trace_codes(server)
         stage = "로그인"
         ehlo_code = server.ehlo()[0]
         auth_code = server.login(env[ENV_USER].strip(), env[ENV_PASSWORD])[0]
@@ -84,7 +107,8 @@ def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, st
         raise SendError("SMTP 인증 실패 (아이디·비밀번호·SMTP 사용 설정 확인)") from None
     except smtplib.SMTPException as error:
         # 단계와 응답 코드 숫자만 남긴다. 서버 응답 문장은 계정 정보를 담을 수 있어 표시하지 않는다.
-        raise SendError(f"SMTP 오류: {stage} 단계, {type(error).__name__}, {_code_text(error)}") from None
+        raise SendError(f"SMTP 오류: {stage} 단계, {type(error).__name__}, {_code_text(error)}"
+                        f" · 응답 순서: {' '.join(trace) or '없음'}") from None
     except (OSError, ssl.SSLError) as error:
         raise SendError(f"SMTP 연결 실패: {stage} 단계, {type(error).__name__} (서버명·포트·네트워크 확인)") from None
     finally:
