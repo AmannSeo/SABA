@@ -229,7 +229,8 @@ class OpenAIAdapterTests(unittest.TestCase):
 
     def test_instructions_limit_importance_to_article_facts(self):
         instructions = build_body(prepare_request(self.article).request)['instructions']
-        for rule in ('importance는 sentences에 적힌 사실', '판단 근거로 쓰지 않는다', '사람이 최종 확정'):
+        for rule in ('importance는 sentences에 적힌 사실', '판단 근거로 쓰지 않는다', '사람이 최종 확정',
+                     '"검토 필요"이면 importance와 importance_reason을 반드시 채운다'):
             self.assertIn(rule, instructions)
 
     def test_instructions_require_sentence_ids_and_korean_output(self):

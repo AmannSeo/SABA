@@ -47,7 +47,6 @@ _SECTION_PREFIX = {
     "ai_tech": "ai",
     "other": "other",
 }
-BRIEF_MAX_PER_GROUP = 5  # 오늘의 브리핑 분야당 최대 건수 (D-033). 입력 순서(공식 우선 → 최신)를 따른다.
 _IMPORTANCE_BADGE_CLASS = {
     "높음": "urgent",
     "보통": "important",
@@ -392,10 +391,9 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
     return "\n".join(sections)
 
 
-def _group_views(views: list[ArticleView], brief_cap: Optional[int] = BRIEF_MAX_PER_GROUP):
+def _group_views(views: list[ArticleView]):
     """(앵커, 오늘의 브리핑 그룹, 심층 뉴스 그룹). 웹 Preview 와 메일이 같은 구성을 쓴다.
-
-    brief_cap=None 이면 오늘의 브리핑 분야 그룹에 상한을 두지 않는다 (메일 간략 보기 건수 = 제목 건수, D-059).
+    오늘의 브리핑 분야 그룹은 상한 없이 전체 기사를 담는다 (건수 = 제목 건수, D-059·D-060, D-033 의 5건 상한 대체).
     """
     anchors = _build_anchor_map(views)
     brief_groups = {key: [] for key in _BRIEF_GROUP_META}
@@ -411,8 +409,7 @@ def _group_views(views: list[ArticleView], brief_cap: Optional[int] = BRIEF_MAX_
         elif deep_section == "other":
             brief_key = "other"
         group = brief_groups[view.sample_brief_group or brief_key]
-        if brief_cap is None or len(group) < brief_cap:
-            group.append(view)
+        group.append(view)
     return anchors, brief_groups, deep_groups
 
 
@@ -569,7 +566,7 @@ def build_mail_html(views: list[ArticleView], *, today: Optional[str] = None, lo
     safe_views = list(views or [])
     if any(view.sample_only for view in safe_views):
         raise ValueError("SAMPLE 데이터는 메일에 쓸 수 없습니다.")
-    anchors, brief_groups, deep_groups = _group_views(safe_views, brief_cap=None)
+    anchors, brief_groups, deep_groups = _group_views(safe_views)
     template = Path(__file__).resolve().parents[2] / "templates" / "newsletter_mail.html"
     return template.read_text(encoding="utf-8").format(
         logo_src=_safe_escape(logo_src), today_display=_safe_escape(_format_today_display(today)),
