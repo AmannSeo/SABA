@@ -69,6 +69,13 @@ class MailTests(unittest.TestCase):
             self.assertIn(f'name="news-', self.html)
         self.assertEqual(self.html.count("💡 시사점"), len(self.views))
 
+    def test_webmail_safe_links_and_bold_titles(self):
+        # 한비로메일은 메일 안 이동 링크(#)를 웹메일 홈으로 바꾸므로 부서 카드 버튼은 기사 원문으로 연결한다.
+        self.assertNotIn('href="#', self.html)
+        for view in self.views:
+            self.assertIn(f'<strong>{view.title}</strong>', self.html)
+        self.assertIn('font-weight: 700;line-height: 1.5"><strong>', self.html)
+
     def test_sample_views_rejected(self):
         sample = build_article_view(validate_articles(copy.deepcopy(ARTICLES))[0], preview_sample={"implications": ["가상"]})
         with self.assertRaises(ValueError):
