@@ -123,6 +123,16 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(sorted(i.representative.article_id for i in selection.issues), ["boho-47", "thn-23"])
         self.assertEqual(selection.in_window, 2)
 
+    def test_monday_window_includes_weekend(self):
+        # 월요일(KST)은 +48시간: 일반 72시간, 날짜만 제공 Source 96시간 (D-063)
+        monday = datetime(2026, 10, 12, 0, tzinfo=timezone.utc)  # KST 월요일 09:00
+        rows = [self.hours("thn-70", "the-hacker-news", 70), self.hours("thn-74", "the-hacker-news", 74),
+                self.hours("boho-94", "boho-security-notice", 94), self.hours("boho-98", "boho-security-notice", 98)]
+        for row, hours in zip(rows, (70, 74, 94, 98)):
+            row["published_at"] = (monday - timedelta(hours=hours)).isoformat()
+        selection = select_issues(build(*rows), monday)
+        self.assertEqual(sorted(i.representative.article_id for i in selection.issues), ["boho-94", "thn-70"])
+
     def test_source_cap_section_cap_and_order(self):
         rows = [self.hours(f"thn-{h}", "the-hacker-news", h) for h in range(1, 8)]
         rows += [self.hours(f"cisa-{h}", "cisa-cybersecurity-advisories", h) for h in range(10, 16)]

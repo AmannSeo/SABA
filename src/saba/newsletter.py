@@ -283,8 +283,7 @@ def _render_department_cards(views: list[ArticleView], anchors: dict[str, str]) 
             f'<a class="card-button" href="#{_safe_escape(anchors[view.article_id])}">관련 뉴스 보기 →</a></div></div>'
             for view in assigned
         ) or ('<div class="department-news-item"><p class="card-summary">'
-              # STE본부는 업무 범위 미확정이라 AI 연결 대상이 아니다 (PROJECT_RULES 10절, D-041).
-              + ("업무 범위 확인 중입니다." if name == "STE본부" else "이번 브리핑에서 분류된 기사가 없습니다.")
+              + "이번 브리핑에서 분류된 기사가 없습니다."
               + '</p></div>')
         cards.append(
             f"""
@@ -458,16 +457,29 @@ def _mail_badge(text: str, color: str = "#6b7280", background: str = "#f3f4f6") 
             f'background:{background};color:{color};font-size:11px;font-weight:700;">{_safe_escape(text)}</span>')
 
 
+def _brief_line(view: ArticleView) -> str:
+    """기사 한 줄 요약: AI 요약 첫 문장에서 출처 머리말을 뺀 문장 (요약이 없으면 제목)."""
+    if not (view.has_full_analysis and view.summary):
+        return view.title
+    line = _first_sentence(view.summary)
+    prefix = f"{view.source_name}에 따르면 "
+    return line[len(prefix):] if line.startswith(prefix) else line
+
+
 def _mail_brief_rows(groups: dict[str, list[ArticleView]]) -> str:
+    # 간략·자세히의 중간: 분야 제목(건수) 아래에 기사마다 "- 내용 요약" 한 줄 (D-063).
     rows = []
     for key, (label, icon, _css) in _BRIEF_GROUP_META.items():
         if groups[key]:
-            rows.append(f'<tr><td valign="top" width="118" style="padding:11px 0;border-bottom:1px solid #eef0f2;'
-                        f'color:#374151;font-size:13px;font-weight:700;white-space:nowrap;">{icon} {label}'
-                        f' <span style="color:#9ca3af;font-size:12px;font-weight:600;">{len(groups[key])}건</span></td>'
-                        f'<td valign="top" style="padding:11px 0 11px 10px;border-bottom:1px solid #eef0f2;'
-                        f'color:#6b7280;font-size:13px;line-height:1.65;">{_brief_message(groups[key])}</td></tr>')
+            items = "".join(f'<tr><td valign="top" width="14" style="padding:3px 0;color:#9ca3af;font-size:13px;">-</td>'
+                            f'<td style="padding:3px 0;color:#4b5563;font-size:13px;line-height:1.65;">{_safe_escape(_brief_line(view))}</td></tr>'
+                            for view in groups[key])
+            rows.append(f'<tr><td style="padding:12px 0;border-bottom:1px solid #eef0f2;">'
+                        f'<p style="margin:0 0 6px;color:#374151;font-size:14px;font-weight:700;"><strong>{icon} {label}</strong>'
+                        f' <span style="color:#9ca3af;font-size:12px;font-weight:600;">{len(groups[key])}건</span></p>'
+                        f'<table {_TABLE}>{items}</table></td></tr>')
     return "\n".join(rows) or '<tr><td style="padding:11px 0;color:#9ca3af;font-size:13px;">수집된 기사가 없습니다.</td></tr>'
+
 
 
 def _mail_department_card(name: str, icon: str, css_class: str, views: list[ArticleView],
@@ -487,7 +499,7 @@ def _mail_department_card(name: str, icon: str, css_class: str, views: list[Arti
         f'</td></tr>'
         for view in assigned
     ) or (f'<tr><td style="padding:14px 16px;color:#9ca3af;font-size:12px;">'
-          f'{"업무 범위 확인 중입니다." if name == "STE본부" else "이번 브리핑에서 분류된 기사가 없습니다."}</td></tr>')
+          f'이번 브리핑에서 분류된 기사가 없습니다.</td></tr>')
     return (f'<table {_TABLE} bgcolor="#ffffff" style="background:#ffffff;border:1px solid #e5e7eb;'
             f'border-top:3px solid {_DEPARTMENT_COLORS[css_class]};border-radius:8px;">'
             f'<tr><td bgcolor="#fafafa" style="padding:12px 16px;background:#fafafa;border-bottom:1px solid #e5e7eb;">'

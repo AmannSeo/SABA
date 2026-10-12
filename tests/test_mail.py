@@ -62,7 +62,7 @@ class MailTests(unittest.TestCase):
                          '<p style="display: inline-block;color: red">')
 
     def test_all_sections_and_articles_present(self):
-        for text in ("오늘의 브리핑", "부서별 주요 이슈", "보안 심층 뉴스", "오늘의 보안 습관", "선정 기준", "업무 범위 확인 중입니다."):
+        for text in ("오늘의 브리핑", "부서별 주요 이슈", "보안 심층 뉴스", "오늘의 보안 습관", "선정 기준", "STE본부"):
             self.assertIn(text, self.html)
         for view in self.views:
             self.assertIn(view.title, visible_text(self.html))
@@ -86,13 +86,14 @@ class MailTests(unittest.TestCase):
         brief = self.html[self.html.index("오늘의 브리핑"):self.html.index("부서별 주요 이슈")]
         self.assertNotIn("자세히 보기", brief)
         self.assertNotIn("<ul", brief)
-        self.assertIn('width="118"', brief)
+        # 분야 제목 아래 기사마다 "- 내용 요약" 한 줄 (D-063)
+        self.assertEqual(brief.count('width="14"'), len(self.views))
 
     def test_brief_counts_match_heading_and_importance_badge(self):
         # 간략 보기 각 행의 분야 합계 건수를 더하면 제목 건수와 같다 (D-059, 분야 건수 표시 D-061).
         brief = self.html[self.html.index("오늘의 브리핑"):self.html.index("부서별 주요 이슈")]
         heading = int(re.search(r"(\d+)건</span></h2>", brief).group(1))
-        row_counts = [int(n) for n in re.findall(r'font-weight: 600">(\d+)건</span></td>', brief)]
+        row_counts = [int(n) for n in re.findall(r'font-weight: 600">(\d+)건</span></p>', brief)]
         self.assertTrue(row_counts)
         self.assertEqual(sum(row_counts), heading)
         self.assertIn("STE본부", self.html)

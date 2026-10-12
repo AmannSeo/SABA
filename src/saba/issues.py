@@ -1,12 +1,12 @@
 """같은 사건 기사 묶기 (D-027). 저장하지 않고 호출 시점에 계산하며 입력 기사를 바꾸지 않는다."""
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import timedelta, timezone
 from itertools import combinations
 import re
 
 from saba.analysis import FeedTextParser, normalize_text
-from saba.rss import SOURCE_BY_ID
+from saba.rss import KST, SOURCE_BY_ID
 from saba.schema import Article, SourceReference
 
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -145,6 +145,8 @@ class Selection:
 def in_window(article: Article, now) -> bool:
     source = SOURCE_BY_ID.get(article.source_id)
     hours = 48 if source is not None and source.date_only else 24
+    if now.astimezone(timezone(KST)).weekday() == 0:  # 월요일은 주말 기사 포함 (+48시간, D-063)
+        hours += 48
     return article.published_at is not None and now - timedelta(hours=hours) <= article.published_at <= now
 
 

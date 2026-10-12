@@ -12,3 +12,4 @@ data/
 *.db
 *.db-*
 logs/
+output/daily_*.eml
