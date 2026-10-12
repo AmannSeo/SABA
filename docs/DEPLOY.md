@@ -49,4 +49,24 @@ powershell -ExecutionPolicy Bypass -File scripts\saba.ps1 <명령>
 | restore -Path zip | 백업 복원 (기존 폴더 보관) | 있음 |
 | uninstall [-Apply] | 제거 (data\ 유지) | -Apply 일 때만 |
 
-실행 파일 패키지 (Python 설치 없이 실행, D-068 B) 는 다음 단계에서 설계·승인 후 추가한다.
+## 실행 파일 묶음 (Python 설치 없이, D-069)
+
+개발 PC 에서 만든 `dist\SABA\` 폴더를 통째로 부서 PC 에 복사하면 Python 을 설치하지 않아도 된다.
+
+1. 개발 PC: `powershell -ExecutionPolicy Bypass -File scripts\build_exe.ps1` → `dist\SABA\` (약 36MB)
+   - PyInstaller 는 개발 PC 의 `.venv` 에만 설치된다 (pyproject `build` 선택 의존성).
+   - 묶음 내용: `SABA.exe`, `_internal\`, `templates\`, `sign\`, `config\`, `scripts\saba.ps1`, `docs\DEPLOY.md`. `data\` 와 Secret 은 들어가지 않는다.
+2. 부서 PC: `dist\SABA\` 를 원하는 위치 (예: `C:\SABA`) 에 복사한 뒤, 위 2절 절차를 그대로 따른다.
+   - 1번 (Python 설치) 은 건너뛴다. `install` 은 Python·의존성 설치를 건너뛰고 폴더·바로가기만 만든다.
+   - 자동 실행 대상은 `SABA.exe -m saba.daily --run` 이 된다 (등록 명령이 자동으로 실행 파일 경로를 쓴다).
+3. 직접 실행 예: `SABA.exe -m saba.admin`, `SABA.exe -m saba.daily --register`, `SABA.exe -m saba.deploy --backup`
+
+폴더 위치를 옮기면 자동 실행을 다시 등록해야 한다 (등록 명령에 실행 파일 경로가 들어 있다).
+
+## 부서 PC 설치 전 회사 IT·보안 정책 확인 목록 (D-069)
+
+- [ ] 서명 없는 실행 파일(`SABA.exe`) 실행 허용 여부, 백신 예외 등록 필요 여부 (필요하면 `SABA` 폴더 경로로 요청)
+- [ ] 작업 스케줄러 "사용자 로그온 여부와 관계없이 실행" 허용 여부 (계정 비밀번호 저장 정책, 비밀번호 변경 시 재등록 필요)
+- [ ] 외부 접속 허용: OpenAI API (api.openai.com, HTTPS 443), RSS Source 6곳 (HTTPS), 회사 메일 SMTP (465 SSL/TLS)
+- [ ] 부서 PC 에서 개인 메일 계정 대신 부서 공용 계정 사용 여부 (3단계 전사 발송 전 결정)
+- [ ] 관리 페이지는 127.0.0.1 전용이므로 방화벽 예외 불필요 (사내망 접속은 3단계에서 별도 검토)

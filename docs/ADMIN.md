@@ -241,7 +241,7 @@ SABA 의 주요 기능을 터미널 명령어 없이 관리한다.
 | 데이터 이전 | 기존 PC `data/` 백업·복원 |
 | 제거 | 작업 해제 후 프로그램 제거 (데이터는 선택 보관) |
 
-결정 (D-068): 스크립트와 실행 파일 패키징 둘 다. 스크립트 `scripts\saba.ps1` 구현 완료 (절차는 `docs/DEPLOY.md`), 실행 파일은 다음 단계에서 설계·승인 후 추가.
+결정 (D-068, D-069): 스크립트와 실행 파일 패키징 둘 다. 스크립트 `scripts\saba.ps1`, 실행 파일 묶음 `scriptsuild_exe.ps1` → `dist\SABA\` (PyInstaller 한 폴더 형태, Python 설치 불필요). 절차와 회사 IT·보안 정책 확인 목록은 `docs/DEPLOY.md`.
 
 ---
 

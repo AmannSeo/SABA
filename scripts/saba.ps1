@@ -25,7 +25,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
-$Python = Join-Path $Root ".venv\Scripts\python.exe"
+$Exe = Join-Path $Root "SABA.exe"  # 실행 파일 묶음 (D-069) 이면 Python 설치 없이 이것을 쓴다
+$Packaged = Test-Path $Exe
+$Python = if ($Packaged) { $Exe } else { Join-Path $Root ".venv\Scripts\python.exe" }
 $TaskName = "SABA_Daily_Briefing"
 $SecretNames = "OPENAI_API_KEY", "SABA_SMTP_HOST", "SABA_SMTP_USER", "SABA_SMTP_PASSWORD"
 $Desktop = [Environment]::GetFolderPath("Desktop")
@@ -62,15 +64,19 @@ function Find-Python {
 
 switch ($Command) {
     "install" {
-        if (-not (Test-Path $Python)) {
+        if ($Packaged) {
+            Write-Output "실행 파일 묶음: Python·의존성 설치를 건너뜁니다."
+        } elseif (-not (Test-Path $Python)) {
             $base = Find-Python
             $extra = @($base | Select-Object -Skip 1)
             Write-Output "가상 환경 만들기 (.venv)"
             & $base[0] @extra -m venv (Join-Path $Root ".venv")
             if ($LASTEXITCODE -ne 0) { throw ".venv 생성 실패" }
         }
-        Write-Output "의존성 설치"
-        Invoke-Saba @("-m", "pip", "install", "--disable-pip-version-check", "-q", "-e", $Root)
+        if (-not $Packaged) {
+            Write-Output "의존성 설치"
+            Invoke-Saba @("-m", "pip", "install", "--disable-pip-version-check", "-q", "-e", $Root)
+        }
         foreach ($folder in "data", "logs", "output", "backups") {
             New-Item -ItemType Directory -Force (Join-Path $Root $folder) | Out-Null
         }

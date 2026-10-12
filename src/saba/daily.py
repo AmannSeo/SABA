@@ -19,6 +19,8 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "daily.json"
 LOG_DIR = ROOT / "logs"
+# 실행 파일 묶음 (D-069) 에서는 SABA.exe 자신이 실행 대상이다.
+PYTHON = Path(sys.executable) if getattr(sys, "frozen", False) else ROOT / ".venv" / "Scripts" / "python.exe"
 TASK_NAME = "SABA_Daily_Briefing"
 WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 _DAY_NAMES = {"MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday", "THU": "Thursday", "FRI": "Friday",
@@ -103,6 +105,7 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         stage = "분석·메일 생성"
         eml, summary = build(now, config)
         path = output_dir / f"daily_{now.astimezone():%Y%m%d}.eml"
+        output_dir.mkdir(exist_ok=True)  # 새 PC·실행 파일 묶음에는 output 폴더가 없다
         path.write_bytes(eml)
         logging.info("메일 생성 완료: %s · %s · %s bytes", path.name, summary, f"{len(eml):,}")
         if not config.send:
@@ -117,7 +120,7 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         return 1
 
 
-def register_command(config: DailyConfig, python: Path = ROOT / ".venv" / "Scripts" / "python.exe", *,
+def register_command(config: DailyConfig, python: Path = PYTHON, *,
                      unattended: bool = False) -> str:
     """작업 스케줄러 등록 PowerShell 명령. 시각·요일·무작위 지연은 설정 파일에서 읽는다.
 

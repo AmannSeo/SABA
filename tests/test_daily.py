@@ -49,6 +49,12 @@ class DailyTests(unittest.TestCase):
         self.assertEqual((self.dir / f"daily_{NOW.astimezone():%Y%m%d}.eml").read_bytes(), b"EML")
         self.assertIn("발송 완료 1회", log)
 
+    def test_missing_output_folder_created(self):  # 새 PC·실행 파일 묶음 (D-069)
+        self.dir = self.dir / "output"
+        code, _ = self.run_with()
+        self.assertEqual(code, 0)
+        self.assertTrue((self.dir / f"daily_{NOW.astimezone():%Y%m%d}.eml").exists())
+
     def test_failure_stops_before_send_without_retry_or_secret(self):
         for fail_at, expected in (("collect", ["collect"]), ("build", ["collect", ("build", 20, 20)])):
             with self.subTest(fail_at=fail_at):

@@ -72,6 +72,35 @@ class RegisterTests(unittest.TestCase):
         self.assertIn("-Settings $s", command)
 
 
+class EntryTests(unittest.TestCase):
+    """SABA.exe 진입점 (D-069): -m 모듈 실행을 python -m 과 같게."""
+
+    def run_entry(self, *args):
+        import sys
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "saba_entry.py"), *args],
+                              capture_output=True, timeout=60, cwd=ROOT)
+
+    def test_runs_saba_module_with_arguments(self):
+        result = self.run_entry("-m", "saba.daily", "--register", "--unattended")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(b"StartWhenAvailable", result.stdout)
+
+    def test_rejects_other_modules(self):
+        for args in ((), ("-m", "os"), ("--run",)):
+            self.assertEqual(self.run_entry(*args).returncode, 2, args)
+
+    def test_frozen_registers_executable_itself(self):
+        import importlib
+        import sys
+        from unittest.mock import patch
+        import saba.daily
+        with patch.object(sys, "frozen", True, create=True), patch.object(sys, "executable", r"D:\SABA\SABA.exe"):
+            module = importlib.reload(saba.daily)
+            self.assertIn(r"-Execute 'D:\SABA\SABA.exe'", module.register_command(CONFIG))
+        importlib.reload(saba.daily)
+        self.assertIn(".venv", str(saba.daily.PYTHON))
+
+
 @unittest.skipUnless(shutil.which("powershell"), "PowerShell 없음")
 class ScriptTests(unittest.TestCase):
     def run_script(self, *args):

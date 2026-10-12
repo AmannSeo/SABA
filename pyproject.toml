@@ -8,5 +8,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = ["pydantic>=2.12,<3", "css-inline>=0.14,<1"]
 
+[project.optional-dependencies]
+build = ["pyinstaller>=6,<7"]  # 실행 파일 묶음 개발 도구 (D-069), 프로그램 실행에는 필요 없음
+
 [tool.setuptools.packages.find]
 where = ["src"]

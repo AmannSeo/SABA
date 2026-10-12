@@ -53,8 +53,9 @@ def load_admin_config(path: Path = CONFIG_PATH) -> tuple[str, int]:
 
 def run_command(args: list[str], timeout: int = 120) -> tuple[int, str]:
     """명령 실행 (출력은 표시용으로 마지막 40줄만)."""
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}  # 하위 Python 출력을 UTF-8 로 받는다 (기본은 cp949)
     result = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, encoding="utf-8",
-                            errors="replace", timeout=timeout)
+                            errors="replace", timeout=timeout, env=env)
     lines = (result.stdout + result.stderr).strip().splitlines()
     return result.returncode, "\n".join(lines[-40:])
 
@@ -195,6 +196,7 @@ class AdminApp:
             return "미리보기 재생성: 기간 안 표시할 기사가 없습니다."
         today = f"{now.year}년 {now.month}월 {now.day}일 {'월화수목금토일'[now.weekday()]}요일"
         path = self.root / "output" / f"daily_{now:%Y%m%d}_preview.eml"
+        path.parent.mkdir(exist_ok=True)
         path.write_bytes(build_message(to_mail_html(views, today=today), f"[미리보기] Security & AI Briefing · {today}").as_bytes())
         return f"미리보기 재생성 완료: {path.name} (표시 {len(views)}건, 저장 결과만 사용)"
 
