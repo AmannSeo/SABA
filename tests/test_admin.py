@@ -49,7 +49,8 @@ class AdminBase(unittest.TestCase):
             (self.root / folder).mkdir()
         self.log = self.root / "logs" / f"daily_{TODAY:%Y%m%d}.log"
         self.log.write_text(self.log_text, encoding="utf-8")
-        (self.root / "config" / "daily.json").write_bytes((admin.ROOT / "config" / "daily.json").read_bytes())
+        for name in ("daily.json", "departments.json"):
+            (self.root / "config" / name).write_bytes((admin.ROOT / "config" / name).read_bytes())
         # RSS Source 는 설정 파일 (관리 화면에서 바뀜) 과 무관하게 처음 6곳으로 고정한다.
         rows = json.loads((admin.ROOT / "config" / "sources.json").read_text(encoding="utf-8"))
         six = [row for row in rows if row["id"] in ORIGINAL_IDS]
@@ -102,10 +103,10 @@ class AdminTests(AdminBase):
         self.assertEqual(load_admin_config()[0], "127.0.0.1")  # 저장소 기본 설정
 
     def test_all_pages_render_with_new_terms(self):  # D-072, D-073 용어·화면
-        for path in ("/", "/test", "/schedule", "/sources", "/sources?edit=new", "/sources?edit=boannews", "/logs",
+        for path in ("/", "/test", "/schedule", "/sources", "/recipients", "/recipients?edit=new", "/sources?edit=new", "/sources?edit=boannews", "/logs",
                      "/logs?tab=detail", "/logs?tab=changes", "/newsletter", "/settings"):
             html = self.get(path)
-            self.assertIn("수신자·발송 관리 (2단계 예정)", html)
+            self.assertIn('href="/recipients"', html)  # 수신자·그룹 메뉴 (D-075)
         html = self.get("/")
         for text in ("예약 발송", "마지막 실행", "운영 현황", "최근 실행", 'class="switch"'):
             self.assertIn(text, html)
@@ -423,6 +424,76 @@ class SourceTests(AdminBase):
         self.post("source_toggle", id=self.entries()[0].source.source_id)  # 마지막 사용 Source
         self.assertIn("하나 이상", self.app.message)
         self.assertTrue(self.entries()[0].enabled)
+
+
+class RecipientPageTests(AdminBase):
+    """수신자·그룹 화면 (D-074, D-075). 가상 주소만 쓴다."""
+
+    def test_add_list_and_change_log_has_counts_only(self):
+        self.post("recipient_save", confirm=False, name="가상 사용자", email="virtual.user@tbell.co.kr",
+                  department="보안사업팀", groups=["TEST", "파일럿"], enabled="on", back="/recipients")
+        self.assertIn("수신자 추가 완료", self.app.message)
+        html = self.get("/recipients")
+        self.assertIn("virtual.user@tbell.co.kr", html)
+        self.assertIn("TEST 로 잠금", html)
+        changes = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
+        self.assertIn("1명", changes)
+        self.assertNotIn("virtual.user", changes)  # 개인정보는 기록하지 않음
+        self.assertNotIn("가상 사용자", changes)
+
+    def test_rejects_other_domain(self):
+        self.post("recipient_save", confirm=False, name="외부", email="someone@gmail.com", department="보안사업팀")
+        self.assertIn("허용되지 않은 도메인", self.app.message)
+        self.assertNotIn("someone@gmail.com", self.get("/recipients"))
+
+    def test_csv_preview_then_apply(self):
+        text = "이름,메일,부서,그룹\n가상 하나,virtual.one@tbell.co.kr,STE본부,TEST\n가상 둘,virtual.two@naver.com,STE본부,\n"
+        self.post("csv_preview", confirm=False, csv=text, back="/recipients")
+        self.assertIn("신규 1명", self.app.message)
+        html = self.get("/recipients")
+        self.assertIn("CSV 미리보기 (아직 저장 안 됨)", html)
+        self.assertNotIn("<td>virtual.one@tbell.co.kr</td><td>STE본부</td><td><span", html)  # 아직 목록에 없음
+        self.assertEqual(self.post("csv_apply", confirm=False)[0], 400)  # 확인 창 필요
+        self.post("csv_apply", back="/recipients")
+        self.assertIn("신규 1명", self.app.message)
+        status, csv_text, _ = self.request("GET", "/recipients/export.csv")
+        self.assertEqual(status, 200)
+        self.assertIn("가상 하나,virtual.one@tbell.co.kr,STE본부,TEST,사용", csv_text)
+
+    def test_groups_and_departments(self):
+        self.post("group_add", confirm=False, name="임원")
+        self.post("department_add", confirm=False, name="인사팀")
+        html = self.get("/recipients")
+        self.assertIn("임원", html)
+        self.assertIn("인사팀", html)
+        self.post("group_delete", name="TEST")
+        self.assertIn("지울 수 없습니다", self.app.message)
+
+
+class CriteriaTests(AdminBase):
+    """부서별 분류 기준 편집 (D-075)."""
+
+    def form(self, **changes):
+        from saba.insights import DEPARTMENT_NAMES, load_departments
+        scopes, examples = load_departments(self.root / "config" / "departments.json")
+        data = {}
+        for i, name in enumerate(DEPARTMENT_NAMES):
+            data[f"scope_{i}"], data[f"examples_{i}"] = scopes[name], examples[name]
+        return {**data, **changes, "back": "/settings"}
+
+    def test_save_updates_file_and_logs(self):
+        self.assertIn("부서별 분류 기준", self.get("/settings"))
+        self.post("criteria_save", **self.form(examples_1="가상 판단 예시"))
+        self.assertIn("기술개발연구소", self.app.message)
+        from saba.insights import load_departments
+        self.assertEqual(load_departments(self.root / "config" / "departments.json")[1]["기술개발연구소"], "가상 판단 예시")
+        self.assertIn("부서 기준 기술개발연구소", self.get("/logs?tab=changes"))
+
+    def test_empty_rejected(self):
+        before = (self.root / "config" / "departments.json").read_bytes()
+        self.post("criteria_save", **self.form(scope_0=""))
+        self.assertIn("저장하지 않음", self.app.message)
+        self.assertEqual((self.root / "config" / "departments.json").read_bytes(), before)
 
 
 if __name__ == "__main__":

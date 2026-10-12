@@ -46,6 +46,12 @@ CONFIRM_TEXT = {
     "source_toggle": "이 RSS Source 의 사용·중지를 바꿀까요? 이미 수집한 기사는 그대로 둡니다.",
     "source_delete": "이 RSS Source 를 목록에서 삭제할까요? 수집한 기사·분석은 DB 에 남지만 메일에는 더 이상 나오지 않습니다.",
     "rss_dryrun": "RSS 수집 점검: 사용 중인 RSS Source 에 접속합니다 (저장 없음). 진행할까요?",
+    "recipient_delete": "이 수신자를 삭제할까요? 되돌릴 수 없습니다 (잠시 빼려면 중지를 쓰세요).",
+    "csv_apply": "미리보기의 신규·갱신 행을 저장합니다 (오류 행은 건너뜀). 진행할까요?",
+    "group_delete": "이 그룹을 삭제할까요? 수신자는 그대로 두고 그룹 소속만 지웁니다.",
+    "department_delete": "이 부서를 목록에서 삭제할까요?",
+    "domain_delete": "이 도메인을 허용 목록에서 삭제할까요?",
+    "criteria_save": "부서별 분류 기준을 저장합니다. 다음 실행부터 새 기준으로 시사점을 만듭니다 (이미 만든 시사점도 다시 만듦, 하루 상한 안). 진행할까요?",
     "smtp_check": "메일 서버 로그인 점검: 회사 메일 서버에 접속해 로그인만 확인합니다 (발송 없음). 진행할까요?",
     "save_schedule": "예약 발송 설정을 저장합니다. 일정이 바뀌면 작업 스케줄러에 다시 등록합니다. 진행할까요?",
 }
@@ -128,6 +134,7 @@ class AdminApp:
     message: str = ""
     checked: dict[str, float] = field(default_factory=dict)  # 주소 확인을 통과한 RSS 주소와 시각 (30분 유효)
     draft: dict = field(default_factory=dict)  # 주소 확인 뒤 저장할 때까지 입력 값을 유지
+    csv_rows: list = field(default_factory=list)  # 수신자 CSV 미리보기 (저장 전, 메모리에만)
 
     # ---- 경로 ----
     @property
@@ -141,6 +148,14 @@ class AdminApp:
     def source_entries(self):
         from saba.rss import load_source_entries
         return load_source_entries(self.sources_path)
+
+    @property
+    def recipients_path(self) -> Path:
+        return self.root / "data" / "recipients.db"
+
+    @property
+    def departments_path(self) -> Path:
+        return self.root / "config" / "departments.json"
 
     @property
     def changes_path(self) -> Path:
@@ -319,6 +334,10 @@ class AdminApp:
             return self.save_source(form)
         if action in ("source_toggle", "source_delete"):
             return self.change_source(_first(form, "id"), delete=action == "source_delete")
+        if action.startswith(("recipient_", "group_", "department_", "domain_", "csv_")):
+            return self.recipient_action(action, form)
+        if action == "criteria_save":
+            return self.save_criteria(form)
         if action == "task_state":
             return self.set_task_state(_first(form, "state") == "on")
         if action == "save_schedule":
@@ -445,6 +464,96 @@ class AdminApp:
         self._save_entries(entries, {f"RSS Source {source_id}": (_source_text(old), _source_text(new))})
         verb = "삭제" if delete else ("사용" if new.enabled else "중지")
         return f"RSS Source {verb}: {old.source.source_name} (다음 실행부터 반영, 수집한 기사는 DB 에 유지)"
+
+    # ---- 수신자·그룹 (D-074, D-075). 명단은 화면에만, 기록에는 건수만 ----
+    def recipient_action(self, action: str, form: dict) -> str:
+        from saba import recipients as rc
+        from saba.history import append_change
+        path = self.recipients_path
+        before = rc.counts(path)["total"]
+        value = _first(form, "name").strip()
+        try:
+            if action == "recipient_save":
+                rid = _first(form, "id")
+                done = rc.save(_first(form, "name"), _first(form, "email"), _first(form, "department"), form.get("groups", []),
+                               enabled=_first(form, "enabled") == "on", recipient_id=int(rid) if rid else None, path=path)
+                message = f"수신자 {done} 완료"
+            elif action in ("recipient_toggle", "recipient_delete"):
+                rid = int(_first(form, "id") or 0)
+                person = next((r for r in rc.recipients(path) if r.id == rid), None)
+                if person is None:
+                    raise AdminError("수신자를 찾지 못했습니다.")
+                if action == "recipient_delete":
+                    rc.delete(rid, path)
+                    done = "삭제"
+                else:
+                    rc.set_enabled(rid, not person.enabled, path)
+                    done = "중지" if person.enabled else "사용"
+                message = f"수신자 {done} 완료"
+            elif action == "csv_preview":
+                self.csv_rows = rc.parse_csv(_first(form, "csv"), path)
+                if not self.csv_rows:
+                    return "CSV 에 읽을 행이 없습니다."
+                n = {k: sum(r["status"] == k for r in self.csv_rows) for k in ("신규", "갱신", "오류")}
+                return f"미리보기: 신규 {n['신규']}명 · 갱신 {n['갱신']}명 · 오류 {n['오류']}행. 아래 표를 확인하고 \"저장\" 을 누르세요 (아직 저장 안 됨)."
+            elif action == "csv_apply":
+                if not self.csv_rows:
+                    raise AdminError("먼저 CSV 미리보기를 하세요.")
+                added, updated, skipped = rc.apply_csv(self.csv_rows, path)
+                self.csv_rows = []
+                done = f"CSV 신규 {added} · 갱신 {updated} · 건너뜀 {skipped}"
+                message = f"CSV 저장 완료: 신규 {added}명 · 갱신 {updated}명 · 건너뜀 {skipped}행"
+            elif action == "csv_cancel":
+                self.csv_rows = []
+                return "CSV 미리보기를 취소했습니다."
+            elif action == "group_add":
+                rc.add_group(value, path)
+                done = message = f"그룹 추가: {value}"
+            elif action == "group_delete":
+                rc.delete_group(value, path)
+                done = message = f"그룹 삭제: {value}"
+            elif action == "department_add":
+                rc.add_department(value, path)
+                done = message = f"부서 추가: {value}"
+            elif action == "department_delete":
+                rc.delete_department(value, path)
+                done = message = f"부서 삭제: {value}"
+            elif action == "domain_add":
+                rc.add_domain(value, path)
+                done = message = f"허용 도메인 추가: {value}"
+            elif action == "domain_delete":
+                rc.delete_domain(value, path)
+                done = message = f"허용 도메인 삭제: {value}"
+            else:
+                raise AdminError("알 수 없는 동작입니다.")
+        except rc.RecipientError as error:
+            raise AdminError(f"저장하지 않음 · {error}") from None
+        after = rc.counts(path)["total"]
+        # 개인정보: 이름·메일은 남기지 않고 인원 수와 동작만 기록한다.
+        append_change(self.changes_path, {"수신자 명단": (f"{before}명", f"{after}명 ({done if action != 'recipient_save' else '수신자 ' + done})")}, False)
+        return message
+
+    def save_criteria(self, form: dict) -> str:
+        """부서별 분류 기준 (D-075). 이름 4개 고정, 담당 업무·판단 예시만 편집."""
+        from saba.history import append_change
+        from saba.insights import DEPARTMENT_NAMES, DepartmentError, department_rows, load_departments, parse_departments
+        old_scopes, old_examples = load_departments(self.departments_path)
+        rows = [{"name": name, "scope": _first(form, f"scope_{i}"), "examples": _first(form, f"examples_{i}")}
+                for i, name in enumerate(DEPARTMENT_NAMES)]
+        try:
+            scopes, examples = parse_departments(rows)
+        except DepartmentError as error:
+            raise AdminError(f"저장하지 않음 · {str(error).replace('부서 기준 오류: ', '')}") from None
+        changes = {}
+        for name in DEPARTMENT_NAMES:
+            if (old_scopes[name], old_examples[name]) != (scopes[name], examples[name]):
+                changes[f"부서 기준 {name}"] = (f"{old_scopes[name]} / {old_examples[name]}", f"{scopes[name]} / {examples[name]}")
+        if not changes:
+            return "변경 사항이 없습니다."
+        self.departments_path.write_text(json.dumps(department_rows(scopes, examples), ensure_ascii=False, indent=2) + "\n",
+                                         encoding="utf-8")
+        append_change(self.changes_path, changes, False)
+        return f"부서별 분류 기준 저장: {', '.join(k.removeprefix('부서 기준 ') for k in changes)} (다음 실행부터 적용)"
 
     def set_task_state(self, on: bool) -> str:
         from saba.daily import TASK_NAME
@@ -592,7 +701,7 @@ details.guide ol{margin:10px 0 0;padding-left:20px;line-height:1.8}
 """
 
 MENU = [("/", "대시보드"), ("/test", "테스트"), ("/schedule", "예약 발송 설정"), ("/sources", "RSS Source"),
-        ("/logs", "실행 이력·뉴스레터"), ("/settings", "설정")]
+        ("/recipients", "수신자·그룹"), ("/logs", "실행 이력·뉴스레터"), ("/settings", "설정")]
 RESULT_BADGE = {"성공": "b-ok", "성공 (발송 안 함)": "b-info", "실패": "b-bad", "건너뜀": "b-warn", "진행 중": "b-mute"}
 
 
@@ -602,7 +711,6 @@ def badge(text: str, cls: str) -> str:
 
 def page(title: str, body: str, message: str = "", refresh: bool = False, active: str = "/") -> str:
     links = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in MENU)
-    links += '<span title="2단계 예정">수신자·발송 관리 (2단계 예정)</span>'
     note = f'<div class="msg">{escape(message)}</div>' if message else ""
     meta = '<meta http-equiv="refresh" content="10">' if refresh else ""
     return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">{meta}'
@@ -1030,6 +1138,92 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
     return form + table
 
 
+def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
+    """수신자·그룹 관리 (D-074, D-075). 실제 발송은 TEST 1명 잠금."""
+    from saba import recipients as rc
+    path = app.recipients_path
+    group_list, dept_list, domain_list = rc.groups(path), rc.departments(path), rc.domains(path)
+    people = rc.recipients(path)
+    shown = rc.recipients(path, group) if group else people
+    enabled = sum(p.enabled for p in people)
+    tiles = (f'<div class="tiles"><div class="tile c-blue"><div class="k">수신자</div><div class="v">{enabled}명 사용</div>'
+             f'<div class="s">전체 {len(people)}명 · 중지 {len(people) - enabled}명</div></div>'
+             f'<div class="tile c-green"><div class="k">그룹</div><div class="v">{len(group_list) - 1}개</div><div class="s">"전체" 는 사용 중인 전원 자동</div></div>'
+             f'<div class="tile c-purple"><div class="k">부서</div><div class="v">{len(dept_list)}개</div><div class="s">허용 도메인 {", ".join(domain_list)}</div></div>'
+             f'<div class="tile c-red"><div class="k">실제 발송 대상</div><div class="v">TEST 1명</div><div class="s">TEST 외 발송은 별도 승인 후</div></div></div>')
+    target = ('<div class="card c-red"><h2>발송 대상 그룹</h2><div class="row"><select disabled>'
+              + "".join(f'<option{" selected" if g == "TEST" else ""}>{escape(g)} ({n}명)</option>' for g, n in group_list)
+              + '</select>' + badge("TEST 로 잠금", "b-warn") + '</div>'
+              '<p class="muted">지금은 예약·지금·테스트 발송 모두 고정 TEST 주소 1명에게만 보냅니다. 그룹 발송은 발송 전 미리보기·승인 절차와 함께 별도 승인 후 열립니다.</p></div>')
+
+    filters = "".join(f'<a class="btn{" primary" if (group or "") == (g if g != "모두" else "") else ""}" href="/recipients{"?group=" + quote(g) if g != "모두" else ""}">{escape(g)} ({n})</a> '
+                      for g, n in [("모두", len(people))] + group_list)
+    rows = ""
+    for p in shown:
+        tags = " ".join(badge(g, "b-info") for g in p.groups) or '<span class="muted">-</span>'
+        rows += (f"<tr class='src' data-q='{escape((p.name + ' ' + p.email + ' ' + p.department + ' ' + ' '.join(p.groups)).lower())}'>"
+                 f"<td><b>{escape(p.name)}</b></td><td>{escape(p.email)}</td><td>{escape(p.department)}</td><td>{tags}</td>"
+                 f"<td>{badge('사용', 'b-ok') if p.enabled else badge('중지', 'b-mute')}</td>"
+                 f"<td style='white-space:nowrap'><a class=btn href='/recipients?edit={p.id}'>수정</a> "
+                 + button(app, "recipient_toggle", "중지" if p.enabled else "사용", "warn" if p.enabled else "success", back="/recipients", fields={"id": str(p.id)}) + " "
+                 + button(app, "recipient_delete", "삭제", "danger", back="/recipients", fields={"id": str(p.id)}) + "</td></tr>")
+    search = ('<input class="search" placeholder="검색: 이름·메일·부서·그룹" oninput="var q=this.value.toLowerCase();'
+              'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
+    listing = (f'<div class="card c-blue"><h2>수신자 목록<span class="right">{search} <a class="btn" href="/recipients/export.csv">명단 CSV 내려받기</a> '
+               f'<a class="btn primary" href="/recipients?edit=new#form">추가</a></span></h2><div class="row">{filters}</div>'
+               '<table><tr><th>이름</th><th>메일</th><th>부서</th><th>그룹</th><th>상태</th><th>관리</th></tr>'
+               f'{rows or "<tr><td colspan=6>등록된 수신자가 없습니다. 오른쪽 위 \"추가\" 또는 아래 CSV 일괄 등록을 쓰세요.</td></tr>"}</table></div>')
+
+    current = next((p for p in people if edit and str(p.id) == edit), None)
+    values = current or rc.Recipient(0, "", "", dept_list[0][0] if dept_list else "", True, ["TEST"] if not current else [])
+    dept_options = "".join(f'<option{" selected" if d == values.department else ""}>{escape(d)}</option>' for d, _ in dept_list)
+    group_boxes = "".join(f'<label><input type="checkbox" name="groups" value="{escape(g)}"{" checked" if g in values.groups else ""}> {escape(g)}</label>'
+                          for g, _ in group_list if g != rc.ALL_GROUP)
+    form = (f'<div class="card c-orange" id="form"><h2>{"수신자 수정" if current else "수신자 추가"}</h2>'
+            f'<form method="post" action="/action/recipient_save"><input type="hidden" name="token" value="{app.token}">'
+            f'<input type="hidden" name="back" value="/recipients"><input type="hidden" name="id" value="{current.id if current else ""}">'
+            f'<div class="field"><label class="t">이름</label><input name="name" value="{escape(values.name)}" required maxlength="40" style="width:100%"></div>'
+            f'<div class="field"><label class="t">메일 ({escape(", ".join("@" + d for d in domain_list))} 만)</label>'
+            f'<input name="email" type="email" value="{escape(values.email)}" required style="width:100%"></div>'
+            f'<div class="field"><label class="t">부서</label><select name="department">{dept_options}</select></div>'
+            f'<div class="field"><label class="t">그룹 (여러 개 가능, "전체" 는 자동)</label><div class="chips">{group_boxes}</div></div>'
+            f'<div class="field"><label><input type="checkbox" name="enabled" value="on"{" checked" if values.enabled else ""}> 사용</label></div>'
+            f'<div class="row"><button class="btn primary">저장</button><a class="btn" href="/recipients">취소</a></div></form></div>')
+
+    csv_card = ('<div class="card c-green"><h2>CSV 일괄 등록<span class="right"><a class="btn" href="/recipients/template.csv">빈 양식 내려받기</a></span></h2>'
+                '<p class="muted">형식: <b>이름,메일,부서,그룹</b> (첫 줄은 제목). 그룹이 여러 개면 <b>;</b> 로 구분 (예: TEST;파일럿). '
+                '엑셀에서 "CSV UTF-8" 로 저장한 파일을 고르거나, 엑셀 표를 복사해 아래 칸에 붙여 넣어도 됩니다. 이미 있는 메일은 정보가 갱신됩니다.</p>'
+                f'<form method="post" action="/action/csv_preview"><input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/recipients">'
+                '<div class="row"><input type="file" accept=".csv,text/csv" onchange="var f=this.files[0];if(!f)return;var r=new FileReader();'
+                'r.onload=function(){document.getElementById(\'csvtext\').value=r.result};r.readAsText(f,\'utf-8\')"></div>'
+                '<textarea name="csv" id="csvtext" rows="7" style="width:100%" placeholder="이름,메일,부서,그룹"></textarea>'
+                '<div class="row"><button class="btn primary">미리보기</button><span class="muted">미리보기는 저장하지 않습니다.</span></div></form></div>')
+    preview = ""
+    if app.csv_rows:
+        status_badge = {"신규": "b-ok", "갱신": "b-info", "오류": "b-bad"}
+        prow = "".join(f"<tr><td>{r['line']}</td><td>{badge(r['status'], status_badge[r['status']])}</td><td>{escape(r['name'])}</td>"
+                       f"<td>{escape(r['email'])}</td><td>{escape(r['department'])}</td><td>{escape(';'.join(r['groups']))}</td>"
+                       f"<td>{escape(r['error']) or '-'}</td></tr>" for r in app.csv_rows)
+        preview = (f'<div class="card c-orange"><h2>CSV 미리보기 (아직 저장 안 됨)<span class="right">'
+                   + button(app, "csv_apply", "신규·갱신 저장", "primary", back="/recipients") + " "
+                   + button(app, "csv_cancel", "취소", "", back="/recipients") + '</span></h2>'
+                   f'<table><tr><th>줄</th><th>결과</th><th>이름</th><th>메일</th><th>부서</th><th>그룹</th><th>오류</th></tr>{prow}</table></div>')
+
+    def manage(title: str, items: list, action: str, placeholder: str, cls: str, locked: tuple = ()) -> str:
+        rows = "".join(f"<tr><td>{escape(name)}</td><td>{'' if count is None else f'{count}명'}</td><td>"
+                       + ("" if name in locked else button(app, f"{action}_delete", "삭제", "danger", back="/recipients", fields={"name": name}))
+                       + "</td></tr>" for name, count in items)
+        return (f'<div class="card {cls}"><h2>{title}</h2><table>{rows}</table>'
+                f'<form method="post" action="/action/{action}_add" class="row"><input type="hidden" name="token" value="{app.token}">'
+                f'<input type="hidden" name="back" value="/recipients"><input name="name" placeholder="{placeholder}" required>'
+                f'<button class="btn primary">추가</button></form></div>')
+    groups_card = manage("그룹", group_list, "group", "새 그룹 이름", "c-teal", locked=(rc.ALL_GROUP, "TEST"))
+    dept_card = manage("부서 목록", dept_list, "department", "새 부서 이름", "c-purple")
+    domain_card = manage("허용 도메인", [(d, None) for d in domain_list], "domain", "예: tbell.co.kr", "c-gray")
+    return (tiles + f'<div class="grid">{target}{groups_card}</div>' + listing + preview
+            + f'<div class="grid">{form}{csv_card}</div>' + f'<div class="grid">{dept_card}{domain_card}</div>')
+
+
 def settings_page(app: AdminApp) -> str:
     from saba.send_mail import TEST_ADDRESS
     config, valid = app.config(), app._try(app.config)
@@ -1046,8 +1240,29 @@ def settings_page(app: AdminApp) -> str:
             f'<tr><th style="width:160px">사용 중</th><td>{sum(1 for e in entries if e.enabled)}곳</td></tr><tr><th>전체</th><td>{len(entries)}곳</td></tr></table></div></div>'
             f'<div class="grid"><div class="card c-red"><h2>Secret (값은 표시하지 않음)<span class="muted">변경 기능은 로그인·권한 작업과 함께 예정</span></h2>'
             f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table></div>'
-            f'<div class="card c-teal"><h2>발송 대상<span class="muted">수신자·그룹 (전체 인원) 관리는 다음 작업</span></h2>'
-            f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)})</td></tr></table></div></div>')
+            f'<div class="card c-teal"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
+            f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
+            + criteria_card(app))
+
+
+def criteria_card(app: AdminApp) -> str:
+    """부서별 분류 기준 편집 (D-075). AI 가 기사마다 '우리 업무와의 연결' 부서를 고르는 기준."""
+    from saba.insights import DEPARTMENT_NAMES, load_departments
+    scopes, examples = load_departments(app.departments_path)
+    rows = "".join(
+        f'<tr><th style="width:130px">{escape(name)}</th>'
+        f'<td><textarea name="scope_{i}" rows="2" style="width:100%" maxlength="200">{escape(scopes[name])}</textarea></td>'
+        f'<td><textarea name="examples_{i}" rows="3" style="width:100%" maxlength="300">{escape(examples[name])}</textarea></td></tr>'
+        for i, name in enumerate(DEPARTMENT_NAMES))
+    return (f'<div class="card c-purple"><h2>부서별 분류 기준<span class="muted">AI 가 기사마다 관련 부서를 고르는 기준입니다. '
+            f'부서 이름 4개는 메일 부서 카드와 같아 고정입니다.</span></h2>'
+            f'<form method="post" action="/action/criteria_save" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["criteria_save"])}\')">'
+            f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
+            f'<input type="hidden" name="confirm" value="yes">'
+            f'<table><tr><th>부서</th><th>담당 업무 (200자 이내)</th><th>판단 예시 (300자 이내, 쉼표로 나열)</th></tr>{rows}</table>'
+            f'<div class="row"><button class="btn primary">저장</button>'
+            f'<span class="muted">저장하면 다음 실행부터 새 기준으로 시사점을 다시 만듭니다 (하루 AI 상한 안). 변경은 설정 변경 이력에 남습니다.</span></div>'
+            f'</form></div>')
 
 
 def make_handler(app: AdminApp, port: int):
@@ -1057,10 +1272,12 @@ def make_handler(app: AdminApp, port: int):
         def log_message(self, *args):  # 요청 로그는 남기지 않는다
             pass
 
-        def _send(self, code: int, body: str, content_type: str = "text/html; charset=utf-8"):
+        def _send(self, code: int, body: str, content_type: str = "text/html; charset=utf-8", headers: dict | None = None):
             data = body.encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", content_type)
+            for key, value in (headers or {}).items():
+                self.send_header(key, value)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
@@ -1087,6 +1304,14 @@ def make_handler(app: AdminApp, port: int):
                 return self._send(200, page("테스트", test_page(app), message, refresh=app.running(), active="/test"))
             if url.path == "/sources":
                 return self._send(200, page("RSS Source", sources_page(app, _first(query, "edit") or None), message, active="/sources"))
+            if url.path == "/recipients":
+                return self._send(200, page("수신자·그룹", recipients_page(app, _first(query, "group") or None, _first(query, "edit") or None),
+                                            message, active="/recipients"))
+            if url.path in ("/recipients/export.csv", "/recipients/template.csv"):
+                from saba import recipients as rc
+                text = rc.export_csv(app.recipients_path) if url.path.endswith("export.csv") else rc.template_csv()
+                return self._send(200, text, "text/csv; charset=utf-8",
+                                  {"Content-Disposition": f'attachment; filename="{url.path.rsplit("/", 1)[1]}"'})
             if url.path == "/schedule":
                 return self._send(200, page("예약 발송 설정", schedule_page(app), message, active="/schedule"))
             if url.path == "/logs":
@@ -1105,7 +1330,7 @@ def make_handler(app: AdminApp, port: int):
         def do_POST(self):
             if not self._host_ok():
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
-            length = min(int(self.headers.get("Content-Length") or 0), 16384)
+            length = min(int(self.headers.get("Content-Length") or 0), 262144)  # 수신자 CSV 붙여 넣기 (약 수천 명)
             form = parse_qs(self.rfile.read(length).decode("utf-8", errors="replace"), keep_blank_values=True)
             action = urlparse(self.path).path.removeprefix("/action/")
             if not secrets.compare_digest(_first(form, "token"), app.token):
