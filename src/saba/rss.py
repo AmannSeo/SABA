@@ -36,12 +36,15 @@ class Source:
     official: bool = False
     # 출처 국가 기준 국내·해외. Preview 섹션 배치에만 쓰며 사건 발생 지역이 아니다 (D-029).
     region: str = "해외"
+    # 관리 화면 분류 (D-074). official 은 kind == "공식 기관" 이다.
+    kind: str = "보안 전문 매체"
 
 
 KST = timedelta(hours=9)  # 한국 표준시, 일광 절약 시간 없음
 SOURCES_PATH = Path(__file__).resolve().parents[2] / "config" / "sources.json"
 MAX_SOURCES = 15  # D-073
 REGIONS = ("국내", "해외")
+KINDS = ("공식 기관", "보안 전문 매체", "IT 언론", "기업·벤더")  # D-074
 SOURCE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
 
 
@@ -60,9 +63,9 @@ def parse_sources(rows: list) -> list[SourceEntry]:
     for row in rows:
         try:
             source_id, name, url = str(row["id"]), str(row["name"]).strip(), str(row["url"]).strip()
-            region, official, kst, date_only, enabled = (row.get("region", "해외"), bool(row.get("official", False)),
-                                                          bool(row.get("kst", False)), bool(row.get("date_only", False)),
-                                                          bool(row.get("enabled", True)))
+            region, kst, date_only, enabled = (row.get("region", "해외"), bool(row.get("kst", False)),
+                                               bool(row.get("date_only", False)), bool(row.get("enabled", True)))
+            kind = row.get("kind") or ("공식 기관" if row.get("official") else "보안 전문 매체")
         except (KeyError, TypeError, AttributeError):
             raise RssError("Source 설정 오류: id·name·url 이 필요합니다.") from None
         if not SOURCE_ID_PATTERN.fullmatch(source_id) or source_id in seen:
@@ -73,14 +76,17 @@ def parse_sources(rows: list) -> list[SourceEntry]:
             raise RssError("Source 설정 오류: RSS 주소는 https:// 로 시작해야 합니다.")
         if region not in REGIONS:
             raise RssError("Source 설정 오류: 구분은 국내·해외 중 하나여야 합니다.")
+        if kind not in KINDS:
+            raise RssError("Source 설정 오류: 종류는 공식 기관·보안 전문 매체·IT 언론·기업·벤더 중 하나여야 합니다.")
         seen.add(source_id)
-        entries.append(SourceEntry(Source(source_id, name, url, KST if kst else None, date_only, official, region), enabled))
+        entries.append(SourceEntry(Source(source_id, name, url, KST if kst else None, date_only, kind == "공식 기관",
+                                          region, kind), enabled))
     return entries
 
 
 def source_row(entry: SourceEntry) -> dict:
     s = entry.source
-    return {"id": s.source_id, "name": s.source_name, "url": s.feed_url, "region": s.region, "official": s.official,
+    return {"id": s.source_id, "name": s.source_name, "url": s.feed_url, "region": s.region, "kind": s.kind,
             "kst": s.local_offset is not None, "date_only": s.date_only, "enabled": entry.enabled}
 
 
@@ -112,7 +118,7 @@ SOURCE_BY_ID: dict[str, Source] = {}
 reload_sources()
 # 함수 기본값·테스트용. 설정에서 삭제돼도 가져오기가 깨지지 않게 설정과 따로 둔다.
 CERT_EU = Source("cert-eu-security-advisories", "CERT-EU", "https://cert.europa.eu/publications/security-advisories-rss",
-                 official=True)
+                 official=True, kind="공식 기관")
 FEED_URL = CERT_EU.feed_url
 SOURCE_ID = CERT_EU.source_id
 MAX_BYTES = 2 * 1024 * 1024
@@ -158,7 +164,7 @@ def publication_time(value: str | None, local_offset: timedelta | None = None) -
         return None
     value = value.strip()
     if local_offset is not None:
-        for pattern, layout in ((r"\d{4}-\d{2}-\d{2}", "%Y-%m-%d"),
+        for pattern, layout in ((r"\d{4}-\d{2}-\d{2}", "%Y-%m-%d"), (r"\d{4}\.\d{2}\.\d{2}", "%Y.%m.%d"),
                                 (r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", "%Y-%m-%d %H:%M:%S")):
             if re.fullmatch(pattern, value):
                 try:
@@ -251,11 +257,15 @@ def select_articles(articles: list[Article], now: datetime, *, bootstrap=False,
     }
 
 
-def reconcile_articles(path: Path, articles: list[Article]) -> tuple[list[Article], int]:
+def reconcile_articles(path: Path, articles: list[Article]) -> tuple[list[Article], int, list[Article]]:
+    """(새로 저장할 기사, 같은 원문 건수, 원문이 바뀐 기존 기사의 갱신본).
+
+    원문이 바뀐 기사는 처음 수집 시각 등 다른 값은 두고 원문 항목만 새 값으로 바꾼다 (D-074, 이전에는 저장 보류).
+    """
     # ponytail: 전체 기사 읽기, DB 규모가 커지면 ID별 일괄 조회로 교체한다.
     existing = {article.article_id: article for article in list_articles(path)} if path.exists() else {}
-    result = []
-    skipped = conflicts = 0
+    result, changed = [], []
+    skipped = 0
     for article in articles:
         old = existing.get(article.article_id)
         if old is None:
@@ -263,10 +273,8 @@ def reconcile_articles(path: Path, articles: list[Article]) -> tuple[list[Articl
             continue
         compared = old.model_copy(update={field: getattr(article, field) for field in SOURCE_FIELDS})
         if normalized_json(old) != normalized_json(compared):
-            conflicts += 1
+            changed.append(compared)
         else:
             result.append(old)
             skipped += 1
-    if conflicts:
-        raise StorageError(f"RSS 원문 변경 충돌 {conflicts}건: 신규 저장 0건. 입력 전체 저장을 보류했습니다.")
-    return result, skipped
+    return result, skipped, changed

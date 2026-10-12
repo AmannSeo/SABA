@@ -14,6 +14,8 @@ from saba.admin import TOOLS, AdminApp, AdminError, load_admin_config, serve
 from saba.daily import DailyConfig, load_config
 
 TODAY = datetime.now()
+ORIGINAL_IDS = ("cert-eu-security-advisories", "boho-security-notice", "cisa-cybersecurity-advisories",
+                "the-hacker-news", "boannews", "boho-report-guide")
 RSS = (b'<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>t</title>'
        b'<item><title>Example advisory</title><link>https://example.com/a</link><guid>a1</guid>'
        b'<pubDate>Mon, 12 Oct 2026 03:00:00 +0000</pubDate></item></channel></rss>')
@@ -47,8 +49,11 @@ class AdminBase(unittest.TestCase):
             (self.root / folder).mkdir()
         self.log = self.root / "logs" / f"daily_{TODAY:%Y%m%d}.log"
         self.log.write_text(self.log_text, encoding="utf-8")
-        for name in ("daily.json", "sources.json"):
-            (self.root / "config" / name).write_bytes((admin.ROOT / "config" / name).read_bytes())
+        (self.root / "config" / "daily.json").write_bytes((admin.ROOT / "config" / "daily.json").read_bytes())
+        # RSS Source 는 설정 파일 (관리 화면에서 바뀜) 과 무관하게 처음 6곳으로 고정한다.
+        rows = json.loads((admin.ROOT / "config" / "sources.json").read_text(encoding="utf-8"))
+        six = [row for row in rows if row["id"] in ORIGINAL_IDS]
+        (self.root / "config" / "sources.json").write_text(json.dumps(six, ensure_ascii=False), encoding="utf-8")
         self.shell, self.commands, self.launched, self.fetched = FakeShell(), [], [], []
         self.app = AdminApp(root=self.root, shell=self.shell, launch=self.launched.append,
                             command=lambda args: (self.commands.append(args) or (0, "ok")),
@@ -124,6 +129,13 @@ class AdminTests(AdminBase):
     def test_second_server_on_same_port_refused(self):  # Windows 포트 중복 방지
         with self.assertRaises(OSError):
             serve("127.0.0.1", self.port, self.app)
+
+    def test_switch_off_shows_notice_instead_of_schedule(self):  # D-074
+        self.shell.state = "Disabled"
+        html = self.get("/")
+        self.assertIn("예약 발송이 꺼져 있습니다.", html)
+        self.assertNotIn("<th>다음 예약</th>", html)
+        self.assertIn('type="checkbox" onchange', html)  # 스위치 꺼짐
 
     def test_foreign_host_header_rejected(self):  # DNS rebinding 방지
         self.assertEqual(self.request("GET", "/", host="evil.example:80")[0], 403)
@@ -357,7 +369,7 @@ class SourceTests(AdminBase):
     """RSS Source 관리 (D-073). 주소 확인 접속은 가짜 fetch 로 바꾼다."""
 
     form = {"mode": "new", "id": "example-feed", "name": "예시 피드", "url": "https://example.com/rss.xml",
-            "region": "해외", "official": "on", "enabled": "on", "back": "/sources"}
+            "region": "해외", "kind": "공식 기관", "enabled": "on", "back": "/sources"}
 
     def entries(self):
         from saba.rss import load_source_entries

@@ -22,6 +22,10 @@ from saba.schema import Article
 from saba.storage import StorageError, get_article, list_articles, save_articles
 
 ROOT = Path(__file__).resolve().parents[1]
+# 다중 Source 테스트는 설정 파일 (관리 화면에서 바뀜, D-073) 과 무관하게 처음 승인한 6곳으로 고정한다.
+ORIGINAL_IDS = ("cert-eu-security-advisories", "boho-security-notice", "cisa-cybersecurity-advisories",
+                "the-hacker-news", "boannews", "boho-report-guide")
+SOURCES = tuple(SOURCE_BY_ID[source_id] for source_id in ORIGINAL_IDS)
 PAYLOAD = (ROOT / "tests/fixtures/cert_eu_rss.xml").read_bytes()
 NOW = datetime(2026, 10, 6, 12, tzinfo=timezone.utc)
 
@@ -235,18 +239,23 @@ class StorageAndCliTests(unittest.TestCase):
         self.assertEqual(query.returncode, 0)
         self.assertIn("저장 기사 2건", query.stdout)
 
-    def test_conflict_holds_new_article_and_safe_log(self):
+    def test_changed_original_is_updated_and_safe_log(self):  # D-074: 이전에는 저장 보류
         self.cli("--collect-rss", "--bootstrap", "--db", self.db)
-        before = self.db.read_bytes()
+        before = {a.article_id: a for a in list_articles(self.db)}
         root = ET.fromstring(modified("description", "DO_NOT_LOG_RAW_BODY"))
         new = ET.fromstring(ET.tostring(root.find("channel/item")))
         new.find("guid").text = "fictional-new-before-conflict"
         root.find("channel").insert(0, new)
-        with self.assertLogs(level="ERROR") as logs:
-            self.assertEqual(self.cli("--collect-rss", "--bootstrap", "--db", self.db, payload=ET.tostring(root))[0], 1)
-        self.assertIn("충돌 1건", "\n".join(logs.output))
-        self.assertNotIn("DO_NOT_LOG_RAW_BODY", "\n".join(logs.output))
-        self.assertEqual(self.db.read_bytes(), before)
+        with self.assertLogs(level="INFO") as logs:
+            self.assertEqual(self.cli("--collect-rss", "--bootstrap", "--db", self.db, payload=ET.tostring(root))[0], 0)
+        output = "\n".join(logs.output)
+        self.assertIn("원문 갱신 1건", output)
+        self.assertNotIn("DO_NOT_LOG_RAW_BODY", output)
+        after = {a.article_id: a for a in list_articles(self.db)}
+        self.assertEqual(len(after), len(before) + 1)  # 새 기사도 함께 저장
+        changed = [a for a in after.values() if a.feed_excerpt == "DO_NOT_LOG_RAW_BODY" and a.article_id in before]
+        self.assertEqual(len(changed), 1)
+        self.assertEqual(changed[0].collected_at, before[changed[0].article_id].collected_at)  # 처음 수집 시각 유지
 
     def test_dry_run_absent_and_existing_db(self):
         self.assertEqual(self.cli("--collect-rss", "--dry-run", "--bootstrap", "--db", self.db), (0, 1))
@@ -312,6 +321,9 @@ class MultiSourceTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="saba-rss-", dir=ROOT / ".venv")
         self.addCleanup(self.temporary.cleanup)
         self.db = Path(self.temporary.name) / "multi.db"
+        source_patch = patch("saba.__main__.SOURCES", SOURCES)
+        source_patch.start()
+        self.addCleanup(source_patch.stop)
 
     def run_cli(self, *args, responses):
         clock = MagicMock()
@@ -332,7 +344,7 @@ class MultiSourceTests(unittest.TestCase):
         self.assertEqual([s.source_id for s in SOURCES], ["cert-eu-security-advisories", "boho-security-notice",
                                                           "cisa-cybersecurity-advisories", "the-hacker-news", "boannews",
                                                           "boho-report-guide"])
-        self.assertEqual(len(SOURCE_BY_ID), len(SOURCES))
+        self.assertTrue(set(ORIGINAL_IDS) <= set(SOURCE_BY_ID))
         self.assertTrue(all(s.feed_url.startswith("https://") for s in SOURCES))
         self.assertEqual(SOURCES[0].source_id, SOURCE_ID)
 
@@ -433,7 +445,7 @@ class MultiSourceTests(unittest.TestCase):
         self.assertEqual(sorted({a.source_id for a in list_articles(self.db)}),
                          ["boho-security-notice", "cert-eu-security-advisories"])
 
-    def test_conflict_in_one_source_keeps_other_sources(self):
+    def test_changed_title_updated_with_other_sources(self):  # D-074
         responses = {s.source_id: EMPTY_FEED for s in SOURCES}
         responses["cert-eu-security-advisories"] = PAYLOAD
         self.assertEqual(self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)[0], 0)
@@ -441,11 +453,11 @@ class MultiSourceTests(unittest.TestCase):
         responses["boho-security-notice"] = BOHO_PAYLOAD
         with self.assertLogs(level="INFO") as logs:
             code, _ = self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)
-        self.assertEqual(code, 1)
-        self.assertIn("충돌 1건", "\n".join(logs.output))
+        self.assertEqual(code, 0)
+        self.assertIn("원문 갱신 1건", "\n".join(logs.output))
         stored = list_articles(self.db)
         self.assertEqual(sum(a.source_id == "boho-security-notice" for a in stored), 2)
-        self.assertNotIn("[가상] 변경 제목", [a.original_title for a in stored])
+        self.assertIn("[가상] 변경 제목", [a.original_title for a in stored])
 
     def test_source_filter_and_dry_run(self):
         code, called = self.run_cli("--collect-rss", "--dry-run", "--bootstrap", "--source", "boho-security-notice",

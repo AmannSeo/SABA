@@ -11,7 +11,7 @@ from saba.schema import Article, validate_articles
 from saba.analysis import AnalysisError, validate_analysis
 from saba.analysis_storage import DEFAULT_ANALYSIS_DB, get_analysis, list_analyses, save_analysis
 from saba.rss import SOURCE_BY_ID, SOURCES, RssError, fetch_feed, parse_feed, reconcile_articles, select_articles
-from saba.storage import DEFAULT_DB, StorageError, get_article, list_articles, save_articles
+from saba.storage import DEFAULT_DB, StorageError, get_article, list_articles, save_articles, update_articles
 
 
 def read_json(path: Path) -> object:
@@ -76,14 +76,15 @@ def collect_source(source, path: Path, now: datetime, args, since: datetime | No
         "[%s] RSS 확인: 전체 %s건 · 기간 제외 %s건 · 발행 시각 미확인 %s건 · 상한 제외 %s건 · 저장 후보 %s건",
         source.source_id, counts["total"], counts["excluded"], counts["unknown"], counts["limited"], counts["candidates"],
     )
-    prepared, skipped = reconcile_articles(path, candidates)
+    prepared, skipped, changed = reconcile_articles(path, candidates)
     if args.dry_run:
-        logging.info("[%s] RSS dry-run: 예상 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 0건",
-                     source.source_id, len(prepared) - skipped, skipped)
+        logging.info("[%s] RSS dry-run: 예상 신규 %s건 · 동일 원문 %s건 생략 · 원문 갱신 예정 %s건 · 실제 저장 0건",
+                     source.source_id, len(prepared) - skipped, skipped, len(changed))
     else:
         inserted, skipped = save_articles(path, prepared) if prepared else (0, 0)
-        logging.info("[%s] RSS 저장 완료: 신규 %s건 · 동일 원문 %s건 생략 · 충돌 0건 · 실제 저장 %s건",
-                     source.source_id, inserted, skipped, inserted)
+        updated = update_articles(path, changed)
+        logging.info("[%s] RSS 저장 완료: 신규 %s건 · 동일 원문 %s건 생략 · 원문 갱신 %s건 · 실제 저장 %s건",
+                     source.source_id, inserted, skipped, updated, inserted)
 
 
 def main() -> int:

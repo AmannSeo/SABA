@@ -16,12 +16,13 @@ ROW = {"id": "example-feed", "name": "예시", "url": "https://example.com/rss.x
 
 class SourceConfigTests(unittest.TestCase):
     def test_repository_file_keeps_original_six(self):  # 코드에서 옮긴 값이 그대로인지 (D-073)
-        entries = load_source_entries()
+        entries = load_source_entries()[:6]
         self.assertEqual([e.source.source_id for e in entries],
                          ["cert-eu-security-advisories", "boho-security-notice", "cisa-cybersecurity-advisories",
                           "the-hacker-news", "boannews", "boho-report-guide"])
         boannews = next(e.source for e in entries if e.source.source_id == "boannews")
-        self.assertEqual((boannews.local_offset, boannews.region, boannews.official, boannews.date_only), (KST, "국내", False, False))
+        self.assertEqual((boannews.local_offset, boannews.region, boannews.official, boannews.date_only, boannews.kind),
+                         (KST, "국내", False, False, "보안 전문 매체"))
         self.assertTrue(all(e.enabled for e in entries))
 
     def test_validation(self):
@@ -53,7 +54,7 @@ class SourceConfigTests(unittest.TestCase):
             finally:
                 reload_sources()
         self.assertIn("boannews", issues.SOURCE_BY_ID)
-        self.assertEqual(len(rss.SOURCES), 6)
+        self.assertEqual(len(rss.SOURCES), sum(e.enabled for e in load_source_entries()))
 
     def test_deleted_source_articles_not_selected(self):
         from saba.schema import Article
@@ -65,6 +66,20 @@ class SourceConfigTests(unittest.TestCase):
                                        "url": "https://example.com/b"})
         selection = issues.select_issues([known, gone], now)
         self.assertEqual([i.representative.article_id for i in selection.issues], ["boannews:1"])
+
+
+class SourceKindAndDateTests(unittest.TestCase):  # D-074
+    def test_kind_validation_and_official_flag(self):
+        entry = parse_sources([{**ROW, "kind": "공식 기관"}])[0]
+        self.assertTrue(entry.source.official)
+        self.assertFalse(parse_sources([{**ROW, "kind": "IT 언론"}])[0].source.official)
+        with self.assertRaises(RssError):
+            parse_sources([{**ROW, "kind": "블로그"}])
+
+    def test_dotted_date_in_korean_time(self):
+        from saba.rss import publication_time
+        self.assertEqual(publication_time("2026.10.12", KST), datetime(2026, 10, 11, 15, 0, tzinfo=timezone.utc))
+        self.assertIsNone(publication_time("2026.10.12"))  # 시간대 정보 없고 한국 시간 해석도 꺼짐
 
 
 class TestTaskTests(unittest.TestCase):

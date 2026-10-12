@@ -51,7 +51,7 @@ CONFIRM_TEXT = {
 }
 MODE_LABEL = {"daily": "매일", "weekly": "매주", "monthly": "매월", "dates": "특정 날짜"}
 DAY_LABEL = dict(zip(("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"), "월화수목금토일"))
-FIELD_LABEL = {"mode": "반복", "time": "시각", "random_delay_minutes": "무작위 지연(분)", "weekdays": "요일",
+FIELD_LABEL = {"mode": "주기", "time": "시각", "random_delay_minutes": "무작위 지연(분)", "weekdays": "요일",
                "month_days": "매월 날짜", "dates": "특정 날짜", "max_analysis_calls": "하루 AI 분석 상한",
                "max_insight_calls": "하루 AI 시사점 상한", "send": "발송", "log_days": "로그 보관(일)",
                "mail_days": "메일 보관(일)"}
@@ -361,7 +361,7 @@ class AdminApp:
         """입력 값을 검증해 SourceEntry 하나로 만든다 (형식 검증은 rss.parse_sources 와 같다)."""
         from saba.rss import RssError, parse_sources
         row = {"id": _first(form, "id").strip().lower(), "name": _first(form, "name"), "url": _first(form, "url"),
-               "region": _first(form, "region") or "해외", "official": _first(form, "official") == "on",
+               "region": _first(form, "region") or "해외", "kind": _first(form, "kind") or "보안 전문 매체",
                "kst": _first(form, "kst") == "on", "date_only": _first(form, "date_only") == "on",
                "enabled": _first(form, "enabled") == "on"}
         self.draft = {**row, "mode": _first(form, "mode")}
@@ -512,7 +512,7 @@ def _source_text(entry) -> str:
     if entry is None:
         return "(없음)"
     s = entry.source
-    return (f"{s.source_name} · {s.feed_url} · {s.region} · {'공식' if s.official else '언론'}"
+    return (f"{s.source_name} · {s.feed_url} · {s.region} · {s.kind}"
             f"{' · 한국 시간' if s.local_offset else ''}{' · 날짜만' if s.date_only else ''} · {'사용' if entry.enabled else '중지'}")
 
 
@@ -522,51 +522,57 @@ def _first(form: dict, key: str) -> str:
 
 # ---------------- HTML ----------------
 CSS = """
-:root{--bg:#f4f6f9;--card:#fff;--line:#e3e7ee;--text:#1f2937;--muted:#6b7280;--brand:#1d4ed8;--ok:#15803d;--bad:#b91c1c;--warn:#b45309}
+:root{--bg:#f1f4f9;--card:#fff;--line:#e2e8f0;--text:#1e293b;--muted:#64748b;--brand:#2563eb;--ok:#15803d;--bad:#b91c1c;--warn:#b45309}
 *{box-sizing:border-box}
 body{margin:0;font-family:'Malgun Gothic','Apple SD Gothic Neo',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
-header{background:#0f172a;color:#fff;padding:0 24px;display:flex;align-items:center;gap:28px;min-height:56px;flex-wrap:wrap}
-header .logo{font-weight:700;font-size:16px;letter-spacing:.3px}
-header nav{display:flex;gap:20px;flex-wrap:wrap}
-header nav a{color:#cbd5e1;text-decoration:none;padding:17px 2px;border-bottom:3px solid transparent}
+header{background:#0f172a;color:#fff;padding:0 32px;display:flex;align-items:center;gap:32px;min-height:58px;flex-wrap:wrap}
+header .logo{font-weight:700;font-size:17px;letter-spacing:.3px}
+header nav{display:flex;gap:22px;flex-wrap:wrap}
+header nav a{color:#cbd5e1;text-decoration:none;padding:18px 2px;border-bottom:3px solid transparent}
 header nav a.on{color:#fff;border-color:#60a5fa}
-header nav span{color:#64748b;padding:17px 2px}
-main{max-width:1120px;margin:24px auto;padding:0 16px}
-h1{font-size:20px;margin:0 0 16px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-bottom:16px}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
-.tile .k{color:var(--muted);font-size:12px}.tile .v{font-size:18px;font-weight:700;margin-top:6px}.tile .s{color:var(--muted);font-size:12px;margin-top:4px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:16px}
-.card h2{font-size:15px;margin:0 0 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+header nav span{color:#64748b;padding:18px 2px}
+main{max-width:1440px;margin:24px auto;padding:0 24px}
+h1{font-size:21px;margin:0 0 18px}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
+.tile{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--accent,#94a3b8);border-radius:10px;padding:16px 18px}
+.tile .k{color:var(--muted);font-size:12px;font-weight:600}.tile .v{font-size:19px;font-weight:700;margin-top:8px;color:var(--accent,#1e293b)}
+.tile .s{color:var(--muted);font-size:12px;margin-top:6px}
+.card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--accent,#cbd5e1);border-radius:10px;padding:18px 22px;margin-bottom:16px}
+.card h2{font-size:15px;margin:0 0 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:#0f172a}
 .card h2 .right{margin-left:auto}
-table{border-collapse:collapse;width:100%}
-th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.c-blue{--accent:#2563eb}.c-green{--accent:#16a34a}.c-purple{--accent:#7c3aed}.c-orange{--accent:#ea580c}.c-teal{--accent:#0d9488}.c-gray{--accent:#64748b}.c-red{--accent:#dc2626}
+table{border-collapse:collapse;width:100%;border-top:1px solid var(--line)}
+th,td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{background:#f8fafc;color:#475569;font-weight:600;font-size:13px;white-space:nowrap}
-tr:last-child td{border-bottom:none}
+tr.group td{background:#eef2ff;color:#3730a3;font-weight:700;font-size:13px}
 .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
-.b-ok{background:#dcfce7;color:var(--ok)}.b-bad{background:#fee2e2;color:var(--bad)}.b-warn{background:#fef3c7;color:var(--warn)}.b-mute{background:#f1f5f9;color:#475569}.b-info{background:#dbeafe;color:var(--brand)}
-.btn{display:inline-block;padding:8px 14px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;color:var(--text);cursor:pointer;font-size:13px;text-decoration:none}
+.b-ok{background:#dcfce7;color:var(--ok)}.b-bad{background:#fee2e2;color:var(--bad)}.b-warn{background:#fef3c7;color:var(--warn)}.b-mute{background:#f1f5f9;color:#475569}.b-info{background:#dbeafe;color:#1d4ed8}
+.btn{display:inline-block;padding:7px 14px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;color:#334155;cursor:pointer;font-size:13px;text-decoration:none;font-family:inherit}
+.btn:hover{filter:brightness(.96)}
 .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.success{background:#16a34a;color:#fff;border-color:#16a34a}
+.btn.warn{background:#fff7ed;color:#c2410c;border-color:#fdba74}
+.btn.danger{background:#fef2f2;color:#b91c1c;border-color:#fca5a5}
 .help{width:22px;height:22px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#475569;font-weight:700;cursor:pointer;font-size:12px;padding:0;margin-left:6px}
-.msg{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 16px;margin-bottom:16px;white-space:pre-wrap}
-.alert{background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 16px;margin-bottom:16px;color:#7f1d1d}
+.msg{background:#eff6ff;border:1px solid #bfdbfe;border-left:5px solid #2563eb;border-radius:10px;padding:12px 16px;margin-bottom:16px;white-space:pre-wrap}
+.info{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:14px 16px;color:#475569}
 .muted{color:var(--muted);font-size:12px}
 .tabs{display:flex;gap:4px;margin-bottom:-1px}
-.tabs a{padding:9px 16px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:#f8fafc;color:#475569;text-decoration:none}
-.tabs a.on{background:#fff;color:var(--text);font-weight:700}
+.tabs a{padding:9px 18px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:#e2e8f0;color:#475569;text-decoration:none}
+.tabs a.on{background:#fff;color:var(--brand);font-weight:700;border-top:3px solid var(--brand)}
 .tabbody{border-top-left-radius:0}
 form.inline{display:inline}
 .row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .field{margin-bottom:16px}.field>label.t{display:block;font-weight:600;margin-bottom:6px}
-.chips label{display:inline-block;margin:0 6px 6px 0;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:#f8fafc}
+.chips label{display:inline-block;margin:0 6px 6px 0;padding:5px 11px;border:1px solid var(--line);border-radius:6px;background:#f8fafc;cursor:pointer}
 input[type=number]{width:90px}input,textarea,select{font:inherit;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px}
-dialog{border:none;border-radius:12px;max-width:540px;padding:22px 26px;box-shadow:0 12px 32px rgba(0,0,0,.25);line-height:1.6}
+dialog{border:none;border-radius:12px;max-width:560px;padding:22px 26px;box-shadow:0 12px 32px rgba(0,0,0,.25);line-height:1.6}
 dialog h3{margin:0 0 10px}
-pre.log{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;white-space:pre-wrap;font-size:12px}
-.grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:16px;align-items:start}
-.grid>.card{margin-bottom:0}.grid+.grid,.grid+.card{margin-top:16px}
-@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch;margin-bottom:16px}
+.grid>.card{margin-bottom:0}
+.side{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
+.sticky{position:sticky;top:16px}
+@media (max-width:1000px){.grid,.side,.tiles{grid-template-columns:1fr}}
 .switch{position:relative;display:inline-block;width:52px;height:28px;vertical-align:middle;margin-right:8px}
 .switch input{opacity:0;width:0;height:0}
 .slider{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;border-radius:28px;transition:.2s}
@@ -579,13 +585,15 @@ pre.log{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;white-sp
 .arrow{align-self:center;color:#94a3b8}
 .summary{font-size:15px;line-height:1.6}
 .need{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-top:12px}
-td.url{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.url{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search{width:320px}
+details.guide summary{cursor:pointer;font-weight:700;color:#1d4ed8}
+details.guide ol{margin:10px 0 0;padding-left:20px;line-height:1.8}
 """
 
 MENU = [("/", "대시보드"), ("/test", "테스트"), ("/schedule", "예약 발송 설정"), ("/sources", "RSS Source"),
-        ("/logs", "실행 이력·로그"), ("/newsletter", "뉴스레터"), ("/settings", "설정")]
+        ("/logs", "실행 이력·뉴스레터"), ("/settings", "설정")]
 RESULT_BADGE = {"성공": "b-ok", "성공 (발송 안 함)": "b-info", "실패": "b-bad", "건너뜀": "b-warn", "진행 중": "b-mute"}
-STAGE_BADGE = {"완료": "b-ok", "실패": "b-bad", "안 함": "b-info", "건너뜀": "b-warn"}
 
 
 def badge(text: str, cls: str) -> str:
@@ -603,13 +611,15 @@ def page(title: str, body: str, message: str = "", refresh: bool = False, active
             f'<main><h1>{escape(title)}</h1>{note}{body}</main></body></html>')
 
 
-def button(app: AdminApp, action: str, label: str, primary: bool = False, back: str = "/") -> str:
+def button(app: AdminApp, action: str, label: str, style: str = "", back: str = "/", fields: dict | None = None) -> str:
+    """style: primary(실행) · success(사용) · warn(외부 접속·중지) · danger(삭제) · 빈 값(보조)."""
     text = CONFIRM_TEXT.get(action)
     confirm = f' onsubmit="return confirm(\'{escape(text)}\')"' if text else ""  # 작은따옴표 없는 고정 문구만
     hidden = '<input type="hidden" name="confirm" value="yes">' if text else ""
+    hidden += "".join(f'<input type="hidden" name="{escape(k)}" value="{escape(v)}">' for k, v in (fields or {}).items())
     return (f'<form method="post" action="/action/{action}" class="inline"{confirm}>'
             f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="{escape(back)}">{hidden}'
-            f'<button class="btn{" primary" if primary else ""}">{escape(label)}</button></form>')
+            f'<button class="btn {style}">{escape(label)}</button></form>')
 
 
 def help_button(key: str, title: str, body: str) -> str:
@@ -673,7 +683,7 @@ def run_steps(run) -> str:
 
 
 def task_switch(app: AdminApp, on: bool, back: str = "/") -> str:
-    return (f'<form method="post" action="/action/task_state" class="row" style="margin:0 0 10px">'
+    return (f'<form method="post" action="/action/task_state" class="row" style="margin:0 0 12px">'
             f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="{back}">'
             f'<input type="hidden" name="state" value="{"on" if on else "off"}">'
             f'<label class="switch"><input type="checkbox"{" checked" if on else ""} onchange="var on=this.checked;'
@@ -705,14 +715,13 @@ def dashboard(app: AdminApp) -> str:
         today_state, today_sub = badge("발송 안 됨", "b-bad"), "아래 \"지금 발송\" 으로 보낼 수 있습니다"
     else:
         today_state, today_sub = badge("예약 대기", "b-mute"), escape(f"오늘 {config.time} 예정" if upcoming and upcoming[0].date() == now.date() else "오늘은 예약 없음")
-    tiles = (f'<div class="tiles"><div class="tile"><div class="k">예약 발송</div><div class="v">{tile_task}</div></div>'
-             f'<div class="tile"><div class="k">오늘 뉴스레터</div><div class="v">{today_state}</div><div class="s">{today_sub}</div></div>'
-             f'<div class="tile"><div class="k">이번 달 AI 비용</div><div class="v">${use["cost"]:.3f} / ${use["limit"]:.0f}</div>'
+    tiles = (f'<div class="tiles"><div class="tile c-blue"><div class="k">예약 발송</div><div class="v">{tile_task}</div></div>'
+             f'<div class="tile c-green"><div class="k">오늘 뉴스레터</div><div class="v">{today_state}</div><div class="s">{today_sub}</div></div>'
+             f'<div class="tile c-purple"><div class="k">이번 달 AI 비용</div><div class="v">${use["cost"]:.3f} / ${use["limit"]:.0f}</div>'
              f'<div class="s">호출 {use["calls"]}건 (성공 {use["ok"]} · 실패 {use["failed"]})</div></div>'
-             f'<div class="tile"><div class="k">최근 24시간 수집 기사</div><div class="v">{"-" if recent is None else recent}건</div>'
+             f'<div class="tile c-orange"><div class="k">최근 24시간 수집 기사</div><div class="v">{"-" if recent is None else recent}건</div>'
              f'<div class="s">사용 중인 RSS Source {enabled_sources}곳</div></div></div>')
 
-    # 오늘 뉴스레터: 마지막 실행 요약 + 진행 막대, 필요할 때만 지금 발송 (D-073)
     last = runs[0] if runs else None
     body = (f'<div class="summary">{escape(run_sentence(last))}</div>{run_steps(last)}' if last
             else '<p class="muted">아직 실행 기록이 없습니다.</p>')
@@ -720,16 +729,21 @@ def dashboard(app: AdminApp) -> str:
         body += '<p class="muted" style="margin-top:12px">실행 중입니다. 10초마다 화면이 새로 고침됩니다.</p>'
     elif need:
         body += (f'<div class="need"><b>오늘 뉴스레터가 발송되지 않았습니다.</b><br>{escape(need)}<br><br>'
-                 + button(app, "run_send", "지금 발송", primary=True)
+                 + button(app, "run_send", "지금 발송", "primary")
                  + ' <span class="muted">RSS 수집 → AI 분석 (하루 상한 안) → 메일 생성 → TEST 1명 발송</span></div>')
-    today_card = (f'<div class="card"><h2>마지막 실행{" " + badge(last.result, RESULT_BADGE.get(last.result, "b-mute")) if last else ""}'
+    today_card = (f'<div class="card c-green"><h2>마지막 실행{" " + badge(last.result, RESULT_BADGE.get(last.result, "b-mute")) if last else ""}'
                   f'<a class="btn right" href="/logs">전체 이력</a></h2>{body}</div>')
 
-    upcoming_rows = "".join(f"<li>{escape(kst_label(at))}</li>" for at in upcoming) or "<li>예정 없음</li>"
-    schedule_card = (f'<div class="card"><h2>예약 발송<a class="btn right" href="/schedule">설정 변경</a></h2>{task_switch(app, on)}'
-                     f'<table><tr><th>일정</th><td>{escape(schedule_summary(config))}</td></tr>'
-                     f'<tr><th>다음 예약</th><td><ul style="margin:0;padding-left:18px">{upcoming_rows}</ul></td></tr>'
-                     f'<tr><th>발송</th><td>{"TEST 1명에게 발송" if config.send else "메일 생성까지만"}</td></tr></table></div>')
+    if on:
+        upcoming_rows = "".join(f"<li>{escape(kst_label(at))}</li>" for at in upcoming) or "<li>예정 없음</li>"
+        schedule_body = (f'<table><tr><th>일정</th><td>{escape(schedule_summary(config))}</td></tr>'
+                         f'<tr><th>다음 예약</th><td><ul style="margin:0;padding-left:18px">{upcoming_rows}</ul></td></tr>'
+                         f'<tr><th>발송</th><td>{"TEST 1명에게 발송" if config.send else "메일 생성까지만"}</td></tr></table>')
+    else:
+        schedule_body = (f'<div class="info"><b>예약 발송이 꺼져 있습니다.</b><br>정해진 시각에 뉴스레터를 보내지 않습니다. '
+                         f'스위치를 켜면 저장된 일정 ({escape(schedule_summary(config))}) 으로 다시 발송합니다.</div>')
+    schedule_card = (f'<div class="card c-blue"><h2>예약 발송<a class="btn right" href="/schedule">설정 변경</a></h2>'
+                     f'{task_switch(app, on)}{schedule_body}</div>')
 
     status_rows = [
         ("이번 달 AI 호출", f'{use["calls"]}건 (성공 {use["ok"]} · 실패 {use["failed"]})'),
@@ -738,12 +752,13 @@ def dashboard(app: AdminApp) -> str:
         ("발송 대상", "TEST 1명 (고정 주소)"),
         ("작업 스케줄러", f'{task.get("state", "-")} · 마지막 결과 코드 {task.get("result", "-") or "-"}'),
     ]
-    status_card = ('<div class="card"><h2>운영 현황</h2><table>'
-                   + "".join(f"<tr><th>{escape(a)}</th><td>{escape(b)}</td></tr>" for a, b in status_rows) + "</table></div>")
+    status_card = ('<div class="card c-purple"><h2>운영 현황</h2><table>'
+                   + "".join(f"<tr><th style='width:160px'>{escape(a)}</th><td>{escape(b)}</td></tr>" for a, b in status_rows)
+                   + "</table></div>")
     recent_rows = "".join(f"<tr><td style='white-space:nowrap'>{escape(r.start[5:16])}</td><td>{escape(r.origin)}</td>"
                           f"<td>{badge(r.result, RESULT_BADGE.get(r.result, 'b-mute'))}</td></tr>" for r in runs[:5])
-    recent_card = ('<div class="card"><h2>최근 실행<a class="btn right" href="/logs">더 보기</a></h2>'
-                   f'<table>{recent_rows or "<tr><td>기록 없음</td></tr>"}</table></div>')
+    recent_card = ('<div class="card c-orange"><h2>최근 실행<a class="btn right" href="/logs">더 보기</a></h2>'
+                   f'<table><tr><th>시각</th><th>실행 주체</th><th>결과</th></tr>{recent_rows or "<tr><td colspan=3>기록 없음</td></tr>"}</table></div>')
     return (tiles + f'<div class="grid">{today_card}{schedule_card}</div>'
             + f'<div class="grid">{recent_card}{status_card}</div>')
 
@@ -758,11 +773,12 @@ def test_page(app: AdminApp) -> str:
         now_body = '<p>지금 실행 중입니다. 10초마다 새로 고침되며, 끝나면 아래 기록에 결과가 나옵니다.</p>'
     else:
         now_body = ('<p class="muted">지금 바로 RSS 수집 → AI 분석 (하루 상한 안) → 메일 생성 → TEST 1명 발송을 합니다. '
-                    '평소 예약 발송과는 별개로 기록됩니다.</p>' + button(app, "test_now", "즉시 테스트 발송", primary=True, back="/test"))
+                    '오늘 이미 발송했어도 보냅니다. 평소 예약 발송과는 별개로 기록됩니다.</p>'
+                    + button(app, "test_now", "즉시 테스트 발송", "primary", back="/test"))
     scheduled = ""
     if pending.get("next"):
         scheduled = (f'<div class="need">예약된 테스트 발송: <b>{escape(pending["next"])}</b> '
-                     + button(app, "test_cancel", "예약 취소", back="/test") + "</div>")
+                     + button(app, "test_cancel", "예약 취소", "danger", back="/test") + "</div>")
     default_at = (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M")
     schedule_body = (f'<form method="post" action="/action/test_schedule" class="row" '
                      f'onsubmit="return confirm(\'{escape(CONFIRM_TEXT["test_schedule"])}\')">'
@@ -770,31 +786,32 @@ def test_page(app: AdminApp) -> str:
                      f'<input type="hidden" name="confirm" value="yes">'
                      f'<label>발송 시각 <input type="datetime-local" name="at" value="{default_at}" min="{now:%Y-%m-%dT%H:%M}" required></label>'
                      f'<button class="btn primary">이 시각에 테스트 발송</button></form>'
-                     '<p class="muted">작업 스케줄러에 1회용 테스트 작업으로 등록합니다. 평소 예약 발송 일정은 바뀌지 않으며, '
+                     '<p class="muted">작업 스케줄러에 1회용 테스트 작업으로 등록합니다. 오늘 이미 발송했어도 보내며, 평소 예약 발송 일정은 바뀌지 않습니다. '
                      '정한 시각에 PC 가 켜져 있고 로그인되어 있어야 합니다.</p>' + scheduled)
     tests = [r for r in load_runs(app.root / "logs") if r.origin.startswith("테스트")]
     rows = "".join(
         f"<tr><td style='white-space:nowrap'>{escape(r.start[:16])}</td><td>{'즉시' if '즉시' in r.origin else '예약'}</td>"
         f"<td>{badge(r.result, RESULT_BADGE.get(r.result, 'b-mute'))}</td><td>{'-' if r.articles is None else r.articles}</td>"
         f"<td>{escape(r.mail_bytes or '-')}</td><td>{'발송' if r.sent else '-'}</td><td>{escape(r.error) or '-'}</td>"
-        f"<td>{f'<a href=/newsletter?name={quote(r.mail_file)}>메일 보기</a>' if r.mail_file else ''}</td></tr>" for r in tests)
-    history = ('<div class="card"><h2>테스트 발송 기록</h2><table><tr><th>시각</th><th>종류</th><th>결과</th><th>기사</th>'
+        f"<td>{f'<a href=/logs?tab=mail&name={quote(r.mail_file)}>메일 보기</a>' if r.mail_file else ''}</td></tr>" for r in tests)
+    history = ('<div class="card c-green"><h2>테스트 발송 기록</h2><table><tr><th>시각</th><th>종류</th><th>결과</th><th>기사</th>'
                f'<th>메일 크기 (bytes)</th><th>발송</th><th>실패 사유</th><th></th></tr>{rows or "<tr><td colspan=8>아직 테스트 발송 기록이 없습니다.</td></tr>"}</table></div>')
     tool_rows = "".join(
         f"<tr><td>{escape(name)}{help_button(key, name, body)}</td>"
         f"<td>{badge('외부 접속 있음', 'b-warn') if external == '있음' else badge('외부 접속 없음', 'b-mute')}</td>"
-        f"<td>{button(app, key, '실행', back='/test')}</td></tr>" for key, name, external, body in TOOLS)
-    tools = ('<div class="card"><h2>점검 도구<span class="muted">문제가 생겼을 때 원인을 찾는 도구입니다. ? 를 누르면 설명이 나옵니다.</span></h2>'
+        f"<td>{button(app, key, '실행', 'warn' if external == '있음' else '', back='/test')}</td></tr>" for key, name, external, body in TOOLS)
+    tools = ('<div class="card c-gray"><h2>점검 도구<span class="muted">문제가 생겼을 때 원인을 찾는 도구입니다. ? 를 누르면 설명이 나옵니다.</span></h2>'
              f'<table><tr><th>도구</th><th>외부 접속</th><th style="width:90px">실행</th></tr>{tool_rows}</table></div>')
-    return (f'<div class="grid"><div class="card"><h2>즉시 테스트 발송</h2>{now_body}</div>'
-            f'<div class="card"><h2>시각 지정 테스트 발송</h2>{schedule_body}</div></div>' + history + tools)
+    return (f'<div class="grid"><div class="card c-blue"><h2>즉시 테스트 발송</h2>{now_body}</div>'
+            f'<div class="card c-purple"><h2>시각 지정 테스트 발송</h2>{schedule_body}</div></div>' + history + tools)
 
 
 def schedule_page(app: AdminApp) -> str:
+    """예약 발송 설정 (D-072, 배치 정리 D-074): 왼쪽 입력, 오른쪽 현재 일정·다음 예약."""
     from saba.daily import next_runs
     config = app.config()
     days = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
-    mode_radios = "".join(f'<label><input type="radio" name="mode" value="{m}"{" checked" if config.mode == m else ""} onchange="showMode()"> {label}</label> '
+    mode_radios = "".join(f'<label><input type="radio" name="mode" value="{m}"{" checked" if config.mode == m else ""} onchange="showMode()"> {label}</label>'
                           for m, label in MODE_LABEL.items())
     weekday_boxes = "".join(f'<label><input type="checkbox" name="weekdays" value="{d}"{" checked" if d in config.weekdays else ""}> {DAY_LABEL[d]}</label>' for d in days)
     month_boxes = "".join(f'<label><input type="checkbox" name="month_days" value="{d}"{" checked" if d in config.month_days else ""}> {d}</label>' for d in range(1, 32))
@@ -802,8 +819,8 @@ def schedule_page(app: AdminApp) -> str:
     form = f"""
 <form method="post" action="/action/save_schedule" onsubmit="return confirm('{escape(CONFIRM_TEXT['save_schedule'])}')">
 <input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/schedule"><input type="hidden" name="confirm" value="yes">
-<div class="card"><h2>반복</h2>
- <div class="row chips">{mode_radios}</div>
+<div class="card c-blue"><h2>주기</h2>
+ <div class="field"><div class="chips">{mode_radios}</div></div>
  <div id="m-weekly" class="field"><label class="t">요일</label><div class="chips">{weekday_boxes}</div></div>
  <div id="m-monthly" class="field"><label class="t">매월 날짜</label><div class="chips">{month_boxes}</div>
   <div class="muted">그 달에 없는 날짜 (예: 31일) 는 건너뜁니다.</div></div>
@@ -812,24 +829,24 @@ def schedule_page(app: AdminApp) -> str:
   <textarea name="dates" id="dates" rows="4" cols="30" placeholder="한 줄에 하나 (예: 2026-10-20)">{escape(chr(10).join(config.dates))}</textarea>
   <div class="muted">지난 날짜는 무시됩니다. 줄을 지우면 날짜가 빠집니다.</div></div>
 </div>
-<div class="card"><h2>시각</h2>
+<div class="card c-purple"><h2>시각</h2>
  <div class="row"><label>발송 시각 <input type="time" name="time" value="{escape(config.time)}" required></label>
  <label>무작위 지연 최대 <input type="number" name="random_delay_minutes" min="0" max="30" value="{config.random_delay_minutes}"> 분</label></div>
- <div class="muted">무작위 지연: 정해진 시각부터 이 시간 안에서 아무 때나 실행합니다 (0 이면 정각). 정확한 시각 확인이 필요하면 0 으로 두세요.</div>
+ <div class="muted">무작위 지연: 정해진 시각부터 이 시간 안에서 아무 때나 실행합니다 (0 이면 정각).</div>
 </div>
-<div class="card"><h2>AI 호출과 발송</h2>
+<div class="card c-orange"><h2>AI 호출과 발송</h2>
  <div class="row"><label>하루 AI 분석 상한 <input type="number" name="max_analysis_calls" min="0" max="50" value="{config.max_analysis_calls}"> 건</label>
  <label>하루 AI 시사점 상한 <input type="number" name="max_insight_calls" min="0" max="50" value="{config.max_insight_calls}"> 건</label></div>
  <div class="muted">현재 하루 최대 {per_day}건 · 매일 발송해도 한 달 최대 약 ${per_day * COST_PER_CALL * 31:.2f} (월 상한 $3, 변경 불가). 이미 분석한 기사는 다시 호출하지 않습니다.</div>
  <div class="row"><label><input type="radio" name="send" value="on"{" checked" if config.send else ""}> 예약 시각에 TEST 1명에게 발송</label>
  <label><input type="radio" name="send" value="off"{"" if config.send else " checked"}> 메일 생성까지만 (발송 안 함)</label></div>
 </div>
-<div class="card"><h2>보관 기간</h2>
+<div class="card c-gray"><h2>보관 기간</h2>
  <div class="row"><label>실행 로그 <input type="number" name="log_days" min="7" max="3650" value="{config.log_days}"> 일</label>
  <label>메일 파일 <input type="number" name="mail_days" min="1" max="3650" value="{config.mail_days}"> 일</label></div>
- <div class="muted">기간이 지난 logs/daily_*.log, output/daily_*.eml 은 매일 실행 때 자동으로 지웁니다.</div>
+ <div class="muted">기간이 지난 실행 로그·메일 파일은 매일 실행 때 자동으로 지웁니다.</div>
 </div>
-<div style="margin-bottom:24px"><button class="btn primary">저장</button> <span class="muted">일정 (반복·시각·지연) 이 바뀌면 작업 스케줄러에 다시 등록합니다.</span></div>
+<div style="margin-bottom:24px"><button class="btn primary">저장</button> <span class="muted">주기·시각·지연이 바뀌면 작업 스케줄러에 다시 등록합니다.</span></div>
 </form>
 <script>
 function showMode(){{var m=(document.querySelector('input[name=mode]:checked')||{{}}).value;
@@ -839,20 +856,27 @@ function addDate(){{var v=document.getElementById('pick').value;if(!v)return;var
 showMode();
 </script>"""
     upcoming = "".join(f"<tr><td>{i}</td><td>{escape(kst_label(at))}</td></tr>" for i, at in enumerate(next_runs(config, datetime.now().astimezone(), 5), 1))
-    return (f'<div class="card"><h2>현재 일정</h2><table><tr><th style="width:180px">일정</th><td>{escape(schedule_summary(config))}</td></tr></table>'
-            f'<h2 style="margin-top:14px">다음 예약 5회</h2><table><tr><th style="width:60px">순서</th><th>시각 (무작위 지연 전)</th></tr>'
-            f'{upcoming or "<tr><td colspan=2>예정 없음</td></tr>"}</table></div>' + form)
+    side = (f'<div class="card c-green sticky"><h2>현재 일정</h2><div class="summary">{escape(schedule_summary(config))}</div>'
+            f'<h2 style="margin-top:16px">다음 예약 5회</h2><table><tr><th style="width:50px">순서</th><th>시각 (무작위 지연 전)</th></tr>'
+            f'{upcoming or "<tr><td colspan=2>예정 없음</td></tr>"}</table>'
+            '<p class="muted">시각을 정해 한 번만 확인하려면 테스트 화면의 "시각 지정 테스트 발송" 을 쓰세요 (이 일정은 바뀌지 않음).</p></div>')
+    return f'<div class="side"><div>{form}</div><div>{side}</div></div>'
 
 
-def logs_page(app: AdminApp, tab: str, day: str | None) -> str:
+LOG_TABS = (("runs", "실행 이력"), ("mail", "뉴스레터"), ("detail", "상세 로그"), ("changes", "설정 변경 이력"))
+
+
+def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None) -> str:
+    """실행 이력·뉴스레터 (D-074 합침): 탭 실행 이력 · 뉴스레터 · 상세 로그 · 설정 변경 이력."""
     from saba.history import log_files, read_changes, read_log, storage_status
     config = app.config()
     store = storage_status(app.root)
-    tabs = "".join(f'<a href="/logs?tab={key}"{" class=on" if tab == key else ""}>{label}</a>'
-                   for key, label in (("runs", "실행 이력"), ("detail", "상세 로그"), ("changes", "설정 변경 이력")))
+    tabs = "".join(f'<a href="/logs?tab={key}"{" class=on" if tab == key else ""}>{label}</a>' for key, label in LOG_TABS)
     keep = (f'<div class="muted" style="margin-bottom:12px">보관: 실행 로그 {config.log_days}일 (현재 {store["logs"]["count"]}개 파일 · '
             f'{store["logs"]["bytes"] / 1024:.1f} KB · 가장 오래된 날짜 {store["logs"]["oldest"]}) · 메일 파일 {config.mail_days}일 '
             f'(현재 {store["mails"]["count"]}개 · {store["mails"]["bytes"] / 1024 / 1024:.2f} MB). 기간이 지나면 매일 실행 때 자동 삭제.</div>')
+    if tab == "mail":
+        return f'<div class="tabs">{tabs}</div><div class="card tabbody c-blue">{keep}{newsletter_body(app, name)}</div>'
     if tab == "detail":
         files = log_files(app.root / "logs")
         names = [p.name[6:14] for p in files]
@@ -877,14 +901,15 @@ def logs_page(app: AdminApp, tab: str, day: str | None) -> str:
         rows = ""
         for run in app.runs():
             day_key = run.start[:10].replace("-", "")
+            mail = f"<a href='/logs?tab=mail&name={quote(run.mail_file)}'>메일</a> · " if run.mail_file else ""
             rows += (f"<tr><td style='white-space:nowrap'>{escape(run.start[:16])}</td><td>{escape(run.origin)}</td>"
                      f"<td>{badge(run.result, RESULT_BADGE.get(run.result, 'b-mute'))}</td>"
                      f"<td>{'-' if run.articles is None else run.articles}</td><td>{'-' if run.ai_calls is None else run.ai_calls}</td>"
                      f"<td>{escape(run.mail_bytes or '-')}</td><td>{'발송' if run.sent else '-'}</td>"
-                     f"<td>{escape(run.error) or '-'}</td><td><a href='/logs?tab=detail&day={day_key}'>로그</a></td></tr>")
+                     f"<td>{escape(run.error) or '-'}</td><td style='white-space:nowrap'>{mail}<a href='/logs?tab=detail&day={day_key}'>로그</a></td></tr>")
         body = ("<table><tr><th>시작</th><th>실행 주체</th><th>결과</th><th>기사</th><th>AI 신규 호출</th><th>메일 크기 (bytes)</th>"
-                f"<th>발송</th><th>실패 사유</th><th></th></tr>{rows or '<tr><td colspan=9>실행 기록 없음</td></tr>'}</table>")
-    return f'<div class="tabs">{tabs}</div><div class="card tabbody">{keep}{body}</div>'
+                f"<th>발송</th><th>실패 사유</th><th>보기</th></tr>{rows or '<tr><td colspan=9>실행 기록 없음</td></tr>'}</table>")
+    return f'<div class="tabs">{tabs}</div><div class="card tabbody c-blue">{keep}{body}</div>'
 
 
 def _show(value) -> str:
@@ -895,88 +920,114 @@ def _show(value) -> str:
     return MODE_LABEL.get(str(value), str(value))
 
 
-def newsletter_page(app: AdminApp, name: str | None) -> str:
+def newsletter_body(app: AdminApp, name: str | None) -> str:
     files = app.mail_files()
     kind_badge = {"발송본": "b-ok", "생성만 (발송 안 함)": "b-info", "미리보기": "b-warn"}
-    rows = "".join(f"<tr><td><a href='/newsletter?name={quote(f['name'])}'>{escape(f['name'])}</a></td>"
+    rows = "".join(f"<tr><td><a href='/logs?tab=mail&name={quote(f['name'])}'>{escape(f['name'])}</a></td>"
                    f"<td>{badge(f['kind'], kind_badge.get(f['kind'], 'b-mute'))}</td><td>{escape(f['made'])}</td>"
                    f"<td>{escape(f['origin'])}</td><td>{f['size'] / 1024:.0f} KB</td></tr>" for f in files)
     name = name or (files[0]["name"] if files else None)
     guide = ('<div class="muted" style="margin-bottom:10px">발송본: 실제로 TEST 수신자에게 보낸 메일 · 생성만: 만들었지만 보내지 않은 메일 · '
              '미리보기: 점검 도구 "미리보기 다시 만들기" 로 만든 확인용 (최신 1개만 보관). 메일은 만든 시각 기준 최근 24시간 (월요일 72시간) 기사로 '
-             '구성되므로 만든 시각이 다르면 기사 구성이 다릅니다. 미리보기는 AI 를 새로 호출하지 않아 새 기사의 요약이 빠질 수 있습니다.</div>')
-    frame = (f'<iframe src="/newsletter/view?name={quote(name)}" style="width:100%;height:900px;border:0"></iframe>'
+             '구성되므로 만든 시각이 다르면 기사 구성이 다릅니다.</div>')
+    frame = (f'<h2 style="margin-top:18px">{escape(name)}</h2><iframe src="/newsletter/view?name={quote(name)}" style="width:100%;height:900px;border:1px solid var(--line);border-radius:8px"></iframe>'
              if name else "<p>생성된 메일이 없습니다.</p>")
-    return (f'<div class="card"><h2>메일 파일</h2>{guide}<table><tr><th>파일</th><th>종류</th><th>만든 시각</th><th>실행 주체</th><th>크기</th></tr>'
-            f'{rows or "<tr><td colspan=5>없음</td></tr>"}</table></div>'
-            f'<div class="card"><h2>{escape(name or "")}</h2>{frame}</div>')
+    return (f'{guide}<table><tr><th>파일</th><th>종류</th><th>만든 시각</th><th>실행 주체</th><th>크기</th></tr>'
+            f'{rows or "<tr><td colspan=5>없음</td></tr>"}</table>{frame}')
+
+
+SOURCE_GUIDE = """
+<details class="guide"><summary>Source 추가 방법 (처음이면 펼쳐 보세요)</summary>
+<ol>
+<li><b>RSS 주소 찾기</b>: 뉴스 사이트에서 RSS 아이콘이나 "RSS" 메뉴를 찾습니다. 없으면 사이트 주소 뒤에 <code>/feed</code>, <code>/rss</code>, <code>/rss.xml</code> 을 붙여 보거나,
+ 페이지 소스에서 <code>application/rss+xml</code> 을 검색합니다. 사이트 첫 화면 주소가 아니라 <b>RSS 주소</b> 를 넣어야 합니다.</li>
+<li><b>ID</b>: 프로그램 안에서 Source 를 구분하는 이름입니다. 영문 소문자·숫자·하이픈으로 짧게 (예: <code>bleepingcomputer</code>, <code>etnews-ai-sw</code>). 저장한 뒤에는 바꿀 수 없습니다.</li>
+<li><b>이름</b>: 메일에 출처로 표시될 이름입니다 (예: 전자신문 AI·SW).</li>
+<li><b>구분</b>: 출처 국가 기준 국내·해외. 메일의 국내·해외 섹션이 정해집니다.</li>
+<li><b>종류</b>: 공식 기관 (같은 사건이면 대표 기사로 우선) · 보안 전문 매체 · IT 언론 · 기업·벤더.</li>
+<li><b>주소 확인</b> 을 누르면 1번 접속해 항목 수·최근 기사·날짜 해석을 보여 줍니다 (저장 없음).
+ "날짜 미확인" 이 있으면 "한국 시간으로 해석" 을 켜고 다시 확인하고, 날짜만 있는 Source 면 "날짜만 있는 Source" 를 켭니다.</li>
+<li>확인이 끝나면 <b>저장</b>. 다음 실행부터 수집합니다.</li>
+</ol>
+<p class="muted">수집할 수 없는 주소: Atom 형식, 다른 주소로 이동 (Redirect) 하는 주소 (이동한 최종 주소를 넣으세요), 응답이 2MB 를 넘는 주소, http 주소.</p>
+</details>"""
 
 
 def sources_page(app: AdminApp, edit_id: str | None) -> str:
-    """RSS Source 목록·추가·수정·사용/중지·삭제 (D-073)."""
-    from saba.rss import MAX_SOURCES
+    """RSS Source 목록 (국내·해외·종류별 묶음, 검색)·추가·수정·사용/중지·삭제 (D-073, D-074)."""
+    from saba.rss import KINDS, MAX_SOURCES, REGIONS
     entries = app.source_entries()
     enabled = sum(1 for e in entries if e.enabled)
     rows = ""
-    for e in entries:
-        s = e.source
-        state = badge("사용", "b-ok") if e.enabled else badge("중지", "b-mute")
-        rows += (f"<tr><td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td>"
-                 f"<td class=url title='{escape(s.feed_url)}'>{escape(s.feed_url)}</td><td>{escape(s.region)}</td>"
-                 f"<td>{'공식' if s.official else '언론'}</td><td>{'한국 시간' if s.local_offset else '표준'}{' · 날짜만' if s.date_only else ''}</td>"
-                 f"<td>{state}</td><td style='white-space:nowrap'><a class=btn href='/sources?edit={quote(s.source_id)}'>수정</a> "
-                 + _id_button(app, "source_toggle", "중지" if e.enabled else "사용", s.source_id) + " "
-                 + _id_button(app, "source_delete", "삭제", s.source_id) + "</td></tr>")
-    table = (f'<div class="card"><h2>RSS Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
-             f'변경은 다음 실행부터 반영</span><a class="btn right" href="/sources?edit=new">추가</a></h2>'
-             '<table><tr><th>이름</th><th>RSS 주소</th><th>구분</th><th>종류</th><th>날짜 해석</th><th>상태</th><th>관리</th></tr>'
-             f'{rows}</table><p class="muted">중지·삭제해도 이미 수집한 기사와 AI 분석은 DB 에 남습니다. 삭제한 Source 의 기사는 메일에 나오지 않습니다. '
-             'RSS 2.0 형식만 수집할 수 있고 (Atom 형식은 아직 불가), 응답이 2MB 를 넘는 주소는 수집할 수 없습니다.</p></div>')
+    for region in REGIONS:
+        for kind in KINDS:
+            group = sorted((e for e in entries if e.source.region == region and e.source.kind == kind),
+                           key=lambda e: (not e.enabled, e.source.source_name))
+            if not group:
+                continue
+            rows += f'<tr class="group"><td colspan="6">{escape(region)} · {escape(kind)} ({len(group)})</td></tr>'
+            for e in group:
+                s = e.source
+                state = badge("사용", "b-ok") if e.enabled else badge("중지", "b-mute")
+                rows += (f"<tr class='src' data-q='{escape((s.source_name + ' ' + s.source_id + ' ' + s.feed_url + ' ' + region + ' ' + kind).lower())}'>"
+                         f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td>"
+                         f"<td class=url title='{escape(s.feed_url)}'>{escape(s.feed_url)}</td>"
+                         f"<td>{'한국 시간' if s.local_offset else '표준'}{' · 날짜만' if s.date_only else ''}</td>"
+                         f"<td>{state}</td><td style='white-space:nowrap'><a class=btn href='/sources?edit={quote(s.source_id)}'>수정</a> "
+                         + button(app, "source_toggle", "중지" if e.enabled else "사용", "warn" if e.enabled else "success",
+                                  back="/sources", fields={"id": s.source_id}) + " "
+                         + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id}) + "</td></tr>")
+    search = ('<input class="search" placeholder="검색: 이름·ID·주소·구분·종류" oninput="var q=this.value.toLowerCase();'
+              'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
+    table = (f'<div class="card c-blue"><h2>RSS Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
+             f'변경은 다음 실행부터 반영</span><span class="right">{search} <a class="btn primary" href="/sources?edit=new">추가</a></span></h2>'
+             '<table><tr><th>이름</th><th>RSS 주소</th><th>날짜 해석</th><th>상태</th><th>관리</th></tr>'
+             f'{rows}</table><p class="muted">중지·삭제해도 이미 수집한 기사와 AI 분석은 DB 에 남습니다. 삭제한 Source 의 기사는 메일에 나오지 않습니다.</p></div>')
     if not edit_id:
-        return table
+        return f'<div class="card c-gray">{SOURCE_GUIDE}</div>' + table
     current = next((e for e in entries if e.source.source_id == edit_id), None)
     if app.draft and (app.draft.get("id") == edit_id or (edit_id == "new" and app.draft.get("mode") != "edit")):
         values = app.draft
     elif current:
         values = {"id": current.source.source_id, "name": current.source.source_name, "url": current.source.feed_url,
-                  "region": current.source.region, "official": current.source.official,
+                  "region": current.source.region, "kind": current.source.kind,
                   "kst": current.source.local_offset is not None, "date_only": current.source.date_only, "enabled": current.enabled}
     else:
-        values = {"id": "", "name": "", "url": "https://", "region": "해외", "official": False, "kst": False,
+        values = {"id": "", "name": "", "url": "https://", "region": "해외", "kind": "보안 전문 매체", "kst": False,
                   "date_only": False, "enabled": True}
     editing = current is not None
     checked = lambda key: " checked" if values.get(key) else ""
+    kinds = "".join(f'<label><input type="radio" name="kind" value="{k}"{" checked" if values.get("kind") == k else ""}> {k}</label>' for k in KINDS)
     form = f"""
-<div class="card"><h2>{"Source 수정: " + escape(current.source.source_name) if editing else "Source 추가"}</h2>
-<form method="post" action="/action/source_save">
+<div class="card c-orange"><h2>{"Source 수정: " + escape(current.source.source_name) if editing else "Source 추가"}</h2>
+{SOURCE_GUIDE if not editing else ""}
+<form method="post" action="/action/source_save" style="margin-top:12px">
 <input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/sources">
 <input type="hidden" name="confirm" value="yes"><input type="hidden" name="mode" value="{"edit" if editing else "new"}">
+<div class="grid" style="margin-bottom:0">
+<div>
+<div class="field"><label class="t">RSS 주소 (https)</label><input name="url" value="{escape(str(values.get("url", "")))}" required style="width:100%"></div>
 <div class="field"><label class="t">ID (영문 소문자·숫자·하이픈 3~40자, 만든 뒤 바꿀 수 없음)</label>
- <input name="id" value="{escape(str(values.get("id", "")))}" {"readonly" if editing else "required"} pattern="[a-z0-9][a-z0-9-]{{2,39}}" size="40"></div>
-<div class="field"><label class="t">이름 (메일 출처 표시)</label><input name="name" value="{escape(str(values.get("name", "")))}" required maxlength="60" size="40"></div>
-<div class="field"><label class="t">RSS 주소 (https)</label><input name="url" value="{escape(str(values.get("url", "")))}" required size="80"></div>
-<div class="field"><label class="t">구분 (메일 섹션)</label><div class="row">
+ <input name="id" value="{escape(str(values.get("id", "")))}" {"readonly" if editing else "required"} pattern="[a-z0-9][a-z0-9-]{{2,39}}" style="width:100%"></div>
+<div class="field"><label class="t">이름 (메일 출처 표시)</label><input name="name" value="{escape(str(values.get("name", "")))}" required maxlength="60" style="width:100%"></div>
+</div>
+<div>
+<div class="field"><label class="t">구분 (메일 섹션)</label><div class="chips">
  <label><input type="radio" name="region" value="국내"{" checked" if values.get("region") == "국내" else ""}> 국내</label>
  <label><input type="radio" name="region" value="해외"{" checked" if values.get("region") != "국내" else ""}> 해외</label></div></div>
-<div class="field"><label class="t">종류와 날짜</label><div class="row">
- <label><input type="checkbox" name="official" value="on"{checked("official")}> 공식 기관 (같은 사건이면 대표 기사로 우선)</label>
+<div class="field"><label class="t">종류</label><div class="chips">{kinds}</div></div>
+<div class="field"><label class="t">날짜 해석과 사용</label><div class="chips">
  <label><input type="checkbox" name="kst" value="on"{checked("kst")}> 시간대 없는 날짜를 한국 시간으로 해석</label>
  <label><input type="checkbox" name="date_only" value="on"{checked("date_only")}> 날짜만 있는 Source (수집 기간 48시간)</label>
  <label><input type="checkbox" name="enabled" value="on"{checked("enabled")}> 사용</label></div></div>
+</div></div>
 <div class="row">
- <button class="btn" formaction="/action/source_check" onclick="return confirm('{escape(CONFIRM_TEXT["source_check"])}')">주소 확인</button>
+ <button class="btn warn" formaction="/action/source_check" onclick="return confirm('{escape(CONFIRM_TEXT["source_check"])}')">주소 확인</button>
  <button class="btn primary" onclick="return confirm('{escape(CONFIRM_TEXT["source_save"])}')">저장</button>
  <a class="btn" href="/sources">취소</a></div>
-<p class="muted">새 Source 를 추가하거나 주소를 바꾸면 먼저 "주소 확인" 을 통과해야 저장할 수 있습니다 (1회 접속, 저장 없음).</p>
+<p class="muted">새 Source 를 추가하거나 주소를 바꾸면 먼저 "주소 확인" 을 통과해야 저장할 수 있습니다 (30분 안, 1회 접속, 저장 없음).</p>
 </form></div>"""
     return form + table
-
-
-def _id_button(app: AdminApp, action: str, label: str, source_id: str) -> str:
-    return (f'<form method="post" action="/action/{action}" class="inline" onsubmit="return confirm(\'{escape(CONFIRM_TEXT[action])}\')">'
-            f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/sources">'
-            f'<input type="hidden" name="confirm" value="yes"><input type="hidden" name="id" value="{escape(source_id)}">'
-            f'<button class="btn">{escape(label)}</button></form>')
 
 
 def settings_page(app: AdminApp) -> str:
@@ -985,18 +1036,18 @@ def settings_page(app: AdminApp) -> str:
     entries = app.source_entries()
     secret_rows = "".join(f"<tr><td>{escape(n)}</td><td>{badge('있음', 'b-ok') if v else badge('없음', 'b-bad')}</td></tr>"
                           for n, v in app.secrets_present().items())
-    return (f'<div class="grid"><div class="card"><h2>예약 발송<a class="btn right" href="/schedule">변경</a></h2><table>'
-            f'<tr><th>일정</th><td>{escape(schedule_summary(config))}</td></tr>'
+    return (f'<div class="grid"><div class="card c-blue"><h2>예약 발송<a class="btn right" href="/schedule">변경</a></h2><table>'
+            f'<tr><th style="width:160px">일정</th><td>{escape(schedule_summary(config))}</td></tr>'
             f'<tr><th>하루 AI 호출 상한</th><td>분석 {config.max_analysis_calls}건 · 시사점 {config.max_insight_calls}건</td></tr>'
             f'<tr><th>발송</th><td>{"발송" if config.send else "메일 생성까지만"}</td></tr>'
             f'<tr><th>보관 기간</th><td>로그 {config.log_days}일 · 메일 파일 {config.mail_days}일</td></tr>'
             f'<tr><th>설정 파일 점검</th><td>{escape(valid)}</td></tr></table></div>'
-            f'<div class="card"><h2>RSS Source<a class="btn right" href="/sources">관리</a></h2><table>'
-            f'<tr><th>사용 중</th><td>{sum(1 for e in entries if e.enabled)}곳</td></tr><tr><th>전체</th><td>{len(entries)}곳</td></tr></table></div></div>'
-            f'<div class="grid"><div class="card"><h2>Secret (값은 표시하지 않음)<span class="muted">변경 기능은 로그인·권한 작업과 함께 예정</span></h2>'
+            f'<div class="card c-orange"><h2>RSS Source<a class="btn right" href="/sources">관리</a></h2><table>'
+            f'<tr><th style="width:160px">사용 중</th><td>{sum(1 for e in entries if e.enabled)}곳</td></tr><tr><th>전체</th><td>{len(entries)}곳</td></tr></table></div></div>'
+            f'<div class="grid"><div class="card c-red"><h2>Secret (값은 표시하지 않음)<span class="muted">변경 기능은 로그인·권한 작업과 함께 예정</span></h2>'
             f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table></div>'
-            f'<div class="card"><h2>발송 대상<span class="muted">수신자·그룹 (전체 인원) 관리는 2단계 예정</span></h2>'
-            f'<table><tr><th>현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)})</td></tr></table></div></div>')
+            f'<div class="card c-teal"><h2>발송 대상<span class="muted">수신자·그룹 (전체 인원) 관리는 다음 작업</span></h2>'
+            f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)})</td></tr></table></div></div>')
 
 
 def make_handler(app: AdminApp, port: int):
@@ -1040,9 +1091,10 @@ def make_handler(app: AdminApp, port: int):
                 return self._send(200, page("예약 발송 설정", schedule_page(app), message, active="/schedule"))
             if url.path == "/logs":
                 tab = _first(query, "tab") or "runs"
-                return self._send(200, page("실행 이력·로그", logs_page(app, tab, _first(query, "day") or None), message, active="/logs"))
-            if url.path == "/newsletter":
-                return self._send(200, page("뉴스레터", newsletter_page(app, _first(query, "name") or None), message, active="/newsletter"))
+                return self._send(200, page("실행 이력·뉴스레터", logs_page(app, tab, _first(query, "day") or None, _first(query, "name") or None),
+                                            message, active="/logs"))
+            if url.path == "/newsletter":  # 예전 주소: 실행 이력·뉴스레터의 뉴스레터 탭 (D-074)
+                return self._send(200, page("실행 이력·뉴스레터", logs_page(app, "mail", None, _first(query, "name") or None), message, active="/logs"))
             if url.path == "/newsletter/view":
                 html = app.newsletter_html(_first(query, "name") or None)
                 return self._send(200, html or "<p>생성된 메일이 없습니다.</p>")

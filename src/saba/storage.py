@@ -108,6 +108,26 @@ def save_articles(path: Path, articles: list[Article]) -> tuple[int, int]:
     return inserted, skipped
 
 
+def update_articles(path: Path, articles: list[Article]) -> int:
+    """Source 에서 원문이 바뀐 기존 기사를 새 내용으로 갱신한다 (D-074). 없는 ID 는 건드리지 않는다."""
+    if not articles:
+        return 0
+    articles = validate_articles([article.model_dump(mode="json") for article in articles])
+    stored_at = datetime.now(timezone.utc).isoformat()
+    updated = 0
+    with closing(sqlite3.connect(path, timeout=5)) as connection:
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            check_structure(connection)
+            for article in articles:
+                cursor = connection.execute(
+                    "UPDATE articles SET url = ?, published_at = ?, article_json = ?, stored_at = ? WHERE article_id = ?",
+                    (str(article.url), article.published_at.isoformat() if article.published_at else None,
+                     normalized_json(article), stored_at, article.article_id))
+                updated += cursor.rowcount
+    return updated
+
+
 def read_connection(path: Path) -> sqlite3.Connection:
     if not path.exists():
         raise StorageError("DB 파일이 없습니다. 저장 명령으로 DB를 먼저 생성하세요.")

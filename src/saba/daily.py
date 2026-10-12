@@ -131,7 +131,10 @@ def collect_rss() -> None:
     result = subprocess.run([sys.executable, "-m", "saba", "--collect-rss"], cwd=ROOT,
                             capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
-        raise DailyError(f"RSS 수집 실패 (종료 코드 {result.returncode})")
+        # 실패한 Source 이름만 남긴다 (수집 요약 줄 "실패 n개 (id, ...)", 원문·응답 내용은 남기지 않음).
+        failed = re.search(r"실패 \d+개 \(([^)]*)\)", result.stdout + result.stderr)
+        detail = f": {failed.group(1)}" if failed else ""
+        raise DailyError(f"RSS 수집 실패 (종료 코드 {result.returncode}{detail})")
 
 
 def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:

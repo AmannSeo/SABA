@@ -4,7 +4,7 @@
     "name": "CERT-EU",
     "url": "https://cert.europa.eu/publications/security-advisories-rss",
     "region": "해외",
-    "official": true,
+    "kind": "공식 기관",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -14,7 +14,7 @@
     "name": "KISA 보호나라",
     "url": "https://www.boho.or.kr/kr/rss.do?bbsId=B0000133",
     "region": "국내",
-    "official": true,
+    "kind": "공식 기관",
     "kst": true,
     "date_only": true,
     "enabled": true
@@ -24,7 +24,7 @@
     "name": "CISA",
     "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
     "region": "해외",
-    "official": true,
+    "kind": "공식 기관",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -34,7 +34,7 @@
     "name": "The Hacker News",
     "url": "https://feeds.feedburner.com/TheHackersNews",
     "region": "해외",
-    "official": false,
+    "kind": "보안 전문 매체",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -44,7 +44,7 @@
     "name": "보안뉴스",
     "url": "https://www.boannews.com/rss/allArticle.xml",
     "region": "국내",
-    "official": false,
+    "kind": "보안 전문 매체",
     "kst": true,
     "date_only": false,
     "enabled": true
@@ -54,9 +54,99 @@
     "name": "KISA 보호나라 보고서·가이드",
     "url": "https://www.boho.or.kr/kr/rss.do?bbsId=B0000127",
     "region": "국내",
-    "official": true,
+    "kind": "공식 기관",
     "kst": true,
     "date_only": true,
     "enabled": true
+  },
+  {
+    "id": "bleepingcomputer",
+    "name": "BleepingComputer",
+    "url": "https://www.bleepingcomputer.com/feed/",
+    "region": "해외",
+    "kind": "보안 전문 매체",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "securityweek",
+    "name": "SecurityWeek",
+    "url": "https://www.securityweek.com/feed/",
+    "region": "해외",
+    "kind": "보안 전문 매체",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "etnews-ai-sw",
+    "name": "전자신문 AI·SW",
+    "url": "https://rss.etnews.com/04.xml",
+    "region": "국내",
+    "kind": "IT 언론",
+    "kst": true,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "zdnet-korea",
+    "name": "ZDNet Korea",
+    "url": "https://feeds.feedburner.com/zdkorea",
+    "region": "국내",
+    "kind": "IT 언론",
+    "kst": true,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "openai-news",
+    "name": "OpenAI News",
+    "url": "https://openai.com/news/rss.xml",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "microsoft-blog",
+    "name": "Microsoft Blog",
+    "url": "https://blogs.microsoft.com/feed/",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "nvidia-newsroom",
+    "name": "NVIDIA Newsroom",
+    "url": "https://nvidianews.nvidia.com/releases.xml",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "google-blog",
+    "name": "Google Blog",
+    "url": "https://blog.google/rss/",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "msit-press",
+    "name": "과학기술정보통신부 보도자료",
+    "url": "https://www.msit.go.kr/user/rss/rss.do?bbsSeqNo=94",
+    "region": "국내",
+    "kind": "공식 기관",
+    "kst": true,
+    "date_only": true,
+    "enabled": false
   }
 ]

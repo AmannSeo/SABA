@@ -157,6 +157,16 @@ class RunOptionTests(unittest.TestCase):
         self.assertIn("이미 실행 중", log)
 
 
+class CollectTests(unittest.TestCase):
+    def test_failure_names_failed_sources_only(self):  # D-074
+        from types import SimpleNamespace
+        out = SimpleNamespace(returncode=1, stdout="", stderr="ERROR: [boannews] 비공개 원문 내용\n"
+                              "INFO: RSS Source 요약: 대상 6개 · 성공 5개 · 실패 1개 (boannews)\n")
+        with patch("subprocess.run", return_value=out), self.assertRaises(DailyError) as caught:
+            daily.collect_rss()
+        self.assertEqual(str(caught.exception), "RSS 수집 실패 (종료 코드 1: boannews)")
+
+
 class ScheduleTests(unittest.TestCase):
     """매일·매주·매월·특정 날짜 예약 (D-072)."""
 
