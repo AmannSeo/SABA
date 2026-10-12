@@ -97,3 +97,48 @@ class DailyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RunOptionTests(unittest.TestCase):
+    """수동 실행 옵션과 동시 실행 잠금 (D-071)."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.lock = Path(temp.name) / "daily.lock"
+        patches = [patch.object(daily, "LOG_DIR", Path(temp.name)), patch.object(daily, "LOCK_PATH", self.lock),
+                   patch.object(daily, "load_config", return_value=CONFIG), patch("logging.basicConfig")]
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+
+    def main(self, *args):
+        with patch("sys.argv", ["daily", "--run", *args]), patch.object(daily, "run_daily", return_value=0) as run, \
+                self.assertLogs(level="INFO") as logs:
+            code = daily.main()
+        return code, run, "\n".join(logs.output)
+
+    def test_lock_allows_one_run_at_a_time(self):
+        self.assertFalse(daily.is_running(self.lock))
+        with daily.run_lock(self.lock):
+            self.assertTrue(daily.is_running(self.lock))
+            with self.assertRaises(DailyError):
+                with daily.run_lock(self.lock):
+                    pass
+        self.assertFalse(daily.is_running(self.lock))  # 풀린 뒤 다시 실행 가능
+
+    def test_manual_no_send_overrides_config(self):
+        code, run, log = self.main("--manual", "--no-send")
+        self.assertEqual(code, 0)
+        self.assertFalse(run.call_args.args[1].send)
+        self.assertIn("관리 페이지 수동 실행 (발송 없이)", log)
+        code, run, log = self.main()
+        self.assertTrue(run.call_args.args[1].send)
+        self.assertIn("자동 실행 (발송 포함)", log)
+
+    def test_second_run_skipped_while_running(self):
+        with daily.run_lock(self.lock):
+            code, run, log = self.main("--manual")
+        self.assertEqual(code, 3)
+        run.assert_not_called()  # 수집·호출·발송 없음
+        self.assertIn("이미 실행 중", log)
+

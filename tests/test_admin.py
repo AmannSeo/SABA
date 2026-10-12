@@ -19,7 +19,7 @@ class FakeShell:
         return 0, self.output
 
 
-class AdminTests(unittest.TestCase):
+class AdminBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
@@ -49,6 +49,8 @@ class AdminTests(unittest.TestCase):
         response = conn.getresponse()
         return response.status, response.read().decode("utf-8")
 
+
+class AdminTests(AdminBase):
     def test_config_allows_loopback_only(self):
         path = self.root / "config" / "admin.json"
         for host, ok in (("127.0.0.1", True), ("localhost", True), ("0.0.0.0", False), ("192.168.0.10", False)):
@@ -128,6 +130,53 @@ class AdminTests(unittest.TestCase):
         self.assertNotIn("cid:", page)
         self.assertIn("data:image/png;base64,", page)
         self.assertEqual(self.request("GET", "/newsletter/view?name=../config/admin.json")[1], "<p>생성된 메일이 없습니다.</p>")
+
+
+class ManualRunTests(AdminBase):
+    """수동 실행 (D-071): 실제 실행은 하지 않고 띄울 명령만 확인한다."""
+
+    def setUp(self):
+        super().setUp()
+        self.launched = []
+        self.app.launch = self.launched.append
+        from datetime import datetime
+        self.today_log = self.root / "logs" / f"daily_{datetime.now():%Y%m%d}.log"
+        self.today_log.unlink(missing_ok=True)
+
+    def post(self, action, confirm=True):
+        body = f"token={self.app.token}" + ("&confirm=yes" if confirm else "")
+        return self.request("POST", f"/action/{action}", body)[0]
+
+    def test_run_buttons_need_confirm_and_launch_daily_run(self):
+        self.assertEqual(self.post("run_send", confirm=False), 400)
+        self.assertEqual(self.launched, [])
+        self.assertEqual(self.post("run_send"), 303)
+        self.assertEqual(self.post("run_nosend"), 303)
+        self.assertEqual(self.launched[0][2:], ["saba.daily", "--run", "--manual"])
+        self.assertEqual(self.launched[1][2:], ["saba.daily", "--run", "--manual", "--no-send"])
+        _, html = self.request("GET", "/")
+        self.assertIn("오늘 아직 발송 안 함", html)
+        self.assertNotIn("오늘 다시 보내기", html)
+
+    def test_already_sent_today_needs_resend_button(self):
+        self.today_log.write_text("2026-10-13 08:03:10,000 INFO 발송 완료 1회: 받는 사람 1명\n", encoding="utf-8")
+        self.assertIn("08:03 에 이미 발송", self.app.act("run_send"))
+        self.assertEqual(self.launched, [])
+        _, html = self.request("GET", "/")
+        self.assertIn("오늘 08:03 발송 완료", html)
+        self.assertIn("/action/run_resend", html)
+        self.app.act("run_resend")
+        self.assertEqual(self.launched[0][2:], ["saba.daily", "--run", "--manual"])
+
+    def test_running_blocks_new_run_and_refreshes(self):
+        from saba.daily import run_lock
+        with run_lock(self.root / "data" / "daily.lock"):
+            self.assertIn("이미 실행 중", self.app.act("run_nosend"))
+            _, html = self.request("GET", "/")
+        self.assertEqual(self.launched, [])
+        self.assertIn("실행 중", html)
+        self.assertIn('http-equiv="refresh"', html)
+        self.assertNotIn("/action/run_send", html)
 
 
 if __name__ == "__main__":

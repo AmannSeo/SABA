@@ -33,7 +33,12 @@ CONFIG_PATH = ROOT / "config" / "admin.json"
 PID_PATH = ROOT / "data" / "admin.pid"
 LOOPBACK = {"127.0.0.1", "localhost"}
 SECRET_NAMES = ("OPENAI_API_KEY", "SABA_SMTP_HOST", "SABA_SMTP_USER", "SABA_SMTP_PASSWORD")
-EXTERNAL_ACTIONS = {"rss_dryrun", "smtp_check"}  # 외부 접속이 있어 확인 창과 confirm=yes 가 필요하다
+EXTERNAL_ACTIONS = {"rss_dryrun", "smtp_check", "run_send", "run_nosend", "run_resend"}  # 확인 창과 confirm=yes 필요
+CONFIRM_TEXT = {
+    "run_send": "RSS 수집 → AI 분석 (하루 상한 안) → 메일 생성 → TEST 1명 발송을 실행합니다. 진행할까요?",
+    "run_nosend": "RSS 수집 → AI 분석 (하루 상한 안) → 메일 생성까지 실행합니다 (발송 없음). 진행할까요?",
+    "run_resend": "오늘 이미 발송했습니다. 다시 실행해 TEST 1명에게 한 번 더 보낼까요?",
+}
 
 
 class AdminError(Exception):
@@ -60,6 +65,13 @@ def run_command(args: list[str], timeout: int = 120) -> tuple[int, str]:
     return result.returncode, "\n".join(lines[-40:])
 
 
+def spawn(args: list[str]) -> None:
+    """수동 실행은 백그라운드로 띄우고 바로 돌아온다 (결과는 로그·대시보드에서 확인)."""
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    subprocess.Popen(args, cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                     creationflags=flags)
+
+
 def powershell(command: str) -> tuple[int, str]:
     utf8 = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; "  # 기본 cp949 출력이 깨지지 않게
     return run_command(["powershell", "-NoProfile", "-Command", utf8 + command], timeout=60)
@@ -71,6 +83,7 @@ class AdminApp:
     root: Path = ROOT
     shell: Callable[[str], tuple[int, str]] = powershell
     command: Callable[[list[str]], tuple[int, str]] = run_command
+    launch: Callable[[list[str]], None] = spawn
     token: str = field(default_factory=lambda: secrets.token_urlsafe(24))
     message: str = ""
 
@@ -87,6 +100,19 @@ class AdminApp:
         tail = lines[-3:]
         ok = None if not tail else not any(" ERROR " in line for line in tail) and any("발송 완료" in l or "send=false" in l for l in tail)
         return {"file": log.name, "lines": tail, "ok": ok}
+
+    def running(self) -> bool:
+        from saba.daily import is_running
+        return is_running(self.root / "data" / "daily.lock")
+
+    def sent_today(self) -> str | None:
+        """오늘 로그에 발송 완료가 있으면 마지막 발송 시각 (HH:MM)."""
+        log = self.root / "logs" / f"daily_{datetime.now():%Y%m%d}.log"
+        if not log.exists():
+            return None
+        times = [line[11:16] for line in log.read_text(encoding="utf-8", errors="replace").splitlines()
+                 if " INFO 발송 완료" in line]
+        return times[-1] if times else None
 
     def usage(self) -> dict:
         from saba.openai_adapter import MODEL, MONTHLY_LIMIT_USD
@@ -178,11 +204,27 @@ class AdminApp:
                 return send_test(message, send=True, login_only=True)
             except SendError as error:
                 return f"SMTP 확인 실패: {error}"
+        if action in ("run_send", "run_nosend", "run_resend"):
+            return self.run_today(action)
         if action in ("task_enable", "task_disable"):
             verb = "Enable" if action == "task_enable" else "Disable"
             code, _ = self.shell(f"{verb}-ScheduledTask -TaskName {TASK_NAME} | Out-Null")
             return f"자동 실행 {'켜기' if verb == 'Enable' else '끄기'}: {'완료' if code == 0 else f'실패 (종료 코드 {code})'}"
         raise AdminError("알 수 없는 동작입니다.")
+
+    def run_today(self, action: str) -> str:
+        """작업 스케줄러와 같은 daily --run 경로 (D-071). 동시 실행은 daily 의 잠금이 막는다."""
+        if self.running():
+            return "이미 실행 중입니다. 끝난 뒤 다시 시도하세요."
+        sent = self.sent_today()
+        if action == "run_send" and sent:
+            return f"오늘 {sent} 에 이미 발송했습니다. 다시 보내려면 '오늘 다시 보내기' 버튼을 누르세요."
+        args = [sys.executable, "-m", "saba.daily", "--run", "--manual"]
+        if action == "run_nosend":
+            args.append("--no-send")
+        self.launch(args)
+        kind = "발송 없이" if action == "run_nosend" else ("다시 보내기" if action == "run_resend" else "발송 포함")
+        return f"오늘 분량 실행을 시작했습니다 ({kind}). 몇 분 걸리며, 이 화면은 실행 중 자동으로 새로 고침됩니다."
 
     def rebuild_preview(self) -> str:
         """저장된 분석·시사점만으로 미리보기 .eml 재생성. OpenAI 호출·네트워크·발송 없음."""
@@ -216,17 +258,18 @@ CSS = ("body{margin:0;font-family:'Malgun Gothic',Arial,sans-serif;background:#f
 MENU = [("/", "대시보드"), ("/logs", "실행 이력·로그"), ("/newsletter", "뉴스레터"), ("/settings", "설정")]
 
 
-def page(title: str, body: str, message: str = "") -> str:
+def page(title: str, body: str, message: str = "", refresh: bool = False) -> str:
     links = "".join(f'<a href="{href}">{label}</a>' for href, label in MENU)
     links += '<span title="2단계 예정">수신자·발송 관리 (2단계 예정)</span>'
     note = f'<div class="card msg"><pre style="background:none;color:#1f2937">{escape(message)}</pre></div>' if message else ""
-    return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>{escape(title)} · SABA 관리</title>'
+    return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">{'<meta http-equiv="refresh" content="10">' if refresh else ""}<title>{escape(title)} · SABA 관리</title>'
             f"<style>{CSS}</style></head><body><nav>{links}</nav><main><h1>{escape(title)}</h1>{note}{body}</main></body></html>")
 
 
 def button(app: AdminApp, action: str, label: str) -> str:
     external = action in EXTERNAL_ACTIONS
-    confirm = ' onsubmit="return confirm(\'외부에 접속합니다. 진행할까요?\')"' if external else ""
+    text = CONFIRM_TEXT.get(action, "외부에 접속합니다. 진행할까요?")  # 작은따옴표 없는 고정 문구만
+    confirm = f' onsubmit="return confirm(\'{escape(text)}\')"' if external else ""
     hidden = '<input type="hidden" name="confirm" value="yes">' if external else ""
     return (f'<form method="post" action="/action/{action}" style="display:inline"{confirm}>'
             f'<input type="hidden" name="token" value="{app.token}">{hidden}'
@@ -246,6 +289,7 @@ def dashboard(app: AdminApp) -> str:
             f'<tr><th>이번 달 AI ({escape(use["month"])}, {escape(use["model"])})</th>'
             f'<td>호출 {use["calls"]}건 · 상태 {escape(statuses)} · 비용 ${use["cost"]:.4f} / 상한 ${use["limit"]:.2f}</td></tr>'
             f'<tr><th>발송 대상</th><td>TEST 1명 (고정 주소)</td></tr></table></div>'
+            f'{run_card(app)}'
             f'<div class="card"><h2>자동 실행 (작업 스케줄러)</h2><table>{task_rows}</table>'
             f'{button(app, "task_enable", "자동 실행 켜기")}{button(app, "task_disable", "자동 실행 끄기")}</div>'
             f'<div class="card"><h2>기능별 테스트</h2><p style="font-size:13px">외부 접속 없음</p>'
@@ -253,6 +297,20 @@ def dashboard(app: AdminApp) -> str:
             f'{button(app, "rebuild_preview", "메일 미리보기 재생성 (저장 결과만)")}'
             f'<p style="font-size:13px">외부 접속 있음 (확인 창)</p>'
             f'{button(app, "rss_dryrun", "RSS 수집 dry-run (저장 없음)")}{button(app, "smtp_check", "SMTP 연결·인증 확인 (발송 없음)")}</div>')
+
+
+def run_card(app: AdminApp) -> str:
+    """수동 실행 (D-071). 실행 중이면 버튼 대신 상태만 보여 준다."""
+    if app.running():
+        return ('<div class="card"><h2>오늘 분량 실행 · <b class="ok">실행 중</b></h2>'
+                '<p style="font-size:13px">끝나면 위 "마지막 실행" 에 결과가 나옵니다. 10초마다 자동으로 새로 고침합니다.</p></div>')
+    sent = app.sent_today()
+    status = f"오늘 {sent} 발송 완료" if sent else "오늘 아직 발송 안 함"
+    resend = button(app, "run_resend", "오늘 다시 보내기") if sent else ""
+    return (f'<div class="card"><h2>오늘 분량 실행 (수동) · {escape(status)}</h2>'
+            '<p style="font-size:13px">자동 실행과 같은 순서로 실행합니다. AI 호출은 하루 상한 (분석 20·시사점 20) 안에서만 합니다.</p>'
+            f'{button(app, "run_send", "오늘 분량 실행 (발송 포함, TEST 1명)")}'
+            f'{button(app, "run_nosend", "발송 없이 실행 (메일 생성까지)")}{resend}</div>')
 
 
 def logs_page(app: AdminApp, name: str | None) -> str:
@@ -314,7 +372,7 @@ def make_handler(app: AdminApp, port: int):
             query = parse_qs(url.query)
             message, app.message = app.message, ""
             if url.path == "/":
-                return self._send(200, page("대시보드", dashboard(app), message))
+                return self._send(200, page("대시보드", dashboard(app), message, refresh=app.running()))
             if url.path == "/logs":
                 return self._send(200, page("실행 이력·로그", logs_page(app, query.get("name", [None])[0])))
             if url.path == "/newsletter":

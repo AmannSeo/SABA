@@ -6,10 +6,12 @@
 """
 
 import argparse
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 from datetime import datetime
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -19,6 +21,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "daily.json"
 LOG_DIR = ROOT / "logs"
+LOCK_PATH = ROOT / "data" / "daily.lock"
 # 실행 파일 묶음 (D-069) 에서는 SABA.exe 자신이 실행 대상이다.
 PYTHON = Path(sys.executable) if getattr(sys, "frozen", False) else ROOT / ".venv" / "Scripts" / "python.exe"
 TASK_NAME = "SABA_Daily_Briefing"
@@ -109,7 +112,7 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         path.write_bytes(eml)
         logging.info("메일 생성 완료: %s · %s · %s bytes", path.name, summary, f"{len(eml):,}")
         if not config.send:
-            logging.info("설정 send=false: 발송하지 않음")
+            logging.info("발송하지 않음 (send=false)")
             return 0
         stage = "발송"
         logging.info(deliver(eml))
@@ -140,6 +143,45 @@ def register_command(config: DailyConfig, python: Path = PYTHON, *,
                       "-User $c.UserName -Password $c.GetNetworkCredential().Password -Force | Out-Null")
 
 
+@contextmanager
+def run_lock(path: Path = LOCK_PATH):
+    """동시 실행 막기 (D-071). 자동·수동 실행이 겹쳐도 하나만 돈다.
+
+    파일 잠금이라 프로세스가 비정상 종료돼도 OS 가 풀어 준다 (남은 파일 때문에 막히지 않는다).
+    """
+    path.parent.mkdir(exist_ok=True)
+    handle = open(path, "a+b")
+    try:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise DailyError("이미 실행 중입니다") from None
+        try:
+            yield
+        finally:
+            if os.name == "nt":
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    finally:
+        handle.close()
+
+
+def is_running(path: Path = LOCK_PATH) -> bool:
+    if not path.exists():
+        return False
+    try:
+        with run_lock(path):
+            return False
+    except DailyError:
+        return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
@@ -148,6 +190,8 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="--register 와 함께: 실제로 작업 스케줄러에 등록 (승인 후)")
     parser.add_argument("--unattended", action="store_true",
                         help="--register 와 함께: 로그인 없이 실행 + 놓친 실행 보완 (부서 PC, D-068)")
+    parser.add_argument("--no-send", action="store_true", help="--run 과 함께: 메일 생성까지만 (발송 없음)")
+    parser.add_argument("--manual", action="store_true", help="--run 과 함께: 관리 페이지 수동 실행으로 기록")
     args = parser.parse_args()
     config = load_config()
     if args.register:
@@ -160,7 +204,16 @@ def main() -> int:
     LOG_DIR.mkdir(exist_ok=True)
     logging.basicConfig(filename=LOG_DIR / f"daily_{now:%Y%m%d}.log", level=logging.INFO, encoding="utf-8",
                         format="%(asctime)s %(levelname)s %(message)s")
-    return run_daily(now, config)
+    if args.no_send:
+        config = replace(config, send=False)
+    origin = "관리 페이지 수동 실행" if args.manual else "자동 실행"
+    try:
+        with run_lock(LOCK_PATH):
+            logging.info("실행 시작: %s (%s)", origin, "발송 포함" if config.send else "발송 없이")
+            return run_daily(now, config)
+    except DailyError as error:  # 잠금 실패만 여기로 온다 (run_daily 는 자체 처리)
+        logging.warning("%s: %s · 이번 실행은 건너뜀", origin, error)
+        return 3
 
 
 if __name__ == "__main__":
