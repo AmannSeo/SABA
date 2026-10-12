@@ -106,6 +106,16 @@ class MappingTests(unittest.TestCase):
             self.assertEqual(counts["excluded"], 2)
             self.assertEqual(counts["unknown"], 1)
 
+    def test_monday_collection_window_includes_weekend(self):
+        # 월요일(KST)은 표시 기간과 같이 +48시간 저장 (D-063): 일반 72시간, 날짜만 제공 96시간
+        monday = datetime(2026, 10, 12, 0, tzinfo=timezone.utc)  # KST 월요일 09:00
+        base = self.articles[0]
+        for date_only, hours in ((False, 72), (True, 96)):
+            items = [base.model_copy(update={"article_id": str(i), "published_at": monday - timedelta(hours=h)})
+                     for i, h in enumerate((hours - 1, hours + 1))]
+            selected, _ = select_articles(items, monday, date_only=date_only)
+            self.assertEqual([a.article_id for a in selected], ["0"])
+
     def test_recovery_overlap_cap_and_invalid(self):
         base = self.articles[0]
         for since, start in ((NOW - timedelta(days=2), NOW - timedelta(days=2, hours=6)), (NOW - timedelta(days=20), NOW - timedelta(days=7))):

@@ -172,7 +172,10 @@ def select_articles(articles: list[Article], now: datetime, *, bootstrap=False,
         start = max(since - timedelta(hours=6), now - timedelta(days=7))
     else:
         # 날짜만 있는 Source는 0시로 해석하므로 기본 기간을 하루 늘려 전날 게시분 누락을 막는다 (D-025).
-        start = now - timedelta(days=30) if bootstrap else now - timedelta(hours=48 if date_only else 24)
+        hours = 48 if date_only else 24
+        if now.astimezone(timezone(KST)).weekday() == 0:  # 월요일은 주말 게시분도 저장 (+48시간, 표시 기간과 같음, D-063)
+            hours += 48
+        start = now - timedelta(days=30) if bootstrap else now - timedelta(hours=hours)
     unknown = [article for article in articles if article.published_at is None]
     dated = [article for article in articles
              if article.published_at is not None and start <= article.published_at <= now]
