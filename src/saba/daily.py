@@ -7,8 +7,8 @@
 
 import argparse
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
-from datetime import datetime
+from dataclasses import asdict, dataclass, replace
+from datetime import date, datetime, timedelta
 import json
 import logging
 import os
@@ -26,12 +26,13 @@ LOCK_PATH = ROOT / "data" / "daily.lock"
 PYTHON = Path(sys.executable) if getattr(sys, "frozen", False) else ROOT / ".venv" / "Scripts" / "python.exe"
 TASK_NAME = "SABA_Daily_Briefing"
 WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
-_DAY_NAMES = {"MON": "Monday", "TUE": "Tuesday", "WED": "Wednesday", "THU": "Thursday", "FRI": "Friday",
-              "SAT": "Saturday", "SUN": "Sunday"}
 
 
 class DailyError(Exception):
     """단계 실패. 메시지에는 단계 이름과 종류만 담는다."""
+
+
+MODES = ("daily", "weekly", "monthly", "dates")  # 매일·매주·매월·특정 날짜 (D-072)
 
 
 @dataclass(frozen=True)
@@ -42,21 +43,86 @@ class DailyConfig:
     max_analysis_calls: int
     max_insight_calls: int
     send: bool
+    mode: str = "weekly"
+    month_days: tuple[int, ...] = ()
+    dates: tuple[str, ...] = ()
+    log_days: int = 90  # 보관 기간 (D-072)
+    mail_days: int = 30
+
+
+def parse_config(data: dict) -> DailyConfig:
+    """설정 값 검증. 관리 페이지 저장도 같은 규칙을 쓴다 (D-072)."""
+    try:
+        config = DailyConfig(
+            time=str(data["time"]), random_delay_minutes=int(data["random_delay_minutes"]),
+            weekdays=tuple(data.get("weekdays", ())), max_analysis_calls=int(data["max_analysis_calls"]),
+            max_insight_calls=int(data["max_insight_calls"]), send=bool(data["send"]),
+            mode=str(data.get("mode", "weekly")), month_days=tuple(int(d) for d in data.get("month_days", ())),
+            dates=tuple(str(d) for d in data.get("dates", ())), log_days=int(data.get("log_days", 90)),
+            mail_days=int(data.get("mail_days", 30)))
+    except (KeyError, TypeError, ValueError):
+        raise DailyError("설정 오류: 필수 항목이 없거나 숫자 형식이 아닙니다.") from None
+    if config.mode not in MODES:
+        raise DailyError("설정 오류: 반복은 매일·매주·매월·특정 날짜 중 하나여야 합니다.")
+    if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", config.time):
+        raise DailyError("설정 오류: 시각은 HH:MM 형식이어야 합니다.")
+    if set(config.weekdays) - set(WEEKDAYS) or (config.mode == "weekly" and not config.weekdays):
+        raise DailyError("설정 오류: 매주 반복은 요일을 하나 이상 골라야 합니다.")
+    if any(not 1 <= day <= 31 for day in config.month_days) or (config.mode == "monthly" and not config.month_days):
+        raise DailyError("설정 오류: 매월 반복은 1~31일 중 하나 이상 골라야 합니다.")
+    for value in config.dates:
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            raise DailyError(f"설정 오류: 날짜 형식이 아닙니다 ({value[:20]}).") from None
+    if config.mode == "dates" and not config.dates:
+        raise DailyError("설정 오류: 특정 날짜 반복은 날짜를 하나 이상 넣어야 합니다.")
+    if not (0 <= config.random_delay_minutes <= 30 and 0 <= config.max_analysis_calls <= 50
+            and 0 <= config.max_insight_calls <= 50):
+        raise DailyError("설정 오류: 무작위 지연은 0~30분, 하루 호출 상한은 0~50건이어야 합니다.")
+    if not (7 <= config.log_days <= 3650 and 1 <= config.mail_days <= 3650):
+        raise DailyError("설정 오류: 로그 보관은 7~3650일, 메일 보관은 1~3650일이어야 합니다.")
+    return config
 
 
 def load_config(path: Path = CONFIG_PATH) -> DailyConfig:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    config = DailyConfig(time=data["time"], random_delay_minutes=int(data["random_delay_minutes"]),
-                         weekdays=tuple(data["weekdays"]), max_analysis_calls=int(data["max_analysis_calls"]),
-                         max_insight_calls=int(data["max_insight_calls"]), send=bool(data["send"]))
-    if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", config.time):
-        raise DailyError("설정 오류: time 은 HH:MM 형식이어야 합니다.")
-    if not config.weekdays or set(config.weekdays) - set(WEEKDAYS):
-        raise DailyError("설정 오류: weekdays 는 MON~SUN 중에서 골라야 합니다.")
-    if not (0 <= config.random_delay_minutes <= 60 and 0 <= config.max_analysis_calls <= 50
-            and 0 <= config.max_insight_calls <= 50):
-        raise DailyError("설정 오류: 지연은 0~60분, 하루 호출 상한은 0~50건이어야 합니다.")
-    return config
+    return parse_config(json.loads(path.read_text(encoding="utf-8")))
+
+
+def config_dict(config: DailyConfig) -> dict:
+    data = asdict(config)
+    for key in ("weekdays", "month_days", "dates"):
+        data[key] = list(data[key])
+    return data
+
+
+def save_config(config: DailyConfig, path: Path = CONFIG_PATH) -> None:
+    path.write_text(json.dumps(config_dict(config), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def scheduled_on(config: DailyConfig, day: date) -> bool:
+    """예약 발송 날짜인지. 작업 스케줄러는 매일 깨우고 날짜는 여기서 판단한다 (D-072)."""
+    if config.mode == "daily":
+        return True
+    if config.mode == "weekly":
+        return WEEKDAYS[day.weekday()] in config.weekdays
+    if config.mode == "monthly":
+        return day.day in config.month_days
+    return day.isoformat() in config.dates
+
+
+def next_runs(config: DailyConfig, now: datetime, count: int = 5) -> list[datetime]:
+    """다음 예약 시각 (무작위 지연 전). 400일 안에서 찾는다."""
+    hour, minute = map(int, config.time.split(":"))
+    runs = []
+    for offset in range(400):
+        day = now.date() + timedelta(days=offset)
+        at = datetime.combine(day, datetime.min.time(), now.tzinfo).replace(hour=hour, minute=minute)
+        if at > now and scheduled_on(config, day):
+            runs.append(at)
+            if len(runs) == count:
+                break
+    return runs
 
 
 def collect_rss() -> None:
@@ -107,7 +173,7 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         logging.info("RSS 수집 완료")
         stage = "분석·메일 생성"
         eml, summary = build(now, config)
-        path = output_dir / f"daily_{now.astimezone():%Y%m%d}.eml"
+        path = output_dir / f"daily_{now.astimezone():%Y%m%d_%H%M}.eml"  # 실행마다 따로 보관 (D-072)
         output_dir.mkdir(exist_ok=True)  # 새 PC·실행 파일 묶음에는 output 폴더가 없다
         path.write_bytes(eml)
         logging.info("메일 생성 완료: %s · %s · %s bytes", path.name, summary, f"{len(eml):,}")
@@ -130,8 +196,8 @@ def register_command(config: DailyConfig, python: Path = PYTHON, *,
     unattended=True (부서 PC, D-068): 로그인 없이 실행 + 놓친 실행 보완. Windows 계정 비밀번호는 실행 때
     입력 창으로만 받고 명령·파일·로그에 남기지 않는다.
     """
-    days = ",".join(_DAY_NAMES[day] for day in config.weekdays)
-    command = (f"$t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek {days} -At {config.time}"
+    # 매일 같은 시각에 깨우고 예약 날짜인지는 --run 이 설정으로 판단한다 (매월·특정 날짜 지원, D-072).
+    command = (f"$t = New-ScheduledTaskTrigger -Daily -At {config.time}"
                f" -RandomDelay (New-TimeSpan -Minutes {config.random_delay_minutes}); "
                f"$a = New-ScheduledTaskAction -Execute '{python}' -Argument '-m saba.daily --run' -WorkingDirectory '{ROOT}'; ")
     if not unattended:
@@ -201,15 +267,23 @@ def main() -> int:
             return 0
         return subprocess.run(["powershell", "-NoProfile", "-Command", command]).returncode
     now = datetime.now().astimezone()
+    if not args.manual and not scheduled_on(config, now.date()):
+        return 0  # 예약일이 아니다 (작업 스케줄러는 매일 깨운다, D-072). 로그도 남기지 않는다.
     LOG_DIR.mkdir(exist_ok=True)
     logging.basicConfig(filename=LOG_DIR / f"daily_{now:%Y%m%d}.log", level=logging.INFO, encoding="utf-8",
                         format="%(asctime)s %(levelname)s %(message)s")
-    if args.no_send:
+    if args.manual:  # 관리 페이지 "지금 발송" 은 설정의 발송 여부와 관계없이 보낸다 (--no-send 제외)
+        config = replace(config, send=not args.no_send)
+    elif args.no_send:
         config = replace(config, send=False)
     origin = "관리 페이지 수동 실행" if args.manual else "자동 실행"
     try:
         with run_lock(LOCK_PATH):
             logging.info("실행 시작: %s (%s)", origin, "발송 포함" if config.send else "발송 없이")
+            from saba.history import cleanup
+            removed = cleanup(ROOT, config.log_days, config.mail_days, now.date())
+            if any(removed):
+                logging.info("보관 기간 정리: 로그 %s개, 메일 %s개 삭제", *removed)
             return run_daily(now, config)
     except DailyError as error:  # 잠금 실패만 여기로 온다 (run_daily 는 자체 처리)
         logging.warning("%s: %s · 이번 실행은 건너뜀", origin, error)

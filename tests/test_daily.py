@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import json
 from pathlib import Path
 import tempfile
@@ -46,14 +46,14 @@ class DailyTests(unittest.TestCase):
         code, log = self.run_with()
         self.assertEqual(code, 0)
         self.assertEqual(self.calls, ["collect", ("build", 20, 20), "send"])
-        self.assertEqual((self.dir / f"daily_{NOW.astimezone():%Y%m%d}.eml").read_bytes(), b"EML")
+        self.assertEqual((self.dir / f"daily_{NOW.astimezone():%Y%m%d_%H%M}.eml").read_bytes(), b"EML")  # 실행마다 따로 (D-072)
         self.assertIn("발송 완료 1회", log)
 
     def test_missing_output_folder_created(self):  # 새 PC·실행 파일 묶음 (D-069)
         self.dir = self.dir / "output"
         code, _ = self.run_with()
         self.assertEqual(code, 0)
-        self.assertTrue((self.dir / f"daily_{NOW.astimezone():%Y%m%d}.eml").exists())
+        self.assertTrue((self.dir / f"daily_{NOW.astimezone():%Y%m%d_%H%M}.eml").exists())
 
     def test_failure_stops_before_send_without_retry_or_secret(self):
         for fail_at, expected in (("collect", ["collect"]), ("build", ["collect", ("build", 20, 20)])):
@@ -76,16 +76,28 @@ class DailyTests(unittest.TestCase):
         path.write_text(json.dumps(base), encoding="utf-8")
         self.assertEqual(load_config(path).time, "08:00")
         for bad in ({"time": "8:00"}, {"time": "24:00"}, {"weekdays": ["XYZ"]}, {"weekdays": []},
-                    {"max_analysis_calls": 99}, {"random_delay_minutes": -1}):
+                    {"max_analysis_calls": 99}, {"random_delay_minutes": -1}, {"random_delay_minutes": 31},
+                    {"mode": "yearly"}, {"mode": "monthly", "month_days": []}, {"mode": "monthly", "month_days": [32]},
+                    {"mode": "dates", "dates": []}, {"mode": "dates", "dates": ["2026-13-01"]}, {"log_days": 3},
+                    {"mail_days": 0}):
             with self.subTest(bad=bad):
                 path.write_text(json.dumps(base | bad), encoding="utf-8")
                 with self.assertRaises(DailyError):
                     load_config(path)
         self.assertEqual(load_config().max_analysis_calls, 20)  # 저장소 기본 설정 (D-061)
+        path.write_text(json.dumps(base), encoding="utf-8")  # 예전 형식 (mode 등 없음) 은 기본값
+        config = load_config(path)
+        self.assertEqual((config.mode, config.log_days, config.mail_days), ("weekly", 90, 30))
+
+    def test_save_round_trip(self):
+        path = self.dir / "daily.json"
+        config = DailyConfig(**{**CONFIG.__dict__, "mode": "dates", "dates": ("2026-10-20",), "mail_days": 45})
+        daily.save_config(config, path)
+        self.assertEqual(load_config(path), config)
 
     def test_register_command_uses_config_and_does_not_run(self):
         command = register_command(CONFIG)
-        for part in ("-Weekly", "Monday,Tuesday,Wednesday,Thursday,Friday", "-At 08:00",
+        for part in ("-Daily", "-At 08:00",  # 매일 깨우고 날짜는 --run 이 판단 (D-072)
                      "New-TimeSpan -Minutes 5", "-m saba.daily --run", daily.TASK_NAME):
             self.assertIn(part, command)
         later = register_command(DailyConfig(**{**CONFIG.__dict__, "time": "07:30", "weekdays": ("MON",)}))
@@ -106,7 +118,9 @@ class RunOptionTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.lock = Path(temp.name) / "daily.lock"
         patches = [patch.object(daily, "LOG_DIR", Path(temp.name)), patch.object(daily, "LOCK_PATH", self.lock),
-                   patch.object(daily, "load_config", return_value=CONFIG), patch("logging.basicConfig")]
+                   patch.object(daily, "load_config", return_value=CONFIG), patch("logging.basicConfig"),
+                   patch.object(daily, "scheduled_on", return_value=True),  # 요일과 관계없이 테스트
+                   patch.object(daily, "ROOT", Path(temp.name))]  # 보관 정리가 저장소 파일을 건드리지 않게
         for item in patches:
             item.start()
             self.addCleanup(item.stop)
@@ -141,4 +155,34 @@ class RunOptionTests(unittest.TestCase):
         self.assertEqual(code, 3)
         run.assert_not_called()  # 수집·호출·발송 없음
         self.assertIn("이미 실행 중", log)
+
+
+class ScheduleTests(unittest.TestCase):
+    """매일·매주·매월·특정 날짜 예약 (D-072)."""
+
+    def config(self, **changes):
+        return DailyConfig(**{**CONFIG.__dict__, **changes})
+
+    def test_scheduled_on_each_mode(self):
+        monday, saturday = date(2026, 10, 12), date(2026, 10, 17)
+        self.assertTrue(daily.scheduled_on(self.config(), monday))
+        self.assertFalse(daily.scheduled_on(self.config(), saturday))
+        self.assertTrue(daily.scheduled_on(self.config(mode="daily"), saturday))
+        self.assertTrue(daily.scheduled_on(self.config(mode="monthly", month_days=(17,)), saturday))
+        self.assertFalse(daily.scheduled_on(self.config(mode="monthly", month_days=(17,)), monday))
+        self.assertTrue(daily.scheduled_on(self.config(mode="dates", dates=("2026-10-17",)), saturday))
+        self.assertFalse(daily.scheduled_on(self.config(mode="dates", dates=("2026-10-17",)), monday))
+
+    def test_next_runs_skip_past_time_and_other_days(self):
+        now = datetime(2026, 10, 12, 9, 0, tzinfo=timezone.utc)  # 월요일 09:00
+        runs = daily.next_runs(self.config(), now, 3)
+        self.assertEqual([r.strftime("%m-%d %H:%M") for r in runs], ["10-13 08:00", "10-14 08:00", "10-15 08:00"])
+        once = daily.next_runs(self.config(mode="dates", dates=("2026-10-12", "2026-10-30"), time="15:00"), now, 5)
+        self.assertEqual([r.strftime("%m-%d %H:%M") for r in once], ["10-12 15:00", "10-30 15:00"])
+
+    def test_automatic_run_exits_quietly_on_other_days(self):
+        with tempfile.TemporaryDirectory() as temp, patch.object(daily, "LOG_DIR", Path(temp)),                 patch.object(daily, "load_config", return_value=self.config(mode="dates", dates=("2000-01-01",))),                 patch.object(daily, "run_daily") as run, patch("sys.argv", ["daily", "--run"]):
+            self.assertEqual(daily.main(), 0)
+            run.assert_not_called()
+            self.assertEqual(list(Path(temp).iterdir()), [])  # 로그도 남기지 않음
 
