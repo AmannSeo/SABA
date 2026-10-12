@@ -54,6 +54,15 @@ class SendMailTests(unittest.TestCase):
         self.assertIn("발송 완료 1회", result)
         self.assertNotIn("FAKE-SECRET", result)
 
+    def test_login_only_authenticates_without_sending(self):
+        make, server = factory()
+        result = send_test(message(), send=True, env=ENV, smtp_factory=make, login_only=True)
+        server.auth.assert_called_once_with("PLAIN", server.auth_plain)
+        server.send_message.assert_not_called()
+        server.quit.assert_called_once()
+        self.assertIn("발송 없음", result)
+        self.assertNotIn("FAKE-SECRET", result)
+
     def test_other_recipients_rejected_before_connect(self):
         for header in ("To", "Cc", "Bcc", "From"):
             with self.subTest(header=header):

@@ -37,6 +37,8 @@ RSS 수집 → 같은 사건 묶음·선별 → AI 분석(요약·중요도) →
 .venv\Scripts\python.exe -m saba.daily --register --apply   # 작업 스케줄러에 실제 등록·갱신 (승인 후)
 .venv\Scripts\python.exe -m saba.send_mail            # 발송 드라이런 (접속·발송 없음)
 .venv\Scripts\python.exe -m saba.send_mail --send     # 최근 메일 .eml 을 TEST 수신자에게 1회 발송
+.venv\Scripts\python.exe -m saba.admin                # 관리 컨트롤 페이지 시작 (브라우저가 열림, 11절)
+.venv\Scripts\python.exe -m saba.admin --stop         # 관리 컨트롤 페이지 종료
 ```
 
 작업 스케줄러 등록 상태 (2026-10-12 등록, D-063): 작업 이름 `SABA_Daily_Briefing`, 평일 08:00 + 최대 5분 지연.
@@ -222,7 +224,7 @@ SABA 의 주요 기능을 터미널 명령어 없이 관리한다.
 
 - 원본 `SAMPLE/Codex/v09/LOGO.png` (1426×1103, 약 0.9MB) 는 수정하지 않는다.
 - 메일에는 표시 크기(62px) 의 2배 정도(약 124px 폭) 로 줄인 별도 파일을 CID 로 첨부한다.
-- 예상 효과: 메일 크기 약 1.4MB → 약 0.5MB, 전사 발송 시 발송량·용량 부담 감소.
+- 적용 (D-067): `templates/logo_mail.png` (124×96, 약 10KB). 같은 날 같은 기사 3건 기준 메일 .eml 1,346,920 → 91,587 bytes.
 
 ### 설치·실행 패키지 (D-066, 2단계)
 
@@ -237,3 +239,37 @@ SABA 의 주요 기능을 터미널 명령어 없이 관리한다.
 | 제거 | 작업 해제 후 프로그램 제거 (데이터는 선택 보관) |
 
 방식(배치·PowerShell 스크립트 또는 실행 파일 패키징) 은 2단계 작업에서 결정한다.
+
+---
+
+## 11. 관리 컨트롤 페이지 1단계 (D-067)
+
+이 PC 에서만 여는 로컬 웹 페이지다. 새 패키지 없이 표준 라이브러리로 동작한다.
+
+```
+.venv\Scripts\python.exe -m saba.admin          # 시작: http://127.0.0.1:8765/ 이 브라우저로 열린다
+.venv\Scripts\python.exe -m saba.admin --stop   # 종료 (실행 창에서 Ctrl+C 도 가능)
+```
+
+- 접속 설정 `config/admin.json` (`host`, `port`). 1단계는 `127.0.0.1`·`localhost` 만 허용하고 다른 값이면 시작하지 않는다. 사내망 접속은 3단계 로그인·IP 제한과 함께 별도 승인.
+- 실행 중 표시: `data/admin.pid` (종료 시 삭제).
+
+| 화면 | 내용 |
+|---|---|
+| 대시보드 | 마지막 실행 로그와 결과, 최근 24시간 수집 건수, 이번 달 AI 호출·상태·비용·상한, 발송 대상 (TEST 1명), 작업 스케줄러 상태·마지막 결과·다음 실행 |
+| 실행 이력·로그 | `logs/daily_*.log` 목록과 내용 |
+| 뉴스레터 | `output/daily_*.eml` 목록과 메일 HTML 미리보기 (첨부 이미지 포함) |
+| 설정 | `config/daily.json` 과 검증 결과, RSS Source, Secret 4개 있음·없음 (값 미표시), 발송 수신자 |
+| 수신자·발송 관리 | 3단계 예정 (비활성) |
+
+| 버튼 | 외부 접속 | 동작 |
+|---|---|---|
+| 메일 발송 드라이런 | 없음 | 최근 .eml 로 `send_mail` 드라이런 (접속·발송 없음) |
+| 설정 검증 | 없음 | `config/daily.json` 검증 |
+| 메일 미리보기 재생성 | 없음 | 저장된 분석·시사점만으로 `output/daily_YYYYMMDD_preview.eml` 생성 (OpenAI 호출·본문 가져오기 없음) |
+| RSS 수집 dry-run | 있음 (확인 창) | `--collect-rss --dry-run` (DB 저장 없음) |
+| SMTP 연결·인증 확인 | 있음 (확인 창) | 연결과 AUTH PLAIN 235 확인 후 종료 (메일 발송 없음) |
+| 자동 실행 켜기·끄기 | 없음 | `Enable-ScheduledTask` / `Disable-ScheduledTask` |
+
+- 보호 장치: 요청 Host 가 127.0.0.1·localhost 가 아니면 거부, 버튼 요청은 페이지마다 새로 만든 토큰 필수, 외부 접속 버튼은 확인 값 필수, 오류는 종류만 표시.
+- 수동 실행 (실제 수집·AI 호출·발송) 과 실행 시각 변경 저장은 2단계 이후.

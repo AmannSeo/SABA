@@ -110,9 +110,17 @@ class MailTests(unittest.TestCase):
     def test_browser_preview_uses_image_files(self):
         preview = mail.browser_preview(self.html)
         self.assertNotIn("cid:", body(preview))
-        for path in ("../SAMPLE/Codex/v09/LOGO.png", "../sign/sign_img.jpg"):
+        for path in ("../templates/logo_mail.png", "../sign/sign_img.jpg"):
             self.assertIn(path, preview)
             self.assertTrue((ROOT / "output" / path).resolve().exists())
+
+    def test_mail_logo_is_resized_copy(self):
+        # 메일 로고는 원본(SAMPLE/Codex/v09/LOGO.png) 의 124px 축소본 (D-067). 원본은 그대로 둔다.
+        import struct
+        self.assertEqual(mail.LOGO_PATH, ROOT / "templates" / "logo_mail.png")
+        width, _height = struct.unpack(">II", mail.LOGO_PATH.read_bytes()[16:24])
+        self.assertEqual(width, 124)
+        self.assertGreater((ROOT / "SAMPLE/Codex/v09/LOGO.png").stat().st_size, mail.LOGO_PATH.stat().st_size)
 
     def test_logo_and_signature_use_cid(self):
         self.assertRegex(self.html, rf'<img[^>]*src="cid:{LOGO_CID}"[^>]*alt="TBELL SECURITY"')

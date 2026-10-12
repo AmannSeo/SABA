@@ -10,7 +10,7 @@ from css_inline import CSSInliner
 from saba.newsletter import ArticleView, build_mail_html
 
 ROOT = Path(__file__).resolve().parents[2]
-LOGO_PATH = ROOT / "SAMPLE/Codex/v09/LOGO.png"
+LOGO_PATH = ROOT / "templates/logo_mail.png"  # 원본 SAMPLE/Codex/v09/LOGO.png 의 메일용 축소본 (124px, D-067)
 SIGNATURE_PATH = ROOT / "templates/email_signature.html"
 SIGNATURE_IMAGE_PATH = ROOT / "sign/sign_img.jpg"
 LOGO_CID = "saba-logo"

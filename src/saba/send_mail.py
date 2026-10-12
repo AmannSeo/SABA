@@ -77,8 +77,11 @@ def _quit(server) -> str | None:
 
 
 def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, str] = os.environ,
-              smtp_factory: Callable[..., smtplib.SMTP_SSL] = smtplib.SMTP_SSL) -> str:
-    """드라이런이면 접속하지 않고 요약만 돌려준다. send=True 면 1회 발송, 재시도 없음."""
+              smtp_factory: Callable[..., smtplib.SMTP_SSL] = smtplib.SMTP_SSL, login_only: bool = False) -> str:
+    """드라이런이면 접속하지 않고 요약만 돌려준다. send=True 면 1회 발송, 재시도 없음.
+
+    login_only=True 면 연결·인증까지만 확인하고 메시지는 보내지 않는다 (관리 페이지 SMTP 확인, D-067).
+    """
     message = prepare(message)
     size = len(message.as_bytes())
     present = {name: bool(env.get(name, "").strip()) for name in (ENV_HOST, ENV_USER, ENV_PASSWORD)}
@@ -105,7 +108,7 @@ def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, st
             raise SendError(f"SMTP 인증 미완료: EHLO 응답 코드 {ehlo_code}, AUTH 응답 코드 {auth_code}"
                             f" (지원 인증 방식 {server.esmtp_features.get('auth', '없음').split()})")
         stage = "발송"
-        refused = server.send_message(message, from_addr=TEST_ADDRESS, to_addrs=[TEST_ADDRESS])
+        refused = {} if login_only else server.send_message(message, from_addr=TEST_ADDRESS, to_addrs=[TEST_ADDRESS])
     except smtplib.SMTPAuthenticationError:
         raise SendError("SMTP 인증 실패 (아이디·비밀번호·SMTP 사용 설정 확인)") from None
     except smtplib.SMTPException as error:
@@ -120,7 +123,7 @@ def send_test(message: EmailMessage, *, send: bool = False, env: Mapping[str, st
         summary += f" · 종료(QUIT) 응답 비정상 ({quit_warning}), 받은 편지함 확인 필요"
     if refused:
         raise SendError("수신 서버가 TEST 주소를 거부했습니다.")
-    return "발송 완료 1회: " + summary
+    return ("SMTP 연결·인증 확인 완료 (발송 없음): " if login_only else "발송 완료 1회: ") + summary
 
 
 def main() -> int:
