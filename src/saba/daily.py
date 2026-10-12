@@ -25,6 +25,7 @@ LOCK_PATH = ROOT / "data" / "daily.lock"
 # 실행 파일 묶음 (D-069) 에서는 SABA.exe 자신이 실행 대상이다.
 PYTHON = Path(sys.executable) if getattr(sys, "frozen", False) else ROOT / ".venv" / "Scripts" / "python.exe"
 TASK_NAME = "SABA_Daily_Briefing"
+TEST_TASK_NAME = "SABA_Test_Send"  # 시각 지정 테스트 발송용 1회 작업 (D-073)
 WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 
 
@@ -209,6 +210,13 @@ def register_command(config: DailyConfig, python: Path = PYTHON, *,
                       "-User $c.UserName -Password $c.GetNetworkCredential().Password -Force | Out-Null")
 
 
+def test_task_command(at: datetime, python: Path = PYTHON) -> str:
+    """시각 지정 테스트 발송 (D-073): 평소 예약과 별개인 1회용 작업. 같은 이름으로 다시 등록하면 바뀐다."""
+    return (f"$t = New-ScheduledTaskTrigger -Once -At '{at:%Y-%m-%dT%H:%M:00}'; "
+            f"$a = New-ScheduledTaskAction -Execute '{python}' -Argument '-m saba.daily --run --test' -WorkingDirectory '{ROOT}'; "
+            f"Register-ScheduledTask -TaskName '{TEST_TASK_NAME}' -Trigger $t -Action $a -Force | Out-Null")
+
+
 @contextmanager
 def run_lock(path: Path = LOCK_PATH):
     """동시 실행 막기 (D-071). 자동·수동 실행이 겹쳐도 하나만 돈다.
@@ -258,6 +266,7 @@ def main() -> int:
                         help="--register 와 함께: 로그인 없이 실행 + 놓친 실행 보완 (부서 PC, D-068)")
     parser.add_argument("--no-send", action="store_true", help="--run 과 함께: 메일 생성까지만 (발송 없음)")
     parser.add_argument("--manual", action="store_true", help="--run 과 함께: 관리 페이지 수동 실행으로 기록")
+    parser.add_argument("--test", action="store_true", help="--run 과 함께: 테스트 발송으로 기록 (예약일과 관계없이 실행, D-073)")
     args = parser.parse_args()
     config = load_config()
     if args.register:
@@ -267,16 +276,19 @@ def main() -> int:
             return 0
         return subprocess.run(["powershell", "-NoProfile", "-Command", command]).returncode
     now = datetime.now().astimezone()
-    if not args.manual and not scheduled_on(config, now.date()):
+    if not (args.manual or args.test) and not scheduled_on(config, now.date()):
         return 0  # 예약일이 아니다 (작업 스케줄러는 매일 깨운다, D-072). 로그도 남기지 않는다.
     LOG_DIR.mkdir(exist_ok=True)
     logging.basicConfig(filename=LOG_DIR / f"daily_{now:%Y%m%d}.log", level=logging.INFO, encoding="utf-8",
                         format="%(asctime)s %(levelname)s %(message)s")
-    if args.manual:  # 관리 페이지 "지금 발송" 은 설정의 발송 여부와 관계없이 보낸다 (--no-send 제외)
+    if args.manual or args.test:  # 지금 발송·테스트 발송은 설정의 발송 여부와 관계없이 보낸다 (--no-send 제외)
         config = replace(config, send=not args.no_send)
     elif args.no_send:
         config = replace(config, send=False)
-    origin = "관리 페이지 수동 실행" if args.manual else "자동 실행"
+    if args.test:
+        origin = "테스트 발송 (즉시)" if args.manual else "테스트 발송 (예약)"
+    else:
+        origin = "관리 페이지 수동 실행" if args.manual else "자동 실행"
     try:
         with run_lock(LOCK_PATH):
             logging.info("실행 시작: %s (%s)", origin, "발송 포함" if config.send else "발송 없이")

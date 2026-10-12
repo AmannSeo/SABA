@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 import hashlib
 import http.client
+import json
 from pathlib import Path
 import re
 import urllib.error
@@ -16,6 +17,10 @@ from pydantic import HttpUrl, TypeAdapter, ValidationError
 from saba.schema import Article, validate_articles
 from saba.storage import StorageError, list_articles, normalized_json
 
+
+
+class RssError(ValueError):
+    """응답 원문 없이 보고할 수 있는 수집 오류."""
 
 
 @dataclass(frozen=True)
@@ -34,20 +39,80 @@ class Source:
 
 
 KST = timedelta(hours=9)  # 한국 표준시, 일광 절약 시간 없음
-SOURCES = (
-    Source("cert-eu-security-advisories", "CERT-EU", "https://cert.europa.eu/publications/security-advisories-rss",
-           official=True),
-    Source("boho-security-notice", "KISA 보호나라", "https://www.boho.or.kr/kr/rss.do?bbsId=B0000133",
-           local_offset=KST, date_only=True, official=True, region="국내"),
-    Source("cisa-cybersecurity-advisories", "CISA", "https://www.cisa.gov/cybersecurity-advisories/all.xml",
-           official=True),
-    Source("the-hacker-news", "The Hacker News", "https://feeds.feedburner.com/TheHackersNews"),
-    Source("boannews", "보안뉴스", "https://www.boannews.com/rss/allArticle.xml", local_offset=KST, region="국내"),
-    Source("boho-report-guide", "KISA 보호나라 보고서·가이드", "https://www.boho.or.kr/kr/rss.do?bbsId=B0000127",
-           local_offset=KST, date_only=True, official=True, region="국내"),
-)
-SOURCE_BY_ID = {source.source_id: source for source in SOURCES}
-CERT_EU = SOURCES[0]
+SOURCES_PATH = Path(__file__).resolve().parents[2] / "config" / "sources.json"
+MAX_SOURCES = 15  # D-073
+REGIONS = ("국내", "해외")
+SOURCE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
+
+
+@dataclass(frozen=True)
+class SourceEntry:
+    """설정 파일의 Source 한 줄 (D-073). 관리 화면에서 추가·수정·중지·삭제한다."""
+    source: Source
+    enabled: bool = True
+
+
+def parse_sources(rows: list) -> list[SourceEntry]:
+    """설정 값 검증. 잘못된 줄이 있으면 전체를 거부한다 (수집 대상이 조용히 바뀌지 않게)."""
+    if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_SOURCES:
+        raise RssError(f"Source 설정 오류: 1~{MAX_SOURCES}개여야 합니다.")
+    entries, seen = [], set()
+    for row in rows:
+        try:
+            source_id, name, url = str(row["id"]), str(row["name"]).strip(), str(row["url"]).strip()
+            region, official, kst, date_only, enabled = (row.get("region", "해외"), bool(row.get("official", False)),
+                                                          bool(row.get("kst", False)), bool(row.get("date_only", False)),
+                                                          bool(row.get("enabled", True)))
+        except (KeyError, TypeError, AttributeError):
+            raise RssError("Source 설정 오류: id·name·url 이 필요합니다.") from None
+        if not SOURCE_ID_PATTERN.fullmatch(source_id) or source_id in seen:
+            raise RssError(f"Source 설정 오류: ID 는 영문 소문자·숫자·하이픈 3~40자이고 겹치지 않아야 합니다 ({source_id[:40]}).")
+        if not name or len(name) > 60:
+            raise RssError("Source 설정 오류: 이름은 1~60자여야 합니다.")
+        if not re.fullmatch(r"https://[^\s<>\"']{4,290}", url):
+            raise RssError("Source 설정 오류: RSS 주소는 https:// 로 시작해야 합니다.")
+        if region not in REGIONS:
+            raise RssError("Source 설정 오류: 구분은 국내·해외 중 하나여야 합니다.")
+        seen.add(source_id)
+        entries.append(SourceEntry(Source(source_id, name, url, KST if kst else None, date_only, official, region), enabled))
+    return entries
+
+
+def source_row(entry: SourceEntry) -> dict:
+    s = entry.source
+    return {"id": s.source_id, "name": s.source_name, "url": s.feed_url, "region": s.region, "official": s.official,
+            "kst": s.local_offset is not None, "date_only": s.date_only, "enabled": entry.enabled}
+
+
+def load_source_entries(path: Path = SOURCES_PATH) -> list[SourceEntry]:
+    return parse_sources(json.loads(path.read_text(encoding="utf-8")))
+
+
+def save_source_entries(entries: list[SourceEntry], path: Path = SOURCES_PATH) -> None:
+    rows = [source_row(entry) for entry in entries]
+    parse_sources(rows)
+    path.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def reload_sources(path: Path = SOURCES_PATH) -> None:
+    """SOURCES 는 사용 중인 Source, SOURCE_BY_ID 는 중지 포함 전체 (이미 수집한 기사 표시용).
+
+    SOURCE_BY_ID 는 같은 dict 를 고쳐 쓴다 (from saba.rss import SOURCE_BY_ID 로 가져간 모듈도 바로 반영).
+    삭제된 Source 의 기사는 SOURCE_BY_ID 에 없어 표시에서 빠진다.
+    """
+    global SOURCES
+    entries = load_source_entries(path)
+    SOURCES = tuple(entry.source for entry in entries if entry.enabled)
+    SOURCE_BY_ID.clear()
+    SOURCE_BY_ID.update({entry.source.source_id: entry.source for entry in entries})
+
+
+SOURCES: tuple[Source, ...] = ()
+SOURCE_BY_ID: dict[str, Source] = {}
+reload_sources()
+# 함수 기본값·테스트용. 설정에서 삭제돼도 가져오기가 깨지지 않게 설정과 따로 둔다.
+CERT_EU = Source("cert-eu-security-advisories", "CERT-EU", "https://cert.europa.eu/publications/security-advisories-rss",
+                 official=True)
 FEED_URL = CERT_EU.feed_url
 SOURCE_ID = CERT_EU.source_id
 MAX_BYTES = 2 * 1024 * 1024
@@ -56,10 +121,6 @@ SOURCE_FIELDS = (
     "schema_version", "article_id", "source_id", "source_name", "original_title",
     "url", "collection_method", "source_item_id", "published_at", "feed_excerpt",
 )
-
-
-class RssError(ValueError):
-    """응답 원문 없이 보고할 수 있는 수집 오류."""
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

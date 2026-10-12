@@ -152,7 +152,8 @@ def in_window(article: Article, now) -> bool:
 
 def select_issues(articles: list[Article], now) -> Selection:
     """기간 안 기사를 묶고, 공식 출처 우선 → 최신 순으로 Source별·섹션(출처 국가)별 상한을 적용한다."""
-    window = [article for article in articles if in_window(article, now)]
+    # 삭제된 Source 의 기사는 DB 에 남아 있어도 표시하지 않는다 (D-073).
+    window = [article for article in articles if article.source_id in SOURCE_BY_ID and in_window(article, now)]
     issues, candidates = group_issues(window)
     ordered = sorted(issues, key=lambda issue: (not is_official(issue.representative),
                                                 -issue.representative.published_at.timestamp(),

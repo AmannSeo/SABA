@@ -102,7 +102,7 @@ def main() -> int:
     parser.add_argument("--analysis-db", type=Path, metavar="PATH", help="분석 DB 경로 (기본: 프로젝트 루트/data/analysis.db)")
     parser.add_argument("--articles", type=Path, metavar="ARTICLE_JSON", help="분석 검증에 연결할 기사 JSON")
     parser.add_argument("--dry-run", action="store_true", help="수집 예상 결과만 확인, DB 쓰기 없음")
-    parser.add_argument("--source", choices=list(SOURCE_BY_ID), help="지정한 승인 Source 하나만 수집")
+    parser.add_argument("--source", choices=[s.source_id for s in SOURCES], help="지정한 사용 중 Source 하나만 수집")
     period = parser.add_mutually_exclusive_group()
     period.add_argument("--bootstrap", action="store_true", help="최초 검증용 최근 30일")
     period.add_argument("--since", metavar="ISO8601", help="시간대가 있는 명시적 복구 시작 시각")

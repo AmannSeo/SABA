@@ -1,0 +1,62 @@
+[
+  {
+    "id": "cert-eu-security-advisories",
+    "name": "CERT-EU",
+    "url": "https://cert.europa.eu/publications/security-advisories-rss",
+    "region": "해외",
+    "official": true,
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "boho-security-notice",
+    "name": "KISA 보호나라",
+    "url": "https://www.boho.or.kr/kr/rss.do?bbsId=B0000133",
+    "region": "국내",
+    "official": true,
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "cisa-cybersecurity-advisories",
+    "name": "CISA",
+    "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml",
+    "region": "해외",
+    "official": true,
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "the-hacker-news",
+    "name": "The Hacker News",
+    "url": "https://feeds.feedburner.com/TheHackersNews",
+    "region": "해외",
+    "official": false,
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "boannews",
+    "name": "보안뉴스",
+    "url": "https://www.boannews.com/rss/allArticle.xml",
+    "region": "국내",
+    "official": false,
+    "kst": true,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "boho-report-guide",
+    "name": "KISA 보호나라 보고서·가이드",
+    "url": "https://www.boho.or.kr/kr/rss.do?bbsId=B0000127",
+    "region": "국내",
+    "official": true,
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  }
+]
