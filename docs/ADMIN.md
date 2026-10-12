@@ -39,7 +39,10 @@ RSS 수집 → 같은 사건 묶음·선별 → AI 분석(요약·중요도) →
 .venv\Scripts\python.exe -m saba.send_mail --send     # 최근 메일 .eml 을 TEST 수신자에게 1회 발송
 .venv\Scripts\python.exe -m saba.admin                # 관리 컨트롤 페이지 시작 (브라우저가 열림, 11절)
 .venv\Scripts\python.exe -m saba.admin --stop         # 관리 컨트롤 페이지 종료
+.venv\Scripts\python.exe -m saba.deploy --backup      # data\·config\ 백업 zip (부서 PC 이전, docs/DEPLOY.md)
 ```
+
+설치·이전·자동 실행 등록·제거는 `scripts\saba.ps1` 하나로 한다 (D-068, `docs/DEPLOY.md`).
 
 작업 스케줄러 등록 상태 (2026-10-12 등록, D-063): 작업 이름 `SABA_Daily_Briefing`, 평일 08:00 + 최대 5분 지연.
 
@@ -238,7 +241,7 @@ SABA 의 주요 기능을 터미널 명령어 없이 관리한다.
 | 데이터 이전 | 기존 PC `data/` 백업·복원 |
 | 제거 | 작업 해제 후 프로그램 제거 (데이터는 선택 보관) |
 
-방식(배치·PowerShell 스크립트 또는 실행 파일 패키징) 은 2단계 작업에서 결정한다.
+결정 (D-068): 스크립트와 실행 파일 패키징 둘 다. 스크립트 `scripts\saba.ps1` 구현 완료 (절차는 `docs/DEPLOY.md`), 실행 파일은 다음 단계에서 설계·승인 후 추가.
 
 ---
 

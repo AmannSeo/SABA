@@ -117,13 +117,24 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         return 1
 
 
-def register_command(config: DailyConfig, python: Path = ROOT / ".venv" / "Scripts" / "python.exe") -> str:
-    """작업 스케줄러 등록 PowerShell 명령. 시각·요일·무작위 지연은 설정 파일에서 읽는다."""
+def register_command(config: DailyConfig, python: Path = ROOT / ".venv" / "Scripts" / "python.exe", *,
+                     unattended: bool = False) -> str:
+    """작업 스케줄러 등록 PowerShell 명령. 시각·요일·무작위 지연은 설정 파일에서 읽는다.
+
+    unattended=True (부서 PC, D-068): 로그인 없이 실행 + 놓친 실행 보완. Windows 계정 비밀번호는 실행 때
+    입력 창으로만 받고 명령·파일·로그에 남기지 않는다.
+    """
     days = ",".join(_DAY_NAMES[day] for day in config.weekdays)
-    return (f"$t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek {days} -At {config.time}"
-            f" -RandomDelay (New-TimeSpan -Minutes {config.random_delay_minutes}); "
-            f"$a = New-ScheduledTaskAction -Execute '{python}' -Argument '-m saba.daily --run' -WorkingDirectory '{ROOT}'; "
-            f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Trigger $t -Action $a -Force | Out-Null")
+    command = (f"$t = New-ScheduledTaskTrigger -Weekly -DaysOfWeek {days} -At {config.time}"
+               f" -RandomDelay (New-TimeSpan -Minutes {config.random_delay_minutes}); "
+               f"$a = New-ScheduledTaskAction -Execute '{python}' -Argument '-m saba.daily --run' -WorkingDirectory '{ROOT}'; ")
+    if not unattended:
+        return command + f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Trigger $t -Action $a -Force | Out-Null"
+    return command + ("$s = New-ScheduledTaskSettingsSet -StartWhenAvailable; "
+                      r'$c = Get-Credential -UserName "$env:USERDOMAIN\$env:USERNAME" '
+                      "-Message 'SABA 자동 실행용 Windows 계정 비밀번호 (저장하지 않음)'; "
+                      f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Trigger $t -Action $a -Settings $s "
+                      "-User $c.UserName -Password $c.GetNetworkCredential().Password -Force | Out-Null")
 
 
 def main() -> int:
@@ -132,10 +143,12 @@ def main() -> int:
     group.add_argument("--run", action="store_true", help="오늘 분량 실행 (수집 → 분석 → 메일 → 발송)")
     group.add_argument("--register", action="store_true", help="작업 스케줄러 등록 명령 출력 (--apply 로 실제 등록)")
     parser.add_argument("--apply", action="store_true", help="--register 와 함께: 실제로 작업 스케줄러에 등록 (승인 후)")
+    parser.add_argument("--unattended", action="store_true",
+                        help="--register 와 함께: 로그인 없이 실행 + 놓친 실행 보완 (부서 PC, D-068)")
     args = parser.parse_args()
     config = load_config()
     if args.register:
-        command = register_command(config)
+        command = register_command(config, unattended=args.unattended)
         if not args.apply:
             print(command)
             return 0
