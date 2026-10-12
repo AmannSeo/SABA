@@ -64,7 +64,7 @@ class AdminTests(unittest.TestCase):
         for path in ("/", "/logs?name=daily_20261012.log", "/newsletter", "/settings"):
             status, html = self.request("GET", path)
             self.assertEqual(status, 200, path)
-            self.assertIn("수신자·발송 관리 (3단계 예정)", html)
+            self.assertIn("수신자·발송 관리 (2단계 예정)", html)
             self.assertNotIn('href="/recipients"', html)
         status, html = self.request("GET", "/")
         self.assertIn("발송 완료 1회", html)

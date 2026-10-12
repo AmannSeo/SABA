@@ -43,9 +43,9 @@ class AdminError(Exception):
 def load_admin_config(path: Path = CONFIG_PATH) -> tuple[str, int]:
     data = json.loads(path.read_text(encoding="utf-8"))
     host, port = str(data["host"]), int(data["port"])
-    # 사내망 접속은 3단계 로그인·IP 제한과 함께 별도 승인 (D-065, D-067).
+    # 사내망 접속은 로그인·IP 제한 구현 후 별도 승인 (D-067, D-070).
     if host not in LOOPBACK:
-        raise AdminError("1단계 관리 페이지는 127.0.0.1 에서만 열 수 있습니다 (사내망 접속은 3단계 승인 후).")
+        raise AdminError("1단계 관리 페이지는 127.0.0.1 에서만 열 수 있습니다 (사내망 접속은 로그인·IP 제한 구현 후 별도 승인).")
     if not 1024 <= port <= 65535:
         raise AdminError("port 는 1024~65535 사이여야 합니다.")
     return host, port
@@ -218,7 +218,7 @@ MENU = [("/", "대시보드"), ("/logs", "실행 이력·로그"), ("/newsletter
 
 def page(title: str, body: str, message: str = "") -> str:
     links = "".join(f'<a href="{href}">{label}</a>' for href, label in MENU)
-    links += '<span title="3단계 예정">수신자·발송 관리 (3단계 예정)</span>'
+    links += '<span title="2단계 예정">수신자·발송 관리 (2단계 예정)</span>'
     note = f'<div class="card msg"><pre style="background:none;color:#1f2937">{escape(message)}</pre></div>' if message else ""
     return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><title>{escape(title)} · SABA 관리</title>'
             f"<style>{CSS}</style></head><body><nav>{links}</nav><main><h1>{escape(title)}</h1>{note}{body}</main></body></html>")
@@ -279,7 +279,7 @@ def settings_page(app: AdminApp) -> str:
     return (f'<div class="card"><h2>자동 실행 설정 (config/daily.json) · 검증 {escape(s["valid"])}</h2><pre>{escape(s["daily"])}</pre></div>'
             f'<div class="card"><h2>RSS Source</h2><table>{sources}</table></div>'
             f'<div class="card"><h2>Secret (값은 표시하지 않음)</h2><table>{secret_rows}</table></div>'
-            f'<div class="card"><h2>발송</h2>TEST 수신자 1명 (고정, {escape(s["recipient"])}). 전사 발송은 3단계 이후 별도 승인.</div>')
+            f'<div class="card"><h2>발송</h2>TEST 수신자 1명 (고정, {escape(s["recipient"])}). 전사 발송은 4단계 별도 승인.</div>')
 
 
 def make_handler(app: AdminApp, port: int):
