@@ -46,14 +46,40 @@ class DailyTests(unittest.TestCase):
         code, log = self.run_with()
         self.assertEqual(code, 0)
         self.assertEqual(self.calls, ["collect", ("build", 20, 20), "send"])
-        self.assertEqual((self.dir / f"daily_{NOW.astimezone():%Y%m%d_%H%M}.eml").read_bytes(), b"EML")  # 실행마다 따로 (D-072)
+        self.assertEqual((self.dir / f"{NOW.astimezone():%y/%m}/daily_{NOW.astimezone():%Y%m%d_%H%M}.eml").read_bytes(), b"EML")
         self.assertIn("발송 완료 1회", log)
 
     def test_missing_output_folder_created(self):  # 새 PC·실행 파일 묶음 (D-069)
         self.dir = self.dir / "output"
         code, _ = self.run_with()
         self.assertEqual(code, 0)
-        self.assertTrue((self.dir / f"daily_{NOW.astimezone():%Y%m%d_%H%M}.eml").exists())
+        self.assertTrue((self.dir / f"{NOW.astimezone():%y/%m}/daily_{NOW.astimezone():%Y%m%d_%H%M}.eml").exists())
+
+    def test_month_year_transition_and_relative_delivery(self):
+        seen = []
+        for now in (datetime(2026, 12, 31, 20, tzinfo=timezone.utc), datetime(2027, 1, 31, 20, tzinfo=timezone.utc)):
+            with self.assertLogs(level="INFO") as logs:
+                code = run_daily(now, CONFIG, output_dir=self.dir, collect=lambda: None,
+                                 build=lambda now, config: (b"X", "표시 1건"),
+                                 deliver=lambda data, name: seen.append(name) or "발송 완료")
+            local = now.astimezone()
+            expected = f"{local:%y/%m}/daily_{local:%Y%m%d_%H%M}.eml"
+            self.assertEqual((code, seen[-1]), (0, expected))
+            self.assertEqual((self.dir / expected).read_bytes(), b"X")
+            self.assertIn(expected, '\n'.join(logs.output))
+
+    def test_concurrent_monthly_saves_do_not_overwrite(self):
+        from concurrent.futures import ThreadPoolExecutor
+        def run(number):
+            return run_daily(NOW, CONFIG, output_dir=self.dir, collect=lambda: None,
+                             build=lambda now, config: (str(number).encode(), "표시 1건"),
+                             deliver=lambda data, name: "발송 완료")
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            self.assertEqual(list(pool.map(run, range(4))), [0] * 4)
+        files = list(self.dir.rglob("*.eml"))
+        self.assertEqual(len(files), 4)
+        self.assertEqual({p.read_bytes() for p in files}, {str(i).encode() for i in range(4)})
+        self.assertEqual({p.name.rsplit('.', 1)[0].rsplit('-', 1)[-1] for p in files if '-' in p.name}, {"2", "3", "4"})
 
     def test_failure_stops_before_send_without_retry_or_secret(self):
         for fail_at, expected in (("collect", ["collect"]), ("build", ["collect", ("build", 20, 20)])):

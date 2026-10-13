@@ -281,6 +281,34 @@ class MailFileTests(Base):
 
 
 class ResendTests(Base):
+    def test_monthly_resend_path_hash_and_legacy_coexist(self):
+        path = self.output / "26/10" / self.mail.name
+        path.parent.mkdir(parents=True)
+        path.write_bytes(self.eml)
+        self.mail.write_bytes(b"OTHER LEGACY FILE")
+        relative = path.relative_to(self.output).as_posix()
+        send_id = sendlog.start("가상 실행", "가상 그룹", [PEOPLE[1]], mail_file=relative,
+                               mail_sha256=hashlib.sha256(self.eml).hexdigest(), path=self.history)
+        sendlog.mark(send_id, PEOPLE[1], "실패", path=self.history)
+        sendlog.finish(send_id, self.history)
+        original, emails, data, _ = daily.resend_check(send_id, allowed=True, **self.options)
+        self.assertEqual((original.mail_file, emails, data), (relative, [PEOPLE[1]], self.eml))
+        path.write_bytes(b"CHANGED")
+        with self.assertRaises(daily.DailyError):
+            daily.resend_check(send_id, allowed=True, **self.options)
+        path.unlink()
+        with self.assertRaises(daily.DailyError):
+            daily.resend_check(send_id, allowed=True, **self.options)
+
+    def test_resend_rejects_invalid_path_before_read(self):
+        from dataclasses import replace
+        original = next(s for s in sendlog.sends(self.history) if s.id == self.send_id)
+        for name in ("../secret.eml", "C:/daily_x.eml", "//server/share/daily_x.eml", "26/10/../../daily_x.eml"):
+            with patch.object(sendlog, "sends", return_value=[replace(original, mail_file=name)]), \
+                    patch.object(Path, "read_bytes") as read, self.assertRaises(daily.DailyError):
+                daily.resend_check(self.send_id, allowed=True, **self.options)
+            read.assert_not_called()
+
     def setUp(self):
         super().setUp()
         self.mail = self.output / "daily_20261013_0803.eml"
@@ -604,7 +632,7 @@ class PartialFileTests(Base):
                                    deliver=lambda eml, name: sent.append(name))
         self.assertEqual((code, sent), (1, []))
         self.assertIn("오늘은 발송하지 않음", "\n".join(logs.output))
-        self.assertEqual(len(list(self.output.iterdir())), 1)
+        self.assertEqual([p.name for p in self.output.rglob("*.eml")], ["daily_20261013_0803.eml"])
 
 
 if __name__ == "__main__":

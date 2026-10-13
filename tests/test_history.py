@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from saba.history import append_change, cleanup, load_runs, parse_runs, read_changes, read_log, storage_status
+from saba.history import append_change, cleanup, load_runs, mail_path, mail_paths, parse_runs, read_changes, read_log, storage_status
 
 LOG = """2026-10-12 09:17:15,224 INFO RSS 수집 완료
 2026-10-12 09:17:35,444 INFO 메일 생성 완료: daily_20261012.eml · 표시 3건 · 분석 재사용 0 · 신규 4 · 실패 0 · 시사점 재사용 0 · 신규 3 · 실패 0 · 1,346,272 bytes
@@ -44,6 +44,40 @@ class HistoryTests(unittest.TestCase):
     def test_load_runs_newest_first(self):
         starts = [r.start for r in load_runs(self.root / "logs")]
         self.assertEqual(starts, sorted(starts, reverse=True))
+
+    def test_monthly_paths_cleanup_and_user_files(self):
+        output = self.root / "output"
+        for name in ("daily_20260801.eml", "26/08/daily_20260801.eml", "26/10/daily_20261012.eml",
+                     "prompts/daily_20260801.eml", "26/08/user.eml", "26/13/daily_20260801.eml"):
+            path = output / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"X")
+        self.assertEqual({p.relative_to(output).as_posix() for p in mail_paths(output)},
+                         {"daily_20260801.eml", "26/08/daily_20260801.eml", "26/10/daily_20261012.eml"})
+        self.assertEqual(storage_status(self.root)["mails"], {"count": 3, "bytes": 3, "oldest": "2026-08-01"})
+        self.assertEqual(cleanup(self.root, 90, 30, date(2026, 10, 12)), (0, 2))
+        for name in ("prompts/daily_20260801.eml", "26/08/user.eml", "26/13/daily_20260801.eml", "26/10/daily_20261012.eml"):
+            self.assertTrue((output / name).exists())
+
+    def test_mail_path_rejects_escapes_and_links(self):
+        from unittest.mock import patch
+        output = self.root / "output"
+        for name in ("../daily_x.eml", "/daily_x.eml", "C:/daily_x.eml", "C:daily_x.eml", "//server/share/daily_x.eml",
+                     "26\\10\\daily_x.eml", "26/10/../daily_x.eml", "26/00/daily_x.eml", "prompts/daily_x.eml"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                mail_path(output, name)
+        self.assertEqual(mail_path(output, "26/10/daily_x.eml"), output / "26/10/daily_x.eml")
+        for blocked in (output, output / "26", output / "26/10", output / "26/10/daily_x.eml"):
+            with patch.object(Path, "is_symlink", lambda p: p == blocked), self.assertRaises(ValueError):
+                mail_path(output, "26/10/daily_x.eml")
+        outside = self.root / "outside"
+        original = Path.resolve
+        with patch.object(Path, "resolve", lambda p, *a, **k: outside if p.name == "daily_x.eml" else original(p, *a, **k)), self.assertRaises(ValueError):
+            mail_path(output, "26/10/daily_x.eml")
+
+    def test_monthly_log_retains_relative_name(self):
+        self.log.write_text(LOG.replace("daily_20261012_1500.eml", "26/10/daily_20261012_1500.eml"), encoding="utf-8")
+        self.assertIn("26/10/daily_20261012_1500.eml", [r.mail_file for r in load_runs(self.root / "logs")])
 
     def test_cleanup_only_old_daily_files(self):
         names = {"logs": ["daily_20260101.log", "daily_20261001.log", "other.log", "settings_changes.log"],

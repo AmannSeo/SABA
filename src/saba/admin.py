@@ -168,8 +168,9 @@ class AdminApp:
 
     # ---- 데이터 ----
     def latest_mail(self) -> Path | None:
-        files = [p for p in (self.root / "output").glob("daily_*.eml") if "preview" not in p.name]
-        return max(files, key=lambda p: p.stat().st_mtime) if files else None
+        from saba.history import mail_paths
+        files = [p for p in mail_paths(self.root / "output") if "preview" not in p.name]
+        return max(files, key=lambda p: (p.stat().st_mtime, p.relative_to(self.root / "output").as_posix())) if files else None
 
     def runs(self):
         from saba.history import load_runs
@@ -260,20 +261,23 @@ class AdminApp:
 
     def mail_files(self) -> list[dict]:
         """뉴스레터 파일 목록과 종류 (발송본·생성만·미리보기)."""
+        from saba.history import mail_paths
+        output = self.root / "output"
         by_file = {}
         for run in reversed(self.runs()):  # 같은 이름이면 최근 실행이 이긴다 (D-072 이전에는 같은 날 덮어씀)
             if run.mail_file:
                 by_file[run.mail_file] = run
         files = []
-        for path in sorted((self.root / "output").glob("daily_*.eml"), key=lambda p: (p.stat().st_mtime, p.name), reverse=True):
-            run = by_file.get(path.name)
+        for path in sorted(mail_paths(output), key=lambda p: (p.stat().st_mtime, p.relative_to(output).as_posix()), reverse=True):
+            name = path.relative_to(output).as_posix()
+            run = by_file.get(name)
             if "preview" in path.name:
                 kind = "미리보기"
             elif run is None:
                 kind = "기록 없음"
             else:
                 kind = "발송본" if run.sent else "생성만 (발송 안 함)"
-            files.append({"name": path.name, "kind": kind, "size": path.stat().st_size,
+            files.append({"name": name, "kind": kind, "size": path.stat().st_size,
                           "made": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
                           "origin": run.origin if run else "-"})
         return files
@@ -282,10 +286,12 @@ class AdminApp:
         """메일 HTML. CID 이미지는 data URI 로 바꿔 브라우저에서 보이게 한다."""
         if name is None:
             eml = self.latest_mail()
-        elif re.fullmatch(r"daily_[\w-]+\.eml", name):
-            eml = self.root / "output" / name
         else:
-            return None
+            from saba.history import mail_path
+            try:
+                eml = mail_path(self.root / "output", name)
+            except ValueError:
+                return None
         if eml is None or not eml.exists():
             return None
         message = message_from_bytes(eml.read_bytes(), _class=EmailMessage, policy=SMTP)
@@ -632,8 +638,10 @@ class AdminApp:
         today = f"{now.year}년 {now.month}월 {now.day}일 {'월화수목금토일'[now.weekday()]}요일"
         output = self.root / "output"
         output.mkdir(exist_ok=True)
-        for old in output.glob("daily_*preview*.eml"):
-            old.unlink()
+        from saba.history import mail_paths
+        for old in mail_paths(output):
+            if "preview" in old.name:
+                old.unlink()
         path = output / f"daily_{now:%Y%m%d_%H%M}_preview.eml"
         path.write_bytes(build_message(to_mail_html(views, today=today), f"[미리보기] Security & AI Briefing · {today}").as_bytes())
         return f"미리보기 다시 만들기 완료: {path.name} (기사 {len(views)}건, 저장된 분석만 사용) · 뉴스레터 화면에서 확인"
@@ -662,13 +670,13 @@ CSS = """
 *{box-sizing:border-box}
 body{margin:0;font-family:'Pretendard','Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif;background:var(--bg);color:var(--text);
  font-size:14px;line-height:1.55;font-variant-numeric:tabular-nums}
-header{background:var(--surface);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:36px;height:64px}
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:0 max(32px,calc((100% - 1920px) / 2 + 32px));display:flex;align-items:center;gap:36px;height:64px}
 header .logo{font-weight:800;font-size:16px;letter-spacing:-.2px}
 header nav{display:flex;gap:4px;overflow-x:auto}
 header nav a{color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:var(--r-ctl);white-space:nowrap;font-weight:500}
 header nav a:hover{background:var(--subtle);color:var(--text)}
 header nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
-main{max-width:1440px;margin:28px auto 48px;padding:0 32px}
+main{max-width:1920px;margin:28px auto 48px;padding:0 32px}  /* header 좌우 여백은 main 내용 폭(1920px)에 맞춘다 */
 h1{font-size:22px;letter-spacing:-.3px;margin:0 0 20px}
 .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:18px 20px;box-shadow:var(--shadow)}
@@ -712,13 +720,16 @@ dialog{border:none;border-radius:var(--r-card);max-width:560px;padding:22px 26px
 dialog h3{margin:0 0 10px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch;margin-bottom:16px}
 .grid>.card{margin-bottom:0}
-.dashboard{align-items:start}
+.dashboard{align-items:stretch}
 .dashboard>div{min-width:0}
+.dashboard .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dashboard>.card{display:flex;flex-direction:column}
+.dashboard>.card .newsletter-preview{flex:1;min-height:680px}
 .newsletter-preview{width:100%;height:680px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface)}
 .newsletter-file{overflow-wrap:anywhere;margin-bottom:12px}
 .side{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
 .sticky{position:sticky;top:16px}
-@media (max-width:1000px){.grid,.side,.tiles{grid-template-columns:minmax(0,1fr)}main{padding:0 16px}header{padding:0 16px;gap:16px}}
+@media (max-width:1000px){.grid,.side,.tiles,.dashboard .tiles{grid-template-columns:minmax(0,1fr)}main{padding:0 16px}header{padding:0 16px;gap:16px}}
 .switch{position:relative;display:inline-block;width:48px;height:26px;vertical-align:middle;margin-right:8px}
 .switch input{opacity:0;width:0;height:0}
 .slider{position:absolute;cursor:pointer;inset:0;background:#c3c9d2;border-radius:26px;transition:background-color .2s}
@@ -924,7 +935,8 @@ def dashboard(app: AdminApp) -> str:
                           f"<td>{badge(r.result, RESULT_BADGE.get(r.result, 'b-mute'))}</td></tr>" for r in runs[:5])
     recent_card = ('<div class="card"><h2>최근 실행<a class="btn right" href="/logs">더 보기</a></h2>'
                    f'<table><tr><th>시각</th><th>실행 주체</th><th>결과</th></tr>{recent_rows or "<tr><td colspan=3>기록 없음</td></tr>"}</table></div>')
-    return (tiles + f'<div class="grid dashboard"><div>{today_card}{schedule_card}{recent_card}{status_card}</div>'
+    # 우측 한 면 전체를 오늘 뉴스레터에, 좌측에 나머지 (사용자 요청 2026-10-13)
+    return (f'<div class="grid dashboard"><div>{tiles}{today_card}{schedule_card}{recent_card}{status_card}</div>'
             + today_newsletter(app, real_today) + '</div>')
 
 
@@ -935,7 +947,12 @@ def today_newsletter(app: AdminApp, runs: list) -> str:
         body = (f'<p>{badge(sent.result, RESULT_BADGE.get(sent.result, "b-mute"))} '
                 f'{escape(sent.start[11:16])} · {escape(sent.origin)}</p>')
         name = sent.mail_file
-        if name and re.fullmatch(r"daily_[\w-]+\.eml", name) and (app.root / "output" / name).is_file():
+        from saba.history import mail_path
+        try:
+            exists = bool(name) and mail_path(app.root / "output", name).is_file()
+        except ValueError:
+            exists = False
+        if exists:
             body += (f'<div class="newsletter-file"><a class="btn" href="/logs?tab=mail&name={quote(name)}">뉴스레터 열기</a> '
                      f'<span class="muted">{escape(name)}</span></div>'
                      f'<iframe class="newsletter-preview" title="오늘 보내진 뉴스레터 미리보기" '

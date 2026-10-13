@@ -191,6 +191,9 @@ class AdminTests(AdminBase):
             self.assertIn("없습니다", self.app.act("rebuild_preview"))
         self.assertEqual((build.call_args.kwargs["max_new_calls"], build.call_args.kwargs["insight_calls"]), (0, 0))
         (self.root / "output" / "daily_20261001_preview.eml").write_text("old", encoding="utf-8")
+        monthly = self.root / "output" / "26/10/daily_20261001_preview.eml"
+        monthly.parent.mkdir(parents=True)
+        monthly.write_bytes(b"old monthly preview")
         with patch("saba.briefing.build_views", return_value=(["view"], None, None)), \
                 patch("saba.mail.to_mail_html", return_value="<html></html>"), \
                 patch("saba.mail.build_message", return_value=EmailMessage()):
@@ -198,6 +201,7 @@ class AdminTests(AdminBase):
         previews = list((self.root / "output").glob("*preview*"))
         self.assertEqual(len(previews), 1)
         self.assertNotEqual(previews[0].name, "daily_20261001_preview.eml")
+        self.assertFalse(monthly.exists())
 
     def test_newsletter_kinds_and_cid_inline(self):
         from saba.mail import build_message
@@ -708,12 +712,49 @@ class UiFeedbackTests(AdminBase):
         self.assertIn("border:1px solid var(--line)", cells)
         self.assertIn("vertical-align:middle", cells)
         self.assertIn("padding:", cells)
-        self.assertIn(".dashboard{align-items:start}", css)
+        self.assertIn(".dashboard{align-items:stretch}", css)  # 우측 뉴스레터가 좌측 높이만큼 채운다
+        self.assertIn(".dashboard>.card .newsletter-preview{flex:1", css)
+        self.assertIn("main{max-width:1920px", css)  # 메뉴 여백도 같은 1920px 기준
+        self.assertIn("calc((100% - 1920px) / 2 + 32px)", css)
         self.assertIn("@media (max-width:1000px)", css)
         self.assertIn("prefers-reduced-motion", css)
 
 
 class ListManagementTests(AdminBase):
+    def test_monthly_and_legacy_same_basename_keep_exact_links(self):
+        from saba.history import Run
+        from saba.mail import build_message
+        name = f"daily_{TODAY:%Y%m%d}_1015.eml"
+        relative = f"{TODAY:%y/%m}/{name}"
+        legacy = self.root / "output" / name
+        monthly = self.root / "output" / relative
+        monthly.parent.mkdir(parents=True)
+        legacy.write_bytes(build_message('<p>LEGACY</p>', '가상').as_bytes())
+        monthly.write_bytes(build_message('<p>MONTHLY</p>', '가상').as_bytes())
+        old = Run(STAMP + " 08:00:00", "레거시", "성공 (발송 안 함)", mail_file=name)
+        new = Run(STAMP + " 09:00:00", "월별 발송", "성공", mail_file=relative, sent=True)
+        with patch.object(self.app, "runs", return_value=[new, old]):
+            rows = {r['name']: r for r in self.app.mail_files()}
+            self.assertEqual((rows[name]['kind'], rows[relative]['kind']), ("생성만 (발송 안 함)", "발송본"))
+            html = self.get('/newsletter?year=all&month=all')
+            self.assertEqual(set(self.table_names(html)), {name, relative})
+            self.assertIn('MONTHLY', self.get('/newsletter/view?' + urlencode({'name': relative})))
+            self.assertIn('LEGACY', self.get('/newsletter/view?' + urlencode({'name': name})))
+            today = admin.today_newsletter(self.app, [new])
+            self.assertIn('/newsletter/view?name=' + relative, today)
+            self.assertIn(relative, self.get('/logs'))
+        for invalid in ('../daily_x.eml', '26/10/../../daily_x.eml', 'C:/daily_x.eml'):
+            self.assertEqual(self.get('/newsletter/view?' + urlencode({'name': invalid})), '<p>생성된 메일이 없습니다.</p>')
+
+    def test_gitignore_only_daily_mail_paths(self):
+        import subprocess
+        paths = ['output/daily_20261013.eml', 'output/26/10/daily_20261013.eml',
+                 'output/prompts/daily_20261013.eml', 'output/26/10/user.eml', 'output/user.eml']
+        # bytes 로 보낸다: Windows 텍스트 모드는 \n 을 \r\n 으로 바꿔 git 이 경로를 못 맞춘다
+        result = subprocess.run(['git', 'check-ignore', '--no-index', '--stdin'], input=('\n'.join(paths) + '\n').encode(),
+                                capture_output=True, cwd=admin.ROOT, check=True)
+        self.assertEqual(result.stdout.decode().splitlines(), paths[:2])
+
     def mails(self, count, *, date=None):
         date = date or TODAY.replace(day=1)
         stamp = date.timestamp()

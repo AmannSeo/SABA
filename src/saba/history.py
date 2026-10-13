@@ -17,6 +17,42 @@ LOG_NAME = re.compile(r"daily_(\d{8})\.log")
 MAIL_NAME = re.compile(r"daily_(\d{8})(?:_[\w-]+)?\.eml")
 
 
+def mail_path(output: Path, name: str) -> Path:
+    """최상위 또는 YY/MM/ 메일 상대 경로만 허용하며 링크를 따라가지 않는다."""
+    if not re.fullmatch(r"(?:[0-9]{2}/(?:0[1-9]|1[0-2])/)?daily_[\w-]+\.eml", name):
+        raise ValueError("허용되지 않는 메일 경로입니다")
+    path = output / name
+    for component in (output, *[output.joinpath(*name.split('/')[:i]) for i in range(1, len(name.split('/')) + 1)]):
+        if component.is_symlink() or component.is_junction():
+            raise ValueError("메일 경로의 링크는 허용하지 않습니다")
+    if not path.resolve().is_relative_to(output.resolve()):
+        raise ValueError("메일 경로가 output 밖입니다")
+    return path
+
+
+def mail_paths(output: Path) -> list[Path]:
+    """최상위와 YY/MM/만 조회한다. prompts 등 임의 하위 폴더는 탐색하지 않는다."""
+    mail_path(output, "daily_check.eml")
+    if not output.exists():
+        return []
+    folders = [output]
+    for year in output.iterdir():
+        if re.fullmatch(r"[0-9]{2}", year.name) and not year.is_symlink() and not year.is_junction() and year.is_dir():
+            for month in year.iterdir():
+                if re.fullmatch(r"0[1-9]|1[0-2]", month.name) and not month.is_symlink() and not month.is_junction() and month.is_dir():
+                    folders.append(month)
+    files = []
+    for folder in folders:
+        for candidate in folder.glob("daily_*.eml"):
+            try:
+                path = mail_path(output, candidate.relative_to(output).as_posix())
+            except ValueError:
+                continue
+            if path.is_file():
+                files.append(path)
+    return files
+
+
 @dataclass
 class LogLine:
     time: str  # YYYY-MM-DD HH:MM:SS
@@ -155,7 +191,8 @@ def cleanup(root: Path, log_days: int, mail_days: int, today: date) -> tuple[int
     removed = [0, 0]
     for index, (folder, pattern, days) in enumerate((("logs", LOG_NAME, log_days), ("output", MAIL_NAME, mail_days))):
         limit = today - timedelta(days=days)
-        for path in (root / folder).glob("daily_*"):
+        paths = mail_paths(root / folder) if folder == "output" else (root / folder).glob("daily_*")
+        for path in paths:
             day = _file_date(path.name, pattern)
             if day is not None and day < limit:
                 path.unlink()
@@ -166,7 +203,8 @@ def cleanup(root: Path, log_days: int, mail_days: int, today: date) -> tuple[int
 def storage_status(root: Path) -> dict:
     status = {}
     for key, folder, pattern in (("logs", "logs", LOG_NAME), ("mails", "output", MAIL_NAME)):
-        files = [p for p in (root / folder).glob("daily_*") if pattern.fullmatch(p.name)]
+        paths = mail_paths(root / folder) if folder == "output" else (root / folder).glob("daily_*")
+        files = [p for p in paths if pattern.fullmatch(p.name)]
         days = [d for d in (_file_date(p.name, pattern) for p in files) if d]
         status[key] = {"count": len(files), "bytes": sum(p.stat().st_size for p in files),
                        "oldest": min(days).isoformat() if days else "-"}

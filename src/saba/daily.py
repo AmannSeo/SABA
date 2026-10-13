@@ -9,6 +9,7 @@ import argparse
 from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta
+import hashlib
 import json
 import logging
 import os
@@ -271,11 +272,15 @@ def resend_check(send_id: int, *, history: Path | None = None, recipients_path: 
     emails = [e for e in targets if e in current and current[e].enabled and e.rsplit("@", 1)[-1] in domains]
     if not emails:
         raise DailyError("다시 보낼 수신자가 없습니다 (성공·불명확·이미 재발송 성공·중지·삭제된 수신자는 제외)")
-    mail = (output_dir or ROOT / "output") / original.mail_file
-    if not original.mail_file or not mail.exists():
+    from saba.history import mail_path
+    try:
+        mail = mail_path(output_dir or ROOT / "output", original.mail_file)
+    except ValueError as error:
+        raise DailyError(str(error)) from None
+    if not mail.is_file():
         raise DailyError("원본 메일 파일이 없습니다 (보관 기간 만료 등). 재발송하지 않습니다")
     data = mail.read_bytes()
-    if original.mail_sha256 and sendlog.file_hash(mail) != original.mail_sha256:
+    if original.mail_sha256 and hashlib.sha256(data).hexdigest() != original.mail_sha256:
         raise DailyError("원본 메일 파일이 처음 발송 때와 다릅니다. 재발송하지 않습니다")
     return original, emails, data, len(targets) - len(emails)
 
@@ -297,8 +302,9 @@ def resend_failed(send_id: int, **options) -> str:
 
 def save_mail_file(folder: Path, base: str, data: bytes) -> Path:
     """같은 분에 다시 실행해도 덮어쓰지 않는다 (D-077). 이름이 있으면 -2, -3 을 붙이고, 새 파일로만 연다 ("x")."""
+    from saba.history import mail_path
     for number in range(1, 1000):
-        path = folder / (base + ("" if number == 1 else f"-{number}") + ".eml")
+        path = mail_path(folder, base + ("" if number == 1 else f"-{number}") + ".eml")
         try:
             handle = path.open("xb")
         except FileExistsError:
@@ -324,14 +330,19 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         logging.info("RSS 수집 완료")
         stage = "분석·메일 생성"
         eml, summary = build(now, config)
-        output_dir.mkdir(exist_ok=True)  # 새 PC·실행 파일 묶음에는 output 폴더가 없다
-        path = save_mail_file(output_dir, f"daily_{now.astimezone():%Y%m%d_%H%M}", eml)  # 실행마다 따로 보관 (D-072, D-077)
-        logging.info("메일 생성 완료: %s · %s · %s bytes", path.name, summary, f"{len(eml):,}")
+        from saba.history import mail_path
+        local = now.astimezone()
+        planned = mail_path(output_dir, f"{local:%y/%m}/daily_{local:%Y%m%d_%H%M}.eml")
+        planned.parent.mkdir(parents=True, exist_ok=True)
+        mail_path(output_dir, planned.relative_to(output_dir).as_posix())
+        path = save_mail_file(planned.parent, planned.stem, eml)
+        relative = path.relative_to(output_dir).as_posix()
+        logging.info("메일 생성 완료: %s · %s · %s bytes", relative, summary, f"{len(eml):,}")
         if not config.send:
             logging.info("발송하지 않음 (send=false)")
             return 0
         stage = "발송"
-        logging.info(deliver(eml, path.name))
+        logging.info(deliver(eml, relative))
         return 0
     except PartialSendError as error:  # 일부는 보냈다: "발송하지 않음" 으로 쓰지 않는다 (D-077)
         logging.error("발송 단계 부분 실패: %s", str(error).removeprefix("그룹 발송 부분 실패: "))

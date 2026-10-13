@@ -19,11 +19,11 @@ RSS 수집 → 같은 사건 묶음·선별 → AI 분석(요약·중요도) →
 | 보호나라 공지 본문 | `src/saba/notice_body.py` | `data/boho_bodies.json` |
 | AI 분석 | `src/saba/openai_adapter.py`, `src/saba/briefing.py` | `data/analysis.db` |
 | AI 시사점·업무 연결 | `src/saba/insights.py` | `data/insights.db` |
-| 메일 생성 | `src/saba/mail.py`, `templates/newsletter_mail.html` | `output/daily_YYYYMMDD.eml` |
+| 메일 생성 | `src/saba/mail.py`, `templates/newsletter_mail.html` | `output/YY/MM/daily_YYYYMMDD_HHMM.eml` (2026-10-13 이전 파일은 `output/` 최상위) |
 | 발송 | `src/saba/send_mail.py` | (발송 기록은 로그) |
 | 매일 실행 | `src/saba/daily.py` | `logs/daily_YYYYMMDD.log` |
 
-`data/`, `logs/`, `output/daily_*.eml` 은 Git 에 포함되지 않는다.
+`data/`, `logs/`, `output/daily_*.eml`, `output/YY/MM/daily_*.eml` 은 Git 에 포함되지 않는다.
 
 ---
 
@@ -291,8 +291,8 @@ SABA 의 주요 기능을 터미널 명령어 없이 관리한다.
 
 - 실행 중에는 대시보드·테스트 화면에 "실행 중" 이 보이고 10초마다 새로 고침된다. 결과는 `logs/daily_날짜.log` (첫 줄에 실행 주체) 와 이력 표에 남는다.
 - 동시 실행 방지: `data/daily.lock` 파일 잠금. 겹치면 나중 실행은 "건너뜀" (종료 코드 3). 비정상 종료돼도 잠금은 자동으로 풀린다.
-- 메일 파일: 실행마다 `output/daily_YYYYMMDD_HHMM.eml` 로 따로 저장. 만든 시각 기준 최근 24시간 (월요일 72시간) 기사로 구성된다.
-- 보관: 기간이 지난 `logs/daily_*.log`, `output/daily_*.eml` 은 매일 실행 때 자동 삭제 (다른 파일은 건드리지 않음).
+- 메일 파일: 실행마다 `output/YY/MM/daily_YYYYMMDD_HHMM.eml` (예: `output/26/10/daily_20261013_0803.eml`) 로 따로 저장 (F7, 2026-10-13). 기존 `output/` 최상위 파일은 옮기지 않고 그대로 함께 조회한다. 발송 이력·로그의 메일 이름은 `output` 기준 상대 경로이며 최상위·`YY/MM/` 형식 외 경로와 링크는 거부한다. 만든 시각 기준 최근 24시간 (월요일 72시간) 기사로 구성된다.
+- 보관: 기간이 지난 `logs/daily_*.log`, `output/daily_*.eml`, `output/YY/MM/daily_*.eml` 은 매일 실행 때 자동 삭제 (다른 파일은 건드리지 않음).
 - 보호 장치: Host 가 127.0.0.1·localhost 가 아니면 거부, 버튼 요청은 페이지 토큰 필수, 외부 접속·발송·설정 저장은 확인 값 필수, 저장 후 이동은 내부 화면으로만, 같은 포트 중복 실행 차단, 오류는 종류만 표시.
 
 ### RSS Source 관리 (D-073)
