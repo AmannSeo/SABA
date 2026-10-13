@@ -32,7 +32,7 @@ class DailyTests(unittest.TestCase):
                 raise RuntimeError("FAKE-SECRET-in-exception")
             return b"EML", "표시 19건"
 
-        def deliver(eml):
+        def deliver(eml, mail_file=""):
             self.calls.append("send")
             return "발송 완료 1회"
         return dict(collect=collect, build=build, deliver=deliver)

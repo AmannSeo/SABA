@@ -60,7 +60,7 @@ DAY_LABEL = dict(zip(("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"), "월화�
 FIELD_LABEL = {"mode": "주기", "time": "시각", "random_delay_minutes": "무작위 지연(분)", "weekdays": "요일",
                "month_days": "매월 날짜", "dates": "특정 날짜", "max_analysis_calls": "하루 AI 분석 상한",
                "max_insight_calls": "하루 AI 시사점 상한", "send": "발송", "log_days": "로그 보관(일)",
-               "mail_days": "메일 보관(일)"}
+               "mail_days": "메일 보관(일)", "target_group": "발송 대상"}
 SCHEDULE_FIELDS = {"mode", "time", "random_delay_minutes", "weekdays", "month_days", "dates"}  # 바뀌면 재등록
 
 # 점검 도구: (동작, 이름, 외부 접속, 설명 팝업 내용)
@@ -572,6 +572,7 @@ class AdminApp:
             "dates": sorted({d.strip() for d in re.split(r"[\s,]+", _first(form, "dates")) if d.strip()}),
             "max_analysis_calls": _first(form, "max_analysis_calls"), "max_insight_calls": _first(form, "max_insight_calls"),
             "send": _first(form, "send") == "on", "log_days": _first(form, "log_days"), "mail_days": _first(form, "mail_days"),
+            "target_group": _first(form, "target_group") or old.target_group,
         }
         try:
             new = parse_config(data)
@@ -631,73 +632,85 @@ def _first(form: dict, key: str) -> str:
 
 # ---------------- HTML ----------------
 CSS = """
-:root{--bg:#f1f4f9;--card:#fff;--line:#e2e8f0;--text:#1e293b;--muted:#64748b;--brand:#2563eb;--ok:#15803d;--bad:#b91c1c;--warn:#b45309}
+:root{
+ --bg:#f4f5f7;--surface:#fff;--subtle:#f8f9fb;--line:#e3e6eb;--text:#151a23;--muted:#596273;
+ --accent:#2457d6;--accent-soft:#e8eefc;
+ --ok:#15703a;--ok-soft:#e5f4ea;--warn:#9a5200;--warn-soft:#fdf1e1;--bad:#b42318;--bad-soft:#fdecea;
+ --r-card:12px;--r-ctl:8px;--shadow:0 1px 2px rgba(21,26,35,.05)}
+/* 모서리 규칙: 카드 12px, 버튼·입력 8px, 배지 둥근 알약. 색 규칙: 강조색은 --accent 하나, 초록·주황·빨강은 상태를 뜻할 때만. */
 *{box-sizing:border-box}
-body{margin:0;font-family:'Malgun Gothic','Apple SD Gothic Neo',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
-header{background:#0f172a;color:#fff;padding:0 32px;display:flex;align-items:center;gap:32px;min-height:58px;flex-wrap:wrap}
-header .logo{font-weight:700;font-size:17px;letter-spacing:.3px}
-header nav{display:flex;gap:22px;flex-wrap:wrap}
-header nav a{color:#cbd5e1;text-decoration:none;padding:18px 2px;border-bottom:3px solid transparent}
-header nav a.on{color:#fff;border-color:#60a5fa}
-header nav span{color:#64748b;padding:18px 2px}
-main{max-width:1440px;margin:24px auto;padding:0 24px}
-h1{font-size:21px;margin:0 0 18px}
+body{margin:0;font-family:'Pretendard','Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif;background:var(--bg);color:var(--text);
+ font-size:14px;line-height:1.55;font-variant-numeric:tabular-nums}
+header{background:var(--surface);border-bottom:1px solid var(--line);padding:0 32px;display:flex;align-items:center;gap:36px;height:64px}
+header .logo{font-weight:800;font-size:16px;letter-spacing:-.2px}
+header nav{display:flex;gap:4px;overflow-x:auto}
+header nav a{color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:var(--r-ctl);white-space:nowrap;font-weight:500}
+header nav a:hover{background:var(--subtle);color:var(--text)}
+header nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
+main{max-width:1440px;margin:28px auto 48px;padding:0 32px}
+h1{font-size:22px;letter-spacing:-.3px;margin:0 0 20px}
 .tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
-.tile{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--accent,#94a3b8);border-radius:10px;padding:16px 18px}
-.tile .k{color:var(--muted);font-size:12px;font-weight:600}.tile .v{font-size:19px;font-weight:700;margin-top:8px;color:var(--accent,#1e293b)}
-.tile .s{color:var(--muted);font-size:12px;margin-top:6px}
-.card{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--accent,#cbd5e1);border-radius:10px;padding:18px 22px;margin-bottom:16px}
-.card h2{font-size:15px;margin:0 0 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:#0f172a}
-.card h2 .right{margin-left:auto}
-.c-blue{--accent:#2563eb}.c-green{--accent:#16a34a}.c-purple{--accent:#7c3aed}.c-orange{--accent:#ea580c}.c-teal{--accent:#0d9488}.c-gray{--accent:#64748b}.c-red{--accent:#dc2626}
-table{border-collapse:collapse;width:100%;border-top:1px solid var(--line)}
-th,td{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
-th{background:#f8fafc;color:#475569;font-weight:600;font-size:13px;white-space:nowrap}
-tr.group td{background:#eef2ff;color:#3730a3;font-weight:700;font-size:13px}
-.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
-.b-ok{background:#dcfce7;color:var(--ok)}.b-bad{background:#fee2e2;color:var(--bad)}.b-warn{background:#fef3c7;color:var(--warn)}.b-mute{background:#f1f5f9;color:#475569}.b-info{background:#dbeafe;color:#1d4ed8}
-.btn{display:inline-block;padding:7px 14px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;color:#334155;cursor:pointer;font-size:13px;text-decoration:none;font-family:inherit}
-.btn:hover{filter:brightness(.96)}
-.btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
-.btn.success{background:#16a34a;color:#fff;border-color:#16a34a}
-.btn.warn{background:#fff7ed;color:#c2410c;border-color:#fdba74}
-.btn.danger{background:#fef2f2;color:#b91c1c;border-color:#fca5a5}
-.help{width:22px;height:22px;border-radius:50%;border:1px solid #94a3b8;background:#fff;color:#475569;font-weight:700;cursor:pointer;font-size:12px;padding:0;margin-left:6px}
-.msg{background:#eff6ff;border:1px solid #bfdbfe;border-left:5px solid #2563eb;border-radius:10px;padding:12px 16px;margin-bottom:16px;white-space:pre-wrap}
-.info{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:14px 16px;color:#475569}
-.muted{color:var(--muted);font-size:12px}
-.tabs{display:flex;gap:4px;margin-bottom:-1px}
-.tabs a{padding:9px 18px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:#e2e8f0;color:#475569;text-decoration:none}
-.tabs a.on{background:#fff;color:var(--brand);font-weight:700;border-top:3px solid var(--brand)}
-.tabbody{border-top-left-radius:0}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:18px 20px;box-shadow:var(--shadow)}
+.tile .k{color:var(--muted);font-size:13px;font-weight:600}.tile .v{font-size:20px;font-weight:800;margin-top:8px;letter-spacing:-.3px}
+.tile .s{color:var(--muted);font-size:12.5px;margin-top:6px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow)}
+.card h2{font-size:15.5px;margin:0 0 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.card h2 .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+table{border-collapse:collapse;width:100%}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{background:var(--subtle);color:var(--muted);font-weight:600;font-size:12.5px;white-space:nowrap}
+tr:first-child th{border-top:1px solid var(--line)}
+tr.group td{background:var(--subtle);color:var(--text);font-weight:700;font-size:13px}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+.b-ok{background:var(--ok-soft);color:var(--ok)}.b-bad{background:var(--bad-soft);color:var(--bad)}.b-warn{background:var(--warn-soft);color:var(--warn)}
+.b-mute{background:var(--subtle);color:var(--muted);box-shadow:inset 0 0 0 1px var(--line)}.b-info{background:var(--accent-soft);color:var(--accent)}
+.btn{display:inline-block;padding:7px 14px;border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--surface);color:var(--text);
+ cursor:pointer;font:inherit;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background-color .15s,border-color .15s}
+.btn:hover{background:var(--subtle)}.btn:active{transform:translateY(1px)}
+.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn.primary:hover{background:#1d47b3}
+.btn.success{color:var(--ok);border-color:#a8d8b9}.btn.warn{color:var(--warn);border-color:#f0c48a}.btn.danger{color:var(--bad);border-color:#f3b1aa}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.help{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-weight:700;cursor:pointer;font-size:12px;padding:0;margin-left:6px}
+.msg{background:var(--accent-soft);border:1px solid #c9d7f7;border-radius:var(--r-card);padding:12px 16px;margin-bottom:16px;white-space:pre-wrap}
+.info{background:var(--subtle);border:1px solid var(--line);border-radius:var(--r-ctl);padding:14px 16px;color:var(--muted)}
+.muted{color:var(--muted);font-size:12.5px}
+.tabs{display:flex;gap:4px;margin-bottom:12px}
+.tabs a{padding:8px 14px;border-radius:var(--r-ctl);color:var(--muted);text-decoration:none;font-weight:600}
+.tabs a:hover{background:var(--surface)}.tabs a.on{background:var(--surface);color:var(--accent);box-shadow:inset 0 0 0 1px var(--line)}
 form.inline{display:inline}
 .row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:8px 0}
-.field{margin-bottom:16px}.field>label.t{display:block;font-weight:600;margin-bottom:6px}
-.chips label{display:inline-block;margin:0 6px 6px 0;padding:5px 11px;border:1px solid var(--line);border-radius:6px;background:#f8fafc;cursor:pointer}
-input[type=number]{width:90px}input,textarea,select{font:inherit;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px}
-dialog{border:none;border-radius:12px;max-width:560px;padding:22px 26px;box-shadow:0 12px 32px rgba(0,0,0,.25);line-height:1.6}
+.field{margin-bottom:16px}.field>label.t{display:block;font-weight:700;margin-bottom:6px}
+.chips label{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface);cursor:pointer}
+.chips label:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+input[type=number]{width:90px}input,textarea,select{font:inherit;padding:7px 9px;border:1px solid #cdd2da;border-radius:var(--r-ctl);background:var(--surface);color:var(--text)}
+select:disabled{background:var(--subtle);color:var(--muted)}
+dialog{border:none;border-radius:var(--r-card);max-width:560px;padding:22px 26px;box-shadow:0 12px 32px rgba(21,26,35,.22);line-height:1.6}
 dialog h3{margin:0 0 10px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch;margin-bottom:16px}
 .grid>.card{margin-bottom:0}
 .side{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
 .sticky{position:sticky;top:16px}
-@media (max-width:1000px){.grid,.side,.tiles{grid-template-columns:1fr}}
-.switch{position:relative;display:inline-block;width:52px;height:28px;vertical-align:middle;margin-right:8px}
+@media (max-width:1000px){.grid,.side,.tiles{grid-template-columns:1fr}main{padding:0 16px}header{padding:0 16px;gap:16px}}
+.switch{position:relative;display:inline-block;width:48px;height:26px;vertical-align:middle;margin-right:8px}
 .switch input{opacity:0;width:0;height:0}
-.slider{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;border-radius:28px;transition:.2s}
-.slider:before{content:"";position:absolute;height:22px;width:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
-.switch input:checked+.slider{background:#16a34a}.switch input:checked+.slider:before{transform:translateX(24px)}
-.steps{display:flex;gap:6px;align-items:stretch;margin-top:12px}
-.step{flex:1;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:#f8fafc;color:var(--muted)}
+.slider{position:absolute;cursor:pointer;inset:0;background:#c3c9d2;border-radius:26px;transition:background-color .2s}
+.slider:before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:transform .2s}
+.switch input:checked+.slider{background:var(--ok)}.switch input:checked+.slider:before{transform:translateX(22px)}
+.switch input:focus-visible+.slider{outline:2px solid var(--accent);outline-offset:2px}
+.steps{display:flex;gap:6px;align-items:stretch;margin-top:14px}
+.step{flex:1;border:1px solid var(--line);border-radius:var(--r-ctl);padding:10px 12px;background:var(--subtle);color:var(--muted)}
 .step b{display:block;color:var(--text);margin-bottom:2px}
-.step.done{border-color:#86efac;background:#f0fdf4}.step.fail{border-color:#fca5a5;background:#fef2f2}
-.arrow{align-self:center;color:#94a3b8}
-.summary{font-size:15px;line-height:1.6}
-.need{background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;margin-top:12px}
+.step.done{border-color:#bfe2cb;background:var(--ok-soft)}.step.fail{border-color:#f3c2bc;background:var(--bad-soft)}
+.arrow{align-self:center;color:#9aa3b0}
+.summary{font-size:15px;line-height:1.65}
+.need{background:var(--warn-soft);border:1px solid #f0d3a8;border-radius:var(--r-ctl);padding:12px 14px;margin-top:12px}
+.lock{background:var(--subtle);border:1px dashed #c3c9d2;border-radius:var(--r-ctl);padding:12px 14px;color:var(--muted)}
 td.url{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.search{width:320px}
-details.guide summary{cursor:pointer;font-weight:700;color:#1d4ed8}
+.search{width:300px}
+details.guide summary{cursor:pointer;font-weight:700;color:var(--accent)}
 details.guide ol{margin:10px 0 0;padding-left:20px;line-height:1.8}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 """
 
 MENU = [("/", "대시보드"), ("/test", "테스트"), ("/schedule", "예약 발송 설정"), ("/sources", "RSS Source"),
@@ -823,11 +836,11 @@ def dashboard(app: AdminApp) -> str:
         today_state, today_sub = badge("발송 안 됨", "b-bad"), "아래 \"지금 발송\" 으로 보낼 수 있습니다"
     else:
         today_state, today_sub = badge("예약 대기", "b-mute"), escape(f"오늘 {config.time} 예정" if upcoming and upcoming[0].date() == now.date() else "오늘은 예약 없음")
-    tiles = (f'<div class="tiles"><div class="tile c-blue"><div class="k">예약 발송</div><div class="v">{tile_task}</div></div>'
-             f'<div class="tile c-green"><div class="k">오늘 뉴스레터</div><div class="v">{today_state}</div><div class="s">{today_sub}</div></div>'
-             f'<div class="tile c-purple"><div class="k">이번 달 AI 비용</div><div class="v">${use["cost"]:.3f} / ${use["limit"]:.0f}</div>'
+    tiles = (f'<div class="tiles"><div class="tile"><div class="k">예약 발송</div><div class="v">{tile_task}</div></div>'
+             f'<div class="tile"><div class="k">오늘 뉴스레터</div><div class="v">{today_state}</div><div class="s">{today_sub}</div></div>'
+             f'<div class="tile"><div class="k">이번 달 AI 비용</div><div class="v">${use["cost"]:.3f} / ${use["limit"]:.0f}</div>'
              f'<div class="s">호출 {use["calls"]}건 (성공 {use["ok"]} · 실패 {use["failed"]})</div></div>'
-             f'<div class="tile c-orange"><div class="k">최근 24시간 수집 기사</div><div class="v">{"-" if recent is None else recent}건</div>'
+             f'<div class="tile"><div class="k">최근 24시간 수집 기사</div><div class="v">{"-" if recent is None else recent}건</div>'
              f'<div class="s">사용 중인 RSS Source {enabled_sources}곳</div></div></div>')
 
     last = runs[0] if runs else None
@@ -839,7 +852,7 @@ def dashboard(app: AdminApp) -> str:
         body += (f'<div class="need"><b>오늘 뉴스레터가 발송되지 않았습니다.</b><br>{escape(need)}<br><br>'
                  + button(app, "run_send", "지금 발송", "primary")
                  + ' <span class="muted">RSS 수집 → AI 분석 (하루 상한 안) → 메일 생성 → TEST 1명 발송</span></div>')
-    today_card = (f'<div class="card c-green"><h2>마지막 실행{" " + badge(last.result, RESULT_BADGE.get(last.result, "b-mute")) if last else ""}'
+    today_card = (f'<div class="card"><h2>마지막 실행{" " + badge(last.result, RESULT_BADGE.get(last.result, "b-mute")) if last else ""}'
                   f'<a class="btn right" href="/logs">전체 이력</a></h2>{body}</div>')
 
     if on:
@@ -850,22 +863,22 @@ def dashboard(app: AdminApp) -> str:
     else:
         schedule_body = (f'<div class="info"><b>예약 발송이 꺼져 있습니다.</b><br>정해진 시각에 뉴스레터를 보내지 않습니다. '
                          f'스위치를 켜면 저장된 일정 ({escape(schedule_summary(config))}) 으로 다시 발송합니다.</div>')
-    schedule_card = (f'<div class="card c-blue"><h2>예약 발송<a class="btn right" href="/schedule">설정 변경</a></h2>'
+    schedule_card = (f'<div class="card"><h2>예약 발송<a class="btn right" href="/schedule">설정 변경</a></h2>'
                      f'{task_switch(app, on)}{schedule_body}</div>')
 
     status_rows = [
         ("이번 달 AI 호출", f'{use["calls"]}건 (성공 {use["ok"]} · 실패 {use["failed"]})'),
         ("이번 달 AI 비용", f'${use["cost"]:.4f} / 상한 ${use["limit"]:.2f}'),
         ("하루 AI 호출 상한", f"분석 {config.max_analysis_calls}건 · 시사점 {config.max_insight_calls}건"),
-        ("발송 대상", "TEST 1명 (고정 주소)"),
+        ("발송 대상", "TEST 주소 1명 (그룹 발송 잠금)"),
         ("작업 스케줄러", f'{task.get("state", "-")} · 마지막 결과 코드 {task.get("result", "-") or "-"}'),
     ]
-    status_card = ('<div class="card c-purple"><h2>운영 현황</h2><table>'
+    status_card = ('<div class="card"><h2>운영 현황</h2><table>'
                    + "".join(f"<tr><th style='width:160px'>{escape(a)}</th><td>{escape(b)}</td></tr>" for a, b in status_rows)
                    + "</table></div>")
     recent_rows = "".join(f"<tr><td style='white-space:nowrap'>{escape(r.start[5:16])}</td><td>{escape(r.origin)}</td>"
                           f"<td>{badge(r.result, RESULT_BADGE.get(r.result, 'b-mute'))}</td></tr>" for r in runs[:5])
-    recent_card = ('<div class="card c-orange"><h2>최근 실행<a class="btn right" href="/logs">더 보기</a></h2>'
+    recent_card = ('<div class="card"><h2>최근 실행<a class="btn right" href="/logs">더 보기</a></h2>'
                    f'<table><tr><th>시각</th><th>실행 주체</th><th>결과</th></tr>{recent_rows or "<tr><td colspan=3>기록 없음</td></tr>"}</table></div>')
     return (tiles + f'<div class="grid">{today_card}{schedule_card}</div>'
             + f'<div class="grid">{recent_card}{status_card}</div>')
@@ -902,16 +915,30 @@ def test_page(app: AdminApp) -> str:
         f"<td>{badge(r.result, RESULT_BADGE.get(r.result, 'b-mute'))}</td><td>{'-' if r.articles is None else r.articles}</td>"
         f"<td>{escape(r.mail_bytes or '-')}</td><td>{'발송' if r.sent else '-'}</td><td>{escape(r.error) or '-'}</td>"
         f"<td>{f'<a href=/logs?tab=mail&name={quote(r.mail_file)}>메일 보기</a>' if r.mail_file else ''}</td></tr>" for r in tests)
-    history = ('<div class="card c-green"><h2>테스트 발송 기록</h2><table><tr><th>시각</th><th>종류</th><th>결과</th><th>기사</th>'
+    history = ('<div class="card"><h2>테스트 발송 기록</h2><table><tr><th>시각</th><th>종류</th><th>결과</th><th>기사</th>'
                f'<th>메일 크기 (bytes)</th><th>발송</th><th>실패 사유</th><th></th></tr>{rows or "<tr><td colspan=8>아직 테스트 발송 기록이 없습니다.</td></tr>"}</table></div>')
     tool_rows = "".join(
         f"<tr><td>{escape(name)}{help_button(key, name, body)}</td>"
         f"<td>{badge('외부 접속 있음', 'b-warn') if external == '있음' else badge('외부 접속 없음', 'b-mute')}</td>"
         f"<td>{button(app, key, '실행', 'warn' if external == '있음' else '', back='/test')}</td></tr>" for key, name, external, body in TOOLS)
-    tools = ('<div class="card c-gray"><h2>점검 도구<span class="muted">문제가 생겼을 때 원인을 찾는 도구입니다. ? 를 누르면 설명이 나옵니다.</span></h2>'
+    tools = ('<div class="card"><h2>점검 도구<span class="muted">문제가 생겼을 때 원인을 찾는 도구입니다. ? 를 누르면 설명이 나옵니다.</span></h2>'
              f'<table><tr><th>도구</th><th>외부 접속</th><th style="width:90px">실행</th></tr>{tool_rows}</table></div>')
-    return (f'<div class="grid"><div class="card c-blue"><h2>즉시 테스트 발송</h2>{now_body}</div>'
-            f'<div class="card c-purple"><h2>시각 지정 테스트 발송</h2>{schedule_body}</div></div>' + history + tools)
+    return (f'<div class="grid"><div class="card"><h2>즉시 테스트 발송</h2>{now_body}</div>'
+            f'<div class="card"><h2>시각 지정 테스트 발송</h2>{schedule_body}</div></div>' + history + tools)
+
+
+def target_field(config) -> str:
+    """발송 대상 그룹 (D-076). 그룹 발송 잠금이 꺼져 있으면 TEST 주소 1명으로 고정하고 선택을 막는다."""
+    from saba import recipients as rc
+    from saba.send_mail import GROUP_SEND_APPROVED, TEST_ADDRESS
+    names = [g for g, _ in rc.groups()] if GROUP_SEND_APPROVED else []
+    if not GROUP_SEND_APPROVED:
+        return (f'<input type="hidden" name="target_group" value="{escape(config.target_group)}">'
+                f'<div class="lock"><b>TEST 주소 1명 ({escape(TEST_ADDRESS)}) 으로 잠금</b><br>'
+                '그룹 발송 (수신자마다 1통 개별 발송) 은 만들어 두었지만, 회사 IT·보안 정책 확인과 별도 승인 전까지 잠겨 있습니다. '
+                '수신자·그룹은 미리 등록해 둘 수 있습니다.</div>')
+    options = "".join(f'<option{" selected" if g == config.target_group else ""}>{escape(g)}</option>' for g in names)
+    return f'<select name="target_group">{options}</select> <span class="muted">수신자마다 1통씩 개별 발송합니다.</span>'
 
 
 def schedule_page(app: AdminApp) -> str:
@@ -927,7 +954,7 @@ def schedule_page(app: AdminApp) -> str:
     form = f"""
 <form method="post" action="/action/save_schedule" onsubmit="return confirm('{escape(CONFIRM_TEXT['save_schedule'])}')">
 <input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/schedule"><input type="hidden" name="confirm" value="yes">
-<div class="card c-blue"><h2>주기</h2>
+<div class="card"><h2>주기</h2>
  <div class="field"><div class="chips">{mode_radios}</div></div>
  <div id="m-weekly" class="field"><label class="t">요일</label><div class="chips">{weekday_boxes}</div></div>
  <div id="m-monthly" class="field"><label class="t">매월 날짜</label><div class="chips">{month_boxes}</div>
@@ -937,19 +964,20 @@ def schedule_page(app: AdminApp) -> str:
   <textarea name="dates" id="dates" rows="4" cols="30" placeholder="한 줄에 하나 (예: 2026-10-20)">{escape(chr(10).join(config.dates))}</textarea>
   <div class="muted">지난 날짜는 무시됩니다. 줄을 지우면 날짜가 빠집니다.</div></div>
 </div>
-<div class="card c-purple"><h2>시각</h2>
+<div class="card"><h2>시각</h2>
  <div class="row"><label>발송 시각 <input type="time" name="time" value="{escape(config.time)}" required></label>
  <label>무작위 지연 최대 <input type="number" name="random_delay_minutes" min="0" max="30" value="{config.random_delay_minutes}"> 분</label></div>
  <div class="muted">무작위 지연: 정해진 시각부터 이 시간 안에서 아무 때나 실행합니다 (0 이면 정각).</div>
 </div>
-<div class="card c-orange"><h2>AI 호출과 발송</h2>
+<div class="card"><h2>AI 호출과 발송</h2>
  <div class="row"><label>하루 AI 분석 상한 <input type="number" name="max_analysis_calls" min="0" max="50" value="{config.max_analysis_calls}"> 건</label>
  <label>하루 AI 시사점 상한 <input type="number" name="max_insight_calls" min="0" max="50" value="{config.max_insight_calls}"> 건</label></div>
  <div class="muted">현재 하루 최대 {per_day}건 · 매일 발송해도 한 달 최대 약 ${per_day * COST_PER_CALL * 31:.2f} (월 상한 $3, 변경 불가). 이미 분석한 기사는 다시 호출하지 않습니다.</div>
- <div class="row"><label><input type="radio" name="send" value="on"{" checked" if config.send else ""}> 예약 시각에 TEST 1명에게 발송</label>
+ <div class="row"><label><input type="radio" name="send" value="on"{" checked" if config.send else ""}> 예약 시각에 발송</label>
  <label><input type="radio" name="send" value="off"{"" if config.send else " checked"}> 메일 생성까지만 (발송 안 함)</label></div>
 </div>
-<div class="card c-gray"><h2>보관 기간</h2>
+<div class="card"><h2>발송 대상</h2>{target_field(config)}</div>
+<div class="card"><h2>보관 기간</h2>
  <div class="row"><label>실행 로그 <input type="number" name="log_days" min="7" max="3650" value="{config.log_days}"> 일</label>
  <label>메일 파일 <input type="number" name="mail_days" min="1" max="3650" value="{config.mail_days}"> 일</label></div>
  <div class="muted">기간이 지난 실행 로그·메일 파일은 매일 실행 때 자동으로 지웁니다.</div>
@@ -964,14 +992,14 @@ function addDate(){{var v=document.getElementById('pick').value;if(!v)return;var
 showMode();
 </script>"""
     upcoming = "".join(f"<tr><td>{i}</td><td>{escape(kst_label(at))}</td></tr>" for i, at in enumerate(next_runs(config, datetime.now().astimezone(), 5), 1))
-    side = (f'<div class="card c-green sticky"><h2>현재 일정</h2><div class="summary">{escape(schedule_summary(config))}</div>'
+    side = (f'<div class="card sticky"><h2>현재 일정</h2><div class="summary">{escape(schedule_summary(config))}</div>'
             f'<h2 style="margin-top:16px">다음 예약 5회</h2><table><tr><th style="width:50px">순서</th><th>시각 (무작위 지연 전)</th></tr>'
             f'{upcoming or "<tr><td colspan=2>예정 없음</td></tr>"}</table>'
             '<p class="muted">시각을 정해 한 번만 확인하려면 테스트 화면의 "시각 지정 테스트 발송" 을 쓰세요 (이 일정은 바뀌지 않음).</p></div>')
     return f'<div class="side"><div>{form}</div><div>{side}</div></div>'
 
 
-LOG_TABS = (("runs", "실행 이력"), ("mail", "뉴스레터"), ("detail", "상세 로그"), ("changes", "설정 변경 이력"))
+LOG_TABS = (("runs", "실행 이력"), ("sends", "발송 이력"), ("mail", "뉴스레터"), ("detail", "상세 로그"), ("changes", "설정 변경 이력"))
 
 
 def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None) -> str:
@@ -983,8 +1011,10 @@ def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None)
     keep = (f'<div class="muted" style="margin-bottom:12px">보관: 실행 로그 {config.log_days}일 (현재 {store["logs"]["count"]}개 파일 · '
             f'{store["logs"]["bytes"] / 1024:.1f} KB · 가장 오래된 날짜 {store["logs"]["oldest"]}) · 메일 파일 {config.mail_days}일 '
             f'(현재 {store["mails"]["count"]}개 · {store["mails"]["bytes"] / 1024 / 1024:.2f} MB). 기간이 지나면 매일 실행 때 자동 삭제.</div>')
+    if tab == "sends":
+        return f'<div class="tabs">{tabs}</div><div class="card tabbody">{sends_body(app, day)}</div>'
     if tab == "mail":
-        return f'<div class="tabs">{tabs}</div><div class="card tabbody c-blue">{keep}{newsletter_body(app, name)}</div>'
+        return f'<div class="tabs">{tabs}</div><div class="card tabbody">{keep}{newsletter_body(app, name)}</div>'
     if tab == "detail":
         files = log_files(app.root / "logs")
         names = [p.name[6:14] for p in files]
@@ -1017,7 +1047,29 @@ def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None)
                      f"<td>{escape(run.error) or '-'}</td><td style='white-space:nowrap'>{mail}<a href='/logs?tab=detail&day={day_key}'>로그</a></td></tr>")
         body = ("<table><tr><th>시작</th><th>실행 주체</th><th>결과</th><th>기사</th><th>AI 신규 호출</th><th>메일 크기 (bytes)</th>"
                 f"<th>발송</th><th>실패 사유</th><th>보기</th></tr>{rows or '<tr><td colspan=9>실행 기록 없음</td></tr>'}</table>")
-    return f'<div class="tabs">{tabs}</div><div class="card tabbody c-blue">{keep}{body}</div>'
+    return f'<div class="tabs">{tabs}</div><div class="card tabbody">{keep}{body}</div>'
+
+
+def sends_body(app: AdminApp, selected: str | None) -> str:
+    """발송 이력 (D-076): 회차별 대상·인원·성공·실패, 회차를 고르면 수신자별 결과. 주소는 이 화면에만."""
+    from saba import sendlog
+    path = app.root / "data" / "send_history.db"
+    rows = ""
+    for send in sendlog.sends(path):
+        state = badge("성공", "b-ok") if send.failed == 0 else badge(f"실패 {send.failed}", "b-bad")
+        rows += (f"<tr><td style='white-space:nowrap'>{escape(send.at[:16])}</td><td>{escape(send.origin)}</td><td>{escape(send.target)}</td>"
+                 f"<td>{send.total}명</td><td>{send.ok}</td><td>{state}</td>"
+                 f"<td>{'<a href=/logs?tab=mail&name=' + quote(send.mail_file) + '>메일</a> · ' if send.mail_file else ''}"
+                 f"<a href='/logs?tab=sends&day={send.id}'>수신자별 결과</a></td></tr>")
+    body = ('<p class="muted" style="margin-top:0">발송할 때마다 한 줄씩 남습니다. 로그에는 인원만 쓰고 주소는 이 화면에서만 보입니다.</p>'
+            '<table><tr><th>시각</th><th>실행 주체</th><th>대상</th><th>인원</th><th>성공</th><th>결과</th><th>보기</th></tr>'
+            f'{rows or "<tr><td colspan=7>아직 발송 이력이 없습니다. 다음 발송부터 쌓입니다.</td></tr>"}</table>')
+    if selected and selected.isdigit():
+        detail = "".join(f"<tr><td>{escape(r.email)}</td><td>{badge('성공', 'b-ok') if r.ok else badge('실패', 'b-bad')}</td>"
+                         f"<td>{escape(r.detail)}</td></tr>" for r in sendlog.results(int(selected), path))
+        body += (f'<h2 style="margin-top:22px">수신자별 결과</h2><table><tr><th>메일</th><th>결과</th><th>내용</th></tr>'
+                 f'{detail or "<tr><td colspan=3>결과가 없습니다.</td></tr>"}</table>')
+    return body
 
 
 def _show(value) -> str:
@@ -1087,12 +1139,12 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                          + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id}) + "</td></tr>")
     search = ('<input class="search" placeholder="검색: 이름·ID·주소·구분·종류" oninput="var q=this.value.toLowerCase();'
               'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
-    table = (f'<div class="card c-blue"><h2>RSS Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
+    table = (f'<div class="card"><h2>RSS Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
              f'변경은 다음 실행부터 반영</span><span class="right">{search} <a class="btn primary" href="/sources?edit=new">추가</a></span></h2>'
              '<table><tr><th>이름</th><th>RSS 주소</th><th>날짜 해석</th><th>상태</th><th>관리</th></tr>'
              f'{rows}</table><p class="muted">중지·삭제해도 이미 수집한 기사와 AI 분석은 DB 에 남습니다. 삭제한 Source 의 기사는 메일에 나오지 않습니다.</p></div>')
     if not edit_id:
-        return f'<div class="card c-gray">{SOURCE_GUIDE}</div>' + table
+        return f'<div class="card">{SOURCE_GUIDE}</div>' + table
     current = next((e for e in entries if e.source.source_id == edit_id), None)
     if app.draft and (app.draft.get("id") == edit_id or (edit_id == "new" and app.draft.get("mode") != "edit")):
         values = app.draft
@@ -1107,7 +1159,7 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
     checked = lambda key: " checked" if values.get(key) else ""
     kinds = "".join(f'<label><input type="radio" name="kind" value="{k}"{" checked" if values.get("kind") == k else ""}> {k}</label>' for k in KINDS)
     form = f"""
-<div class="card c-orange"><h2>{"Source 수정: " + escape(current.source.source_name) if editing else "Source 추가"}</h2>
+<div class="card"><h2>{"Source 수정: " + escape(current.source.source_name) if editing else "Source 추가"}</h2>
 {SOURCE_GUIDE if not editing else ""}
 <form method="post" action="/action/source_save" style="margin-top:12px">
 <input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/sources">
@@ -1146,12 +1198,12 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
     people = rc.recipients(path)
     shown = rc.recipients(path, group) if group else people
     enabled = sum(p.enabled for p in people)
-    tiles = (f'<div class="tiles"><div class="tile c-blue"><div class="k">수신자</div><div class="v">{enabled}명 사용</div>'
+    tiles = (f'<div class="tiles"><div class="tile"><div class="k">수신자</div><div class="v">{enabled}명 사용</div>'
              f'<div class="s">전체 {len(people)}명 · 중지 {len(people) - enabled}명</div></div>'
-             f'<div class="tile c-green"><div class="k">그룹</div><div class="v">{len(group_list) - 1}개</div><div class="s">"전체" 는 사용 중인 전원 자동</div></div>'
-             f'<div class="tile c-purple"><div class="k">부서</div><div class="v">{len(dept_list)}개</div><div class="s">허용 도메인 {", ".join(domain_list)}</div></div>'
-             f'<div class="tile c-red"><div class="k">실제 발송 대상</div><div class="v">TEST 1명</div><div class="s">TEST 외 발송은 별도 승인 후</div></div></div>')
-    target = ('<div class="card c-red"><h2>발송 대상 그룹</h2><div class="row"><select disabled>'
+             f'<div class="tile"><div class="k">그룹</div><div class="v">{len(group_list) - 1}개</div><div class="s">"전체" 는 사용 중인 전원 자동</div></div>'
+             f'<div class="tile"><div class="k">부서</div><div class="v">{len(dept_list)}개</div><div class="s">허용 도메인 {", ".join(domain_list)}</div></div>'
+             f'<div class="tile"><div class="k">실제 발송 대상</div><div class="v">TEST 1명</div><div class="s">TEST 외 발송은 별도 승인 후</div></div></div>')
+    target = ('<div class="card"><h2>발송 대상 그룹</h2><div class="row"><select disabled>'
               + "".join(f'<option{" selected" if g == "TEST" else ""}>{escape(g)} ({n}명)</option>' for g, n in group_list)
               + '</select>' + badge("TEST 로 잠금", "b-warn") + '</div>'
               '<p class="muted">지금은 예약·지금·테스트 발송 모두 고정 TEST 주소 1명에게만 보냅니다. 그룹 발송은 발송 전 미리보기·승인 절차와 함께 별도 승인 후 열립니다.</p></div>')
@@ -1169,7 +1221,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
                  + button(app, "recipient_delete", "삭제", "danger", back="/recipients", fields={"id": str(p.id)}) + "</td></tr>")
     search = ('<input class="search" placeholder="검색: 이름·메일·부서·그룹" oninput="var q=this.value.toLowerCase();'
               'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
-    listing = (f'<div class="card c-blue"><h2>수신자 목록<span class="right">{search} <a class="btn" href="/recipients/export.csv">명단 CSV 내려받기</a> '
+    listing = (f'<div class="card"><h2>수신자 목록<span class="right">{search} <a class="btn" href="/recipients/export.csv">명단 CSV 내려받기</a> '
                f'<a class="btn primary" href="/recipients?edit=new#form">추가</a></span></h2><div class="row">{filters}</div>'
                '<table><tr><th>이름</th><th>메일</th><th>부서</th><th>그룹</th><th>상태</th><th>관리</th></tr>'
                f'{rows or "<tr><td colspan=6>등록된 수신자가 없습니다. 오른쪽 위 \"추가\" 또는 아래 CSV 일괄 등록을 쓰세요.</td></tr>"}</table></div>')
@@ -1179,7 +1231,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
     dept_options = "".join(f'<option{" selected" if d == values.department else ""}>{escape(d)}</option>' for d, _ in dept_list)
     group_boxes = "".join(f'<label><input type="checkbox" name="groups" value="{escape(g)}"{" checked" if g in values.groups else ""}> {escape(g)}</label>'
                           for g, _ in group_list if g != rc.ALL_GROUP)
-    form = (f'<div class="card c-orange" id="form"><h2>{"수신자 수정" if current else "수신자 추가"}</h2>'
+    form = (f'<div class="card" id="form"><h2>{"수신자 수정" if current else "수신자 추가"}</h2>'
             f'<form method="post" action="/action/recipient_save"><input type="hidden" name="token" value="{app.token}">'
             f'<input type="hidden" name="back" value="/recipients"><input type="hidden" name="id" value="{current.id if current else ""}">'
             f'<div class="field"><label class="t">이름</label><input name="name" value="{escape(values.name)}" required maxlength="40" style="width:100%"></div>'
@@ -1190,7 +1242,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
             f'<div class="field"><label><input type="checkbox" name="enabled" value="on"{" checked" if values.enabled else ""}> 사용</label></div>'
             f'<div class="row"><button class="btn primary">저장</button><a class="btn" href="/recipients">취소</a></div></form></div>')
 
-    csv_card = ('<div class="card c-green"><h2>CSV 일괄 등록<span class="right"><a class="btn" href="/recipients/template.csv">빈 양식 내려받기</a></span></h2>'
+    csv_card = ('<div class="card"><h2>CSV 일괄 등록<span class="right"><a class="btn" href="/recipients/template.csv">빈 양식 내려받기</a></span></h2>'
                 '<p class="muted">형식: <b>이름,메일,부서,그룹</b> (첫 줄은 제목). 그룹이 여러 개면 <b>;</b> 로 구분 (예: TEST;파일럿). '
                 '엑셀에서 "CSV UTF-8" 로 저장한 파일을 고르거나, 엑셀 표를 복사해 아래 칸에 붙여 넣어도 됩니다. 이미 있는 메일은 정보가 갱신됩니다.</p>'
                 f'<form method="post" action="/action/csv_preview"><input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/recipients">'
@@ -1204,7 +1256,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
         prow = "".join(f"<tr><td>{r['line']}</td><td>{badge(r['status'], status_badge[r['status']])}</td><td>{escape(r['name'])}</td>"
                        f"<td>{escape(r['email'])}</td><td>{escape(r['department'])}</td><td>{escape(';'.join(r['groups']))}</td>"
                        f"<td>{escape(r['error']) or '-'}</td></tr>" for r in app.csv_rows)
-        preview = (f'<div class="card c-orange"><h2>CSV 미리보기 (아직 저장 안 됨)<span class="right">'
+        preview = (f'<div class="card"><h2>CSV 미리보기 (아직 저장 안 됨)<span class="right">'
                    + button(app, "csv_apply", "신규·갱신 저장", "primary", back="/recipients") + " "
                    + button(app, "csv_cancel", "취소", "", back="/recipients") + '</span></h2>'
                    f'<table><tr><th>줄</th><th>결과</th><th>이름</th><th>메일</th><th>부서</th><th>그룹</th><th>오류</th></tr>{prow}</table></div>')
@@ -1230,17 +1282,17 @@ def settings_page(app: AdminApp) -> str:
     entries = app.source_entries()
     secret_rows = "".join(f"<tr><td>{escape(n)}</td><td>{badge('있음', 'b-ok') if v else badge('없음', 'b-bad')}</td></tr>"
                           for n, v in app.secrets_present().items())
-    return (f'<div class="grid"><div class="card c-blue"><h2>예약 발송<a class="btn right" href="/schedule">변경</a></h2><table>'
+    return (f'<div class="grid"><div class="card"><h2>예약 발송<a class="btn right" href="/schedule">변경</a></h2><table>'
             f'<tr><th style="width:160px">일정</th><td>{escape(schedule_summary(config))}</td></tr>'
             f'<tr><th>하루 AI 호출 상한</th><td>분석 {config.max_analysis_calls}건 · 시사점 {config.max_insight_calls}건</td></tr>'
             f'<tr><th>발송</th><td>{"발송" if config.send else "메일 생성까지만"}</td></tr>'
             f'<tr><th>보관 기간</th><td>로그 {config.log_days}일 · 메일 파일 {config.mail_days}일</td></tr>'
             f'<tr><th>설정 파일 점검</th><td>{escape(valid)}</td></tr></table></div>'
-            f'<div class="card c-orange"><h2>RSS Source<a class="btn right" href="/sources">관리</a></h2><table>'
+            f'<div class="card"><h2>RSS Source<a class="btn right" href="/sources">관리</a></h2><table>'
             f'<tr><th style="width:160px">사용 중</th><td>{sum(1 for e in entries if e.enabled)}곳</td></tr><tr><th>전체</th><td>{len(entries)}곳</td></tr></table></div></div>'
-            f'<div class="grid"><div class="card c-red"><h2>Secret (값은 표시하지 않음)<span class="muted">변경 기능은 로그인·권한 작업과 함께 예정</span></h2>'
+            f'<div class="grid"><div class="card"><h2>Secret (값은 표시하지 않음)<span class="muted">변경 기능은 로그인·권한 작업과 함께 예정</span></h2>'
             f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table></div>'
-            f'<div class="card c-teal"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
+            f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
             f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
             + criteria_card(app))
 
@@ -1254,7 +1306,7 @@ def criteria_card(app: AdminApp) -> str:
         f'<td><textarea name="scope_{i}" rows="2" style="width:100%" maxlength="200">{escape(scopes[name])}</textarea></td>'
         f'<td><textarea name="examples_{i}" rows="3" style="width:100%" maxlength="300">{escape(examples[name])}</textarea></td></tr>'
         for i, name in enumerate(DEPARTMENT_NAMES))
-    return (f'<div class="card c-purple"><h2>부서별 분류 기준<span class="muted">AI 가 기사마다 관련 부서를 고르는 기준입니다. '
+    return (f'<div class="card"><h2>부서별 분류 기준<span class="muted">AI 가 기사마다 관련 부서를 고르는 기준입니다. '
             f'부서 이름 4개는 메일 부서 카드와 같아 고정입니다.</span></h2>'
             f'<form method="post" action="/action/criteria_save" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["criteria_save"])}\')">'
             f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'

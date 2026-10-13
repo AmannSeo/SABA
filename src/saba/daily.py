@@ -49,6 +49,7 @@ class DailyConfig:
     dates: tuple[str, ...] = ()
     log_days: int = 90  # 보관 기간 (D-072)
     mail_days: int = 30
+    target_group: str = "TEST"  # 발송 대상 그룹 (D-076). 그룹 발송 잠금이 풀리기 전에는 TEST 주소 1명만
 
 
 def parse_config(data: dict) -> DailyConfig:
@@ -60,7 +61,7 @@ def parse_config(data: dict) -> DailyConfig:
             max_insight_calls=int(data["max_insight_calls"]), send=bool(data["send"]),
             mode=str(data.get("mode", "weekly")), month_days=tuple(int(d) for d in data.get("month_days", ())),
             dates=tuple(str(d) for d in data.get("dates", ())), log_days=int(data.get("log_days", 90)),
-            mail_days=int(data.get("mail_days", 30)))
+            mail_days=int(data.get("mail_days", 30)), target_group=str(data.get("target_group", "TEST")).strip())
     except (KeyError, TypeError, ValueError):
         raise DailyError("설정 오류: 필수 항목이 없거나 숫자 형식이 아닙니다.") from None
     if config.mode not in MODES:
@@ -81,6 +82,8 @@ def parse_config(data: dict) -> DailyConfig:
     if not (0 <= config.random_delay_minutes <= 30 and 0 <= config.max_analysis_calls <= 50
             and 0 <= config.max_insight_calls <= 50):
         raise DailyError("설정 오류: 무작위 지연은 0~30분, 하루 호출 상한은 0~50건이어야 합니다.")
+    if not 1 <= len(config.target_group) <= 20:
+        raise DailyError("설정 오류: 발송 대상 그룹 이름이 필요합니다.")
     if not (7 <= config.log_days <= 3650 and 1 <= config.mail_days <= 3650):
         raise DailyError("설정 오류: 로그 보관은 7~3650일, 메일 보관은 1~3650일이어야 합니다.")
     return config
@@ -157,7 +160,7 @@ def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:
     return message.as_bytes(), summary
 
 
-def send(eml: bytes) -> str:
+def send(eml: bytes, mail_file: str = "") -> str:
     from email import message_from_bytes
     from email.message import EmailMessage
     from email.policy import SMTP
@@ -166,10 +169,43 @@ def send(eml: bytes) -> str:
     return send_test(message_from_bytes(eml, _class=EmailMessage, policy=SMTP), send=True)
 
 
+def send_newsletter(eml: bytes, mail_file: str, *, config: DailyConfig, origin: str,
+                    history: Path | None = None, recipients_path: Path | None = None) -> str:
+    """발송 대상에 맞춰 보내고 발송 이력을 남긴다 (D-076).
+
+    그룹 발송 잠금 (send_mail.GROUP_SEND_APPROVED) 이 꺼져 있으면 대상 설정과 관계없이 고정 TEST 주소 1명만.
+    로그에는 인원·건수만 쓰고 주소는 발송 이력 DB (관리 화면) 에만 둔다.
+    """
+    from email import message_from_bytes
+    from email.message import EmailMessage
+    from email.policy import SMTP
+
+    from saba import recipients, send_mail, sendlog
+    history = history or sendlog.DEFAULT_PATH
+    message = message_from_bytes(eml, _class=EmailMessage, policy=SMTP)
+    if config.target_group != "TEST" and send_mail.GROUP_SEND_APPROVED:
+        emails = [r.email for r in recipients.recipients(recipients_path or recipients.DEFAULT_PATH, config.target_group)
+                  if r.enabled]
+        if not emails:
+            raise DailyError(f"발송 대상 그룹 '{config.target_group}' 에 사용 중인 수신자가 없습니다")
+        results = send_mail.send_group(message, emails)
+        sendlog.record(origin, f"{config.target_group} 그룹", results, mail_file, history)
+        ok = sum(r.ok for r in results)
+        return f"그룹 발송 완료: {config.target_group} {len(results)}명 · 성공 {ok} · 실패 {len(results) - ok}"
+    try:
+        text = send_mail.send_test(message, send=True)
+    except send_mail.SendError as error:
+        sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, False, str(error)[:120])], mail_file, history)
+        raise
+    sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, True, "성공")], mail_file, history)
+    locked = " (그룹 발송 잠금: TEST 주소만)" if config.target_group != "TEST" else ""
+    return text + locked
+
+
 def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "output",
               collect: Callable[[], None] = collect_rss,
               build: Callable[[datetime, DailyConfig], tuple[bytes, str]] = build_mail,
-              deliver: Callable[[bytes], str] = send) -> int:
+              deliver: Callable[[bytes, str], str] = send) -> int:
     """단계별 실행. 실패하면 이후 단계(발송 포함) 를 하지 않는다. 종료 코드 0 = 성공."""
     stage = "RSS 수집"
     try:
@@ -185,7 +221,7 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
             logging.info("발송하지 않음 (send=false)")
             return 0
         stage = "발송"
-        logging.info(deliver(eml))
+        logging.info(deliver(eml, path.name))
         return 0
     except Exception as error:  # 단계 실패는 종류만 남기고 발송하지 않는다 (재시도 없음).
         detail = str(error) if isinstance(error, DailyError) or type(error).__name__ == "SendError" else type(error).__name__
@@ -299,7 +335,8 @@ def main() -> int:
             removed = cleanup(ROOT, config.log_days, config.mail_days, now.date())
             if any(removed):
                 logging.info("보관 기간 정리: 로그 %s개, 메일 %s개 삭제", *removed)
-            return run_daily(now, config)
+            from functools import partial
+            return run_daily(now, config, deliver=partial(send_newsletter, config=config, origin=origin))
     except DailyError as error:  # 잠금 실패만 여기로 온다 (run_daily 는 자체 처리)
         logging.warning("%s: %s · 이번 실행은 건너뜀", origin, error)
         return 3

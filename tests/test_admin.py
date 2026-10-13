@@ -496,5 +496,34 @@ class CriteriaTests(AdminBase):
         self.assertEqual((self.root / "config" / "departments.json").read_bytes(), before)
 
 
+class SendHistoryTests(AdminBase):
+    """발송 이력 탭과 발송 대상 잠금 (D-076). 가상 주소만."""
+
+    def test_history_tab_lists_sends_and_results(self):
+        from saba import sendlog
+        path = self.root / "data" / "send_history.db"
+        send_id = sendlog.record("자동 실행 (발송 포함)", "TEST 주소",
+                                 [sendlog.Result("virtual.one@tbell.co.kr", True, "성공")], "daily_x.eml", path)
+        html = self.get("/logs?tab=sends")
+        self.assertIn("TEST 주소", html)
+        self.assertIn("수신자별 결과", html)
+        detail = self.get(f"/logs?tab=sends&day={send_id}")
+        self.assertIn("virtual.one@tbell.co.kr", detail)
+
+    def test_empty_history_message(self):
+        self.assertIn("아직 발송 이력이 없습니다", self.get("/logs?tab=sends"))
+
+    def test_target_locked_on_schedule_page_and_kept_on_save(self):
+        html = self.get("/schedule")
+        self.assertIn("TEST 주소 1명", html)
+        self.assertIn("잠금", html)
+        self.assertNotIn('<select name="target_group"', html)  # 잠금 중에는 고를 수 없음
+        form = {"mode": "weekly", "weekdays": ["MON"], "time": "08:00", "random_delay_minutes": "5",
+                "max_analysis_calls": "25", "max_insight_calls": "20", "send": "on", "log_days": "90", "mail_days": "30",
+                "target_group": "TEST", "back": "/schedule"}
+        self.post("save_schedule", **form)
+        self.assertEqual(load_config(self.root / "config" / "daily.json").target_group, "TEST")
+
+
 if __name__ == "__main__":
     unittest.main()
