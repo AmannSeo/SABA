@@ -70,6 +70,8 @@ class BriefingTests(unittest.TestCase):
         self.plan = {"thn": response(), "boan": response("대상 밖"), "ai": response(category="AI 보안", title="가상 AI 보안 소식")}
 
     def views(self, run, **options):
+        # 운영 data/insights.db 를 읽지 않도록 임시 DB 를 쓴다
+        options.setdefault("insight_db", self.dir / "insights.db")
         return build_views(self.article_db, self.analysis_db, NOW, ledger_path=self.ledger, run=run, **options)
 
     def test_analysis_applied_out_of_scope_excluded_failures_fallback(self):

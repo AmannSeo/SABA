@@ -11,7 +11,8 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StrictInt, TypeAdapt
 from saba.schema import Article, Text, utc_datetime
 
 RULES_VERSION = "saba-analysis-v1"
-Category = Literal["보안 사고", "취약점·권고", "위협 동향", "AI 보안", "AI·기술", "산업·시장·기업"]
+Category = Literal["보안 사고", "취약점·권고", "위협 동향", "AI 보안", "AI·기술", "산업·시장·기업",
+                   "경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질"]  # 뒤 3개: 부서 업무 분야 (F13)
 InputKind = Literal["title_only", "feed_excerpt", "extracted_text"]
 
 

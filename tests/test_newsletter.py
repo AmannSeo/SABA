@@ -245,7 +245,7 @@ class NewsletterTests(unittest.TestCase):
     def test_department_limit_three_preserves_order_and_input(self):
         views = [build_article_view(self.articles[0].model_copy(update={"article_id": f"limit-{i}",
                  "original_title": f"limit-title-{i}"}), preview_sample={"connections": {
-                 name: "가상 배정" for name in ("경영전략팀", "기술개발연구소", "보안사업팀", "STE본부")}})
+                 name: "가상 배정" for name in ("경영전략팀 · 사업지원팀", "기술개발연구소", "보안사업팀", "STE본부")}})
                  for i in range(5)]
         before = copy.deepcopy(views)
         html = build_newsletter_html(views, preview_mode=True)

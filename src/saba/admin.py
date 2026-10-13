@@ -392,7 +392,7 @@ class AdminApp:
         from saba.rss import RssError, parse_sources
         row = {"id": _first(form, "id").strip().lower(), "name": _first(form, "name"), "url": _first(form, "url"),
                "region": _first(form, "region") or "해외", "kind": _first(form, "kind") or "보안 전문 매체",
-               "kst": _first(form, "kst") == "on", "date_only": _first(form, "date_only") == "on",
+               "topic": _first(form, "topic") or "보안", "kst": _first(form, "kst") == "on", "date_only": _first(form, "date_only") == "on",
                "enabled": _first(form, "enabled") == "on"}
         self.draft = {**row, "mode": _first(form, "mode")}
         try:
@@ -651,7 +651,7 @@ def _source_text(entry) -> str:
     if entry is None:
         return "(없음)"
     s = entry.source
-    return (f"{s.source_name} · {s.feed_url} · {s.region} · {s.kind}"
+    return (f"{s.source_name} · {s.feed_url} · {s.region} · {s.kind} · {s.topic}"
             f"{' · 한국 시간' if s.local_offset else ''}{' · 날짜만' if s.date_only else ''} · {'사용' if entry.enabled else '중지'}")
 
 
@@ -1090,11 +1090,18 @@ showMode();
 LOG_TABS = (("runs", "실행 이력"), ("sends", "발송 이력"), ("mail", "뉴스레터"), ("detail", "상세 로그"), ("changes", "설정 변경 이력"))
 
 
-def list_filters(query: dict, years: set[str], *, mail: bool = False) -> tuple[dict, str]:
+def list_filters(query: dict, years: set[str], *, mail: bool = False,
+                 choices: dict[str, tuple[str, list[str]]] | None = None) -> tuple[dict, str]:
+    """연도·월/기간·검색어에 더해 choices 의 항목별 선택 필터 (F14: 종류·결과·실행 주체)."""
     now = datetime.now().astimezone()
     state = {"tab": "mail" if mail else "runs", "year": _first(query, "year") or (str(now.year) if mail else "all"),
              "q": _first(query, "q").strip()}
     errors = []
+    for key, (label, values) in (choices or {}).items():
+        state[key] = _first(query, key) or "all"
+        if state[key] != "all" and state[key] not in values:
+            errors.append(f"{label} 필터가 올바르지 않습니다.")
+            state[key] = "all"
     if state["year"] != "all" and not re.fullmatch(r"[0-9]{4}", state["year"]):
         errors.append("연도 필터가 올바르지 않습니다.")
         state["year"] = str(now.year) if mail else "all"
@@ -1133,6 +1140,10 @@ def list_filters(query: dict, years: set[str], *, mail: bool = False) -> tuple[d
         fields += f'<label>월 <select name="month">{months}</select></label>'
     else:
         fields += ''.join(f'<label>{label} <input type="date" name="{key}" value="{escape(state[key], quote=True)}"></label>' for key, label in (("start", "시작"), ("end", "종료")))
+    for key, (label, values) in (choices or {}).items():
+        opts = f'<option value="all"{" selected" if state[key] == "all" else ""}>전체</option>'
+        opts += "".join(f'<option value="{escape(v, quote=True)}"{" selected" if state[key] == v else ""}>{escape(v)}</option>' for v in values)
+        fields += f'<label>{escape(label)} <select name="{key}">{opts}</select></label>'
     hint = "파일명·종류·실행 주체" if mail else "날짜·실행 주체·결과·메일명"
     fields += f'<label>검색 <input type="search" name="q" maxlength="200" value="{escape(state["q"], quote=True)}" placeholder="{hint}"></label>'
     form = (f'<form method="get" action="/logs" class="row"><input type="hidden" name="tab" value="{state["tab"]}">{fields}'
@@ -1192,14 +1203,17 @@ def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None,
                 f"{rows or '<tr><td colspan=5>변경 기록 없음</td></tr>'}</table>")
     else:
         runs = sorted(app.runs(), key=lambda r: r.start, reverse=True)
-        state, picker = list_filters(query or {}, {r.start[:4] for r in runs})
+        state, picker = list_filters(query or {}, {r.start[:4] for r in runs}, choices={
+            "result": ("결과", sorted({r.result for r in runs})), "origin": ("실행 주체", sorted({r.origin for r in runs}))})
         grouped = {}
         for run in runs:
             grouped.setdefault(run.start[:10], []).append(run)
         needle = state["q"].casefold()
+        match = lambda r: (needle in ' '.join((r.start, r.origin, r.result, r.mail_file or '')).casefold()
+                           and state["result"] in ("all", r.result) and state["origin"] in ("all", r.origin))
         days = [d for d, group in grouped.items() if (state["year"] == "all" or d[:4] == state["year"])
                 and (not state["start"] or d >= state["start"]) and (not state["end"] or d <= state["end"])
-                and any(needle in ' '.join((r.start, r.origin, r.result, r.mail_file or '')).casefold() for r in group)]
+                and any(match(r) for r in group)]
         days, nav, _ = list_page(days, query or {}, state, unit="일")
         rows = ""
         for date in days:
@@ -1273,10 +1287,12 @@ def _show(value) -> str:
 
 def newsletter_body(app: AdminApp, name: str | None, query: dict | None = None) -> str:
     files = app.mail_files()
-    state, picker = list_filters(query or {}, {f["made"][:4] for f in files}, mail=True)
+    state, picker = list_filters(query or {}, {f["made"][:4] for f in files}, mail=True, choices={
+        "kind": ("종류", sorted({f["kind"] for f in files})), "origin": ("실행 주체", sorted({f["origin"] for f in files if f["origin"]}))})
     needle = state["q"].casefold()
     filtered = [f for f in files if (state["year"] == "all" or f["made"][:4] == state["year"])
                 and (state["month"] == "all" or f["made"][5:7] == state["month"])
+                and state["kind"] in ("all", f["kind"]) and state["origin"] in ("all", f["origin"])
                 and needle in ' '.join((f["name"], f["kind"], f["origin"])).casefold()]
     shown, nav, context = list_page(filtered, query or {}, state, unit="개")
     kind_badge = {"발송본": "b-ok", "생성만 (발송 안 함)": "b-info", "미리보기": "b-warn"}
@@ -1312,9 +1328,22 @@ SOURCE_GUIDE = """
 </details>"""
 
 
+def filter_bar(selects: list[tuple[str, str, list[str]]], hint: str) -> str:
+    """항목별 선택 + 검색어로 tr.src 행을 거른다 (F14). 행에는 data-q 와 data-<항목> ("|" 로 여러 값) 이 있어야 한다."""
+    js = ("var b=this.closest('.fbar'),q=b.querySelector('input').value.toLowerCase(),s=b.querySelectorAll('select');"
+          "document.querySelectorAll('tr.src').forEach(function(r){var ok=r.dataset.q.indexOf(q)>=0;"
+          "s.forEach(function(x){if(x.value&&('|'+(r.dataset[x.name]||'')+'|').indexOf('|'+x.value+'|')<0)ok=false});"
+          "r.style.display=ok?'':'none'})")
+    parts = "".join(f'<select name="{key}" aria-label="{escape(label)}" onchange="{js}"><option value="">{escape(label)}: 전체</option>'
+                    + "".join(f'<option value="{escape(v, quote=True)}">{escape(v)}</option>' for v in values) + '</select>'
+                    for key, label, values in selects)
+    return (f'<span class="fbar row" style="margin:0">{parts}<input class="search" placeholder="검색: {escape(hint)}" '
+            f'aria-label="검색: {escape(hint)}" oninput="{js}"></span>')
+
+
 def sources_page(app: AdminApp, edit_id: str | None) -> str:
     """RSS Source 목록 (국내·해외·종류별 묶음, 검색)·추가·수정·사용/중지·삭제 (D-073, D-074)."""
-    from saba.rss import KINDS, MAX_SOURCES, REGIONS
+    from saba.rss import KINDS, MAX_SOURCES, REGIONS, TOPICS
     entries = app.source_entries()
     enabled = sum(1 for e in entries if e.enabled)
     rows = ""
@@ -1324,24 +1353,25 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                            key=lambda e: (not e.enabled, e.source.source_name))
             if not group:
                 continue
-            rows += f'<tr class="group"><td colspan="6">{escape(region)} · {escape(kind)} ({len(group)})</td></tr>'
+            rows += f'<tr class="group"><td colspan="6">{escape(region)} · {escape(kind)} ({len(group)})</td></tr>'  # 6열: 이름·주제·주소·날짜·상태·관리
             for e in group:
                 s = e.source
                 state = badge("사용", "b-ok") if e.enabled else badge("중지", "b-mute")
-                rows += (f"<tr class='src' data-q='{escape((s.source_name + ' ' + s.source_id + ' ' + s.feed_url + ' ' + region + ' ' + kind).lower())}'>"
-                         f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td>"
+                rows += (f"<tr class='src' data-q='{escape((s.source_name + ' ' + s.source_id + ' ' + s.feed_url + ' ' + region + ' ' + kind + ' ' + s.topic).lower())}'"
+                         f" data-topic='{escape(s.topic)}' data-region='{escape(region)}' data-kind='{escape(kind)}' data-state='{'사용' if e.enabled else '중지'}'>"
+                         f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td><td>{escape(s.topic)}</td>"
                          f"<td class=url title='{escape(s.feed_url)}'>{escape(s.feed_url)}</td>"
                          f"<td>{'한국 시간' if s.local_offset else '표준'}{' · 날짜만' if s.date_only else ''}</td>"
                          f"<td>{state}</td><td style='white-space:nowrap'><a class=btn href='/sources?edit={quote(s.source_id)}'>수정</a> "
                          + button(app, "source_toggle", "중지" if e.enabled else "사용", "warn" if e.enabled else "success",
                                   back="/sources", fields={"id": s.source_id}) + " "
                          + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id}) + "</td></tr>")
-    search = ('<input class="search" placeholder="검색: 이름·ID·주소·구분·종류" aria-label="검색: 이름·ID·주소·구분·종류" oninput="var q=this.value.toLowerCase();'
-              'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
+    search = filter_bar([("topic", "주제", list(TOPICS)), ("region", "구분", list(REGIONS)), ("kind", "종류", list(KINDS)),
+                         ("state", "상태", ["사용", "중지"])], "이름·ID·주소")
     table = (f'<div class="card"><h2>RSS Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
              f'변경은 다음 실행부터 반영</span><span class="right">{search} <a class="btn primary" href="/sources?edit=new">추가</a></span></h2>'
-             '<table><tr><th>이름</th><th>RSS 주소</th><th>날짜 해석</th><th>상태</th><th>관리</th></tr>'
-             f'{rows}</table><p class="muted">중지·삭제해도 이미 수집한 기사와 AI 분석은 DB 에 남습니다. 삭제한 Source 의 기사는 메일에 나오지 않습니다.</p></div>')
+             '<div class="tw"><table><tr><th>이름</th><th>주제</th><th>RSS 주소</th><th>날짜 해석</th><th>상태</th><th>관리</th></tr>'
+             f'{rows}</table></div><p class="muted">중지·삭제해도 이미 수집한 기사와 AI 분석은 DB 에 남습니다. 삭제한 Source 의 기사는 메일에 나오지 않습니다.</p></div>')
     if not edit_id:
         return f'<div class="card">{SOURCE_GUIDE}</div>' + table
     current = next((e for e in entries if e.source.source_id == edit_id), None)
@@ -1349,14 +1379,15 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
         values = app.draft
     elif current:
         values = {"id": current.source.source_id, "name": current.source.source_name, "url": current.source.feed_url,
-                  "region": current.source.region, "kind": current.source.kind,
+                  "region": current.source.region, "kind": current.source.kind, "topic": current.source.topic,
                   "kst": current.source.local_offset is not None, "date_only": current.source.date_only, "enabled": current.enabled}
     else:
-        values = {"id": "", "name": "", "url": "https://", "region": "해외", "kind": "보안 전문 매체", "kst": False,
+        values = {"id": "", "name": "", "url": "https://", "region": "해외", "kind": "보안 전문 매체", "topic": "보안", "kst": False,
                   "date_only": False, "enabled": True}
     editing = current is not None
     checked = lambda key: " checked" if values.get(key) else ""
     kinds = "".join(f'<label><input type="radio" name="kind" value="{k}"{" checked" if values.get("kind") == k else ""}> {k}</label>' for k in KINDS)
+    topics = "".join(f'<label><input type="radio" name="topic" value="{t}"{" checked" if values.get("topic", "보안") == t else ""}> {t}</label>' for t in TOPICS)
     form = f"""
 <div class="card"><h2>{"Source 수정: " + escape(current.source.source_name) if editing else "Source 추가"}</h2>
 {SOURCE_GUIDE if not editing else ""}
@@ -1375,6 +1406,7 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
  <label><input type="radio" name="region" value="국내"{" checked" if values.get("region") == "국내" else ""}> 국내</label>
  <label><input type="radio" name="region" value="해외"{" checked" if values.get("region") != "국내" else ""}> 해외</label></div></div>
 <div class="field"><label class="t">종류</label><div class="chips">{kinds}</div></div>
+<div class="field"><label class="t">주제 (메일 섹션: 보안은 국내·해외 보안, 나머지는 경영·사업·테스트 섹션)</label><div class="chips">{topics}</div></div>
 <div class="field"><label class="t">날짜 해석과 사용</label><div class="chips">
  <label><input type="checkbox" name="kst" value="on"{checked("kst")}> 시간대 없는 날짜를 한국 시간으로 해석</label>
  <label><input type="checkbox" name="date_only" value="on"{checked("date_only")}> 날짜만 있는 Source (수집 기간 48시간)</label>
@@ -1412,14 +1444,15 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
     rows = ""
     for p in shown:
         tags = " ".join(badge(g, "b-info") for g in p.groups) or '<span class="muted">-</span>'
-        rows += (f"<tr class='src' data-q='{escape((p.name + ' ' + p.email + ' ' + p.department + ' ' + ' '.join(p.groups)).lower())}'>"
+        rows += (f"<tr class='src' data-q='{escape((p.name + ' ' + p.email + ' ' + p.department + ' ' + ' '.join(p.groups)).lower())}'"
+                 f" data-dept='{escape(p.department)}' data-group='{escape('|'.join(p.groups))}' data-state='{'사용' if p.enabled else '중지'}'>"
                  f"<td><b>{escape(p.name)}</b></td><td>{escape(p.email)}</td><td>{escape(p.department)}</td><td>{tags}</td>"
                  f"<td>{badge('사용', 'b-ok') if p.enabled else badge('중지', 'b-mute')}</td>"
                  f"<td style='white-space:nowrap'><a class=btn href='/recipients?edit={p.id}'>수정</a> "
                  + button(app, "recipient_toggle", "중지" if p.enabled else "사용", "warn" if p.enabled else "success", back="/recipients", fields={"id": str(p.id)}) + " "
                  + button(app, "recipient_delete", "삭제", "danger", back="/recipients", fields={"id": str(p.id)}) + "</td></tr>")
-    search = ('<input class="search" placeholder="검색: 이름·메일·부서·그룹" aria-label="검색: 이름·메일·부서·그룹" oninput="var q=this.value.toLowerCase();'
-              'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
+    search = filter_bar([("dept", "부서", [d for d, _ in dept_list]), ("group", "그룹", [g for g, _ in group_list]),
+                         ("state", "상태", ["사용", "중지"])], "이름·메일")
     listing = (f'<div class="card"><h2>수신자 목록<span class="right">{search} <a class="btn" href="/recipients/export.csv">명단 CSV 내려받기</a> '
                f'<a class="btn primary" href="/recipients?edit=new#form">추가</a></span></h2><div class="row">{filters}</div>'
                '<table><tr><th>이름</th><th>메일</th><th>부서</th><th>그룹</th><th>상태</th><th>관리</th></tr>'

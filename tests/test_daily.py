@@ -110,7 +110,7 @@ class DailyTests(unittest.TestCase):
                 path.write_text(json.dumps(base | bad), encoding="utf-8")
                 with self.assertRaises(DailyError):
                     load_config(path)
-        self.assertEqual(load_config().max_analysis_calls, 20)  # 저장소 기본 설정 (D-061)
+        self.assertEqual(load_config().max_analysis_calls, 30)  # 저장소 기본 설정 (D-061, 2026-10-13 사용자 승인으로 30)
         path.write_text(json.dumps(base), encoding="utf-8")  # 예전 형식 (mode 등 없음) 은 기본값
         config = load_config(path)
         self.assertEqual((config.mode, config.log_days, config.mail_days), ("weekly", 90, 30))

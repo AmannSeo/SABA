@@ -18,7 +18,7 @@ class RecipientTests(unittest.TestCase):
 
     def test_defaults(self):
         self.assertEqual([g for g, _ in rc.groups(self.db)], ["전체", "TEST", "파일럿"])
-        self.assertEqual([d for d, _ in rc.departments(self.db)], ["경영전략팀", "기술개발연구소", "보안사업팀", "STE본부"])
+        self.assertEqual([d for d, _ in rc.departments(self.db)], ["경영전략팀 · 사업지원팀", "기술개발연구소", "보안사업팀", "STE본부"])
         self.assertEqual(rc.domains(self.db), ["tbell.co.kr"])
 
     def test_add_edit_disable_delete(self):

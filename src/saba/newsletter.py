@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from saba.analysis import AnalysisResult
+from saba.rss import SOURCE_BY_ID
 from saba.schema import Article
 
 if TYPE_CHECKING:
@@ -23,8 +24,16 @@ _DEEP_SECTION_META = {
     "domestic": ("국내 보안", "🇰🇷"),
     "overseas": ("해외 보안", "🌎"),
     "ai_tech": ("AI & Tech", "🤖"),
+    "management": ("경영", "🏛️"),
+    "business": ("사업", "💼"),
+    "testing": ("테스트", "🧪"),
     "other": ("기타", "🗂️"),
 }
+# 심층 뉴스 순서. 기존 보안·AI 섹션 뒤에 부서 업무 주제 섹션을 둔다 (F13).
+_DEEP_ORDER = ("domestic", "overseas", "ai_tech", "management", "business", "testing", "other")
+_OPTIONAL_SECTIONS = {"management", "business", "testing", "other"}  # 기사가 없으면 섹션을 숨긴다
+_TOPIC_SECTION = {"경영": "management", "사업": "business", "테스트": "testing"}  # Source 주제 → 섹션
+_CATEGORY_SECTION = {"경영·노무·세무": "management", "사업 지원·마케팅": "business", "SW 테스트·품질": "testing"}
 _BRIEF_GROUP_META = {
     "schedule": ("일정", "🗓️", "schedule"),
     "hot": ("핫이슈", "🔥", "hot"),
@@ -33,10 +42,13 @@ _BRIEF_GROUP_META = {
     "company": ("기업 소식", "🏢", "company"),
     "ai_tech": ("테크(Tech)", "⚙️", "tech"),
     "economy": ("경제 지표", "📊", "economy"),
+    "management": ("경영", "🏛️", "company"),
+    "business": ("사업", "💼", "company"),
+    "testing": ("테스트", "🧪", "tech"),
     "other": ("기타", "🗂️", "company"),
 }
 _DEPARTMENT_CARDS = (
-    ("경영전략팀", "📊", "strategy"),
+    ("경영전략팀 · 사업지원팀", "📊", "strategy"),
     ("기술개발연구소", "💻", "development"),
     ("보안사업팀", "🛡️", "security-team"),
     ("STE본부", "⚙️", "ste"),
@@ -45,6 +57,9 @@ _SECTION_PREFIX = {
     "domestic": "domestic",
     "overseas": "overseas",
     "ai_tech": "ai",
+    "management": "management",
+    "business": "business",
+    "testing": "testing",
     "other": "other",
 }
 _IMPORTANCE_BADGE_CLASS = {
@@ -109,6 +124,7 @@ class ArticleView:
     sample_brief_group: Optional[str] = None
     ai_implication: Optional[str] = None
     ai_connections: dict[str, str] = field(default_factory=dict)
+    topic: str = "보안"  # Source 주제 (F13)
 
 
 def _implications(view: ArticleView) -> list[str]:
@@ -200,10 +216,16 @@ def build_article_view(article: Article, analysis: Optional[AnalysisResult] = No
         sample_brief_group=(preview_sample or {}).get("brief_group"),
         ai_implication=insight.implication if insight else None,
         ai_connections={c.department: c.text for c in insight.connections} if insight else {},
+        topic=getattr(SOURCE_BY_ID.get(article.source_id), "topic", "보안"),
     )
 
 
 def article_section(view: ArticleView) -> str:
+    # 부서 주제 Source 의 글은 AI 분류와 관계없이 그 주제 섹션에 둔다. 보안 Source 글도 AI 가 업무 분야로 분류하면 그 섹션으로.
+    if view.topic in _TOPIC_SECTION:
+        return _TOPIC_SECTION[view.topic]
+    if view.has_full_analysis and view.category in _CATEGORY_SECTION:
+        return _CATEGORY_SECTION[view.category]
     if view.category in _AI_TECH_CATEGORIES:
         return "ai_tech"
     if view.region == "국내":
@@ -336,9 +358,9 @@ def _empty_section_text(group_key: str, analyzed: bool) -> str:
 def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, str]) -> str:
     sections: list[str] = []
     analyzed = any(view.has_full_analysis for views in groups.values() for view in views)
-    for group_key in ("domestic", "overseas", "ai_tech", "other"):
+    for group_key in _DEEP_ORDER:
         views = groups[group_key]
-        if not views and group_key == "other":
+        if not views and group_key in _OPTIONAL_SECTIONS:
             continue
         title, icon = _DEEP_SECTION_META[group_key]
         cards = []
@@ -396,13 +418,13 @@ def _group_views(views: list[ArticleView]):
     """
     anchors = _build_anchor_map(views)
     brief_groups = {key: [] for key in _BRIEF_GROUP_META}
-    deep_groups = {"domestic": [], "overseas": [], "ai_tech": [], "other": []}
+    deep_groups = {key: [] for key in _DEEP_ORDER}
     for view in views:
         deep_section = article_section(view)
         deep_groups[deep_section].append(view)
         brief_key = "security"
-        if deep_section == "ai_tech":
-            brief_key = "ai_tech"
+        if deep_section in ("ai_tech", "management", "business", "testing"):
+            brief_key = deep_section
         elif view.has_full_analysis and view.category == "산업·시장·기업":
             brief_key = "market"
         elif deep_section == "other":
@@ -560,9 +582,9 @@ def _mail_news_card(view: ArticleView, anchor: str) -> str:
 def _mail_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, str]) -> str:
     analyzed = any(view.has_full_analysis for views in groups.values() for view in views)
     parts = []
-    for key in ("domestic", "overseas", "ai_tech", "other"):
+    for key in _DEEP_ORDER:
         views = groups[key]
-        if not views and key == "other":
+        if not views and key in _OPTIONAL_SECTIONS:
             continue
         title, icon = _DEEP_SECTION_META[key]
         parts.append(f'<table {_TABLE} style="margin:28px 0 14px;border-bottom:2px solid #111827;"><tr>'

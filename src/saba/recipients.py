@@ -15,7 +15,7 @@ import sqlite3
 
 DEFAULT_PATH = Path(__file__).resolve().parents[2] / "data" / "recipients.db"
 DEFAULT_GROUPS = ("TEST", "파일럿")
-DEFAULT_DEPARTMENTS = ("경영전략팀", "기술개발연구소", "보안사업팀", "STE본부")
+DEFAULT_DEPARTMENTS = ("경영전략팀 · 사업지원팀", "기술개발연구소", "보안사업팀", "STE본부")
 DEFAULT_DOMAINS = ("tbell.co.kr",)
 ALL_GROUP = "전체"  # 사용 중인 전원 (저장하지 않는 자동 그룹)
 CSV_HEADER = ("이름", "메일", "부서", "그룹")

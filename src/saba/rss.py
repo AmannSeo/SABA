@@ -38,13 +38,16 @@ class Source:
     region: str = "해외"
     # 관리 화면 분류 (D-074). official 은 kind == "공식 기관" 이다.
     kind: str = "보안 전문 매체"
+    # 메일 섹션·선별 상한 묶음 (F13). "보안" 은 기존처럼 region 으로 나누고, 나머지는 주제 섹션으로 간다.
+    topic: str = "보안"
 
 
 KST = timedelta(hours=9)  # 한국 표준시, 일광 절약 시간 없음
 SOURCES_PATH = Path(__file__).resolve().parents[2] / "config" / "sources.json"
-MAX_SOURCES = 15  # D-073
+MAX_SOURCES = 60  # D-073 은 15곳, 부서별 신규 출처 추가로 늘림 (F13, 2026-10-13)
 REGIONS = ("국내", "해외")
 KINDS = ("공식 기관", "보안 전문 매체", "IT 언론", "기업·벤더")  # D-074
+TOPICS = ("보안", "경영", "사업", "테스트")  # F13: 보안·AI (기존) + 경영·노무·세무, 사업 지원·마케팅, SW 테스트·품질
 SOURCE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
 
 
@@ -66,6 +69,7 @@ def parse_sources(rows: list) -> list[SourceEntry]:
             region, kst, date_only, enabled = (row.get("region", "해외"), bool(row.get("kst", False)),
                                                bool(row.get("date_only", False)), bool(row.get("enabled", True)))
             kind = row.get("kind") or ("공식 기관" if row.get("official") else "보안 전문 매체")
+            topic = row.get("topic") or "보안"
         except (KeyError, TypeError, AttributeError):
             raise RssError("Source 설정 오류: id·name·url 이 필요합니다.") from None
         if not SOURCE_ID_PATTERN.fullmatch(source_id) or source_id in seen:
@@ -78,16 +82,18 @@ def parse_sources(rows: list) -> list[SourceEntry]:
             raise RssError("Source 설정 오류: 구분은 국내·해외 중 하나여야 합니다.")
         if kind not in KINDS:
             raise RssError("Source 설정 오류: 종류는 공식 기관·보안 전문 매체·IT 언론·기업·벤더 중 하나여야 합니다.")
+        if topic not in TOPICS:
+            raise RssError("Source 설정 오류: 주제는 " + "·".join(TOPICS) + " 중 하나여야 합니다.")
         seen.add(source_id)
         entries.append(SourceEntry(Source(source_id, name, url, KST if kst else None, date_only, kind == "공식 기관",
-                                          region, kind), enabled))
+                                          region, kind, topic), enabled))
     return entries
 
 
 def source_row(entry: SourceEntry) -> dict:
     s = entry.source
     return {"id": s.source_id, "name": s.source_name, "url": s.feed_url, "region": s.region, "kind": s.kind,
-            "kst": s.local_offset is not None, "date_only": s.date_only, "enabled": entry.enabled}
+            "topic": s.topic, "kst": s.local_offset is not None, "date_only": s.date_only, "enabled": entry.enabled}
 
 
 def load_source_entries(path: Path = SOURCES_PATH) -> list[SourceEntry]:
@@ -129,6 +135,19 @@ SOURCE_FIELDS = (
 )
 
 
+ATOM = "{http://www.w3.org/2005/Atom}"
+
+
+def _atom_item(entry) -> dict:
+    """Atom entry 를 RSS item 과 같은 모양으로 바꾼다 (F13: GitHub 릴리스·Blogger 피드)."""
+    links = entry.findall(ATOM + "link")
+    link = next((l.get("href") for l in links if l.get("rel", "alternate") == "alternate"), None)
+    # content 는 릴리스 노트 전문일 수 있어 길이를 줄인다. summary 가 있으면 그것을 쓴다.
+    excerpt = entry.findtext(ATOM + "summary") or (entry.findtext(ATOM + "content") or "")[:3000]
+    return {"title": entry.findtext(ATOM + "title"), "link": link, "guid": entry.findtext(ATOM + "id"),
+            "date": entry.findtext(ATOM + "published") or entry.findtext(ATOM + "updated"), "excerpt": excerpt}
+
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -138,7 +157,7 @@ def fetch_feed(source: Source = CERT_EU) -> bytes:
     # timeout은 각 소켓 작업의 제한이다. DNS 및 전체 실행의 15초 상한은 아니다.
     request = urllib.request.Request(source.feed_url, headers={
         "User-Agent": "SABA/0.1 RSS metadata collector",
-        "Accept": "application/rss+xml, application/xml, text/xml",
+        "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml",
         "Accept-Encoding": "identity",
     })
     try:
@@ -146,7 +165,7 @@ def fetch_feed(source: Source = CERT_EU) -> bytes:
             if response.status != 200:
                 raise RssError("RSS HTTP 응답 상태가 200이 아닙니다.")
             if response.headers.get_content_type() not in (
-                "application/rss+xml", "application/xml", "text/xml",
+                "application/rss+xml", "application/atom+xml", "application/xml", "text/xml",
             ) or response.headers.get("Content-Encoding", "identity").lower() != "identity":
                 raise RssError("RSS Content-Type 또는 Content-Encoding이 예상과 다릅니다.")
             payload = response.read(MAX_BYTES + 1)
@@ -174,6 +193,11 @@ def publication_time(value: str | None, local_offset: timedelta | None = None) -
                 return local.astimezone(timezone.utc)
     value = re.sub(r"\bCEST$", "+0200", value)
     value = re.sub(r"\bCET$", "+0100", value)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}T[\d:.]+(?:Z|[+-]\d{2}:\d{2})", value):  # Atom (RFC 3339)
+        try:
+            return datetime.fromisoformat(value).astimezone(timezone.utc)
+        except ValueError:
+            return None
     try:
         result = parsedate_to_datetime(value)
         if result.tzinfo is None or result.utcoffset() is None:
@@ -191,22 +215,32 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
         text = payload.decode("utf-8-sig")
     except UnicodeError:
         raise RssError("RSS는 UTF-8 XML이어야 합니다.") from None
-    if "\x00" in text or "<!DOCTYPE" in text.upper() or "<!ENTITY" in text.upper():
+    # DTD·엔티티 선언은 루트 요소 앞(prolog)에만 올 수 있다. 본문 기사 안의 "<!DOCTYPE" 글자는 선언이 아니다.
+    root_start = re.search(r"<(?:rss|[\w.-]*:?feed)\b", text)
+    prolog = text[:root_start.start()] if root_start else text
+    if "\x00" in text or "<!DOCTYPE" in prolog.upper() or "<!ENTITY" in prolog.upper():
         raise RssError("RSS DTD·엔티티 선언은 허용하지 않습니다.")
     try:
         root = ET.fromstring(payload)
     except (ET.ParseError, LookupError, ValueError):
         raise RssError("RSS XML을 파싱할 수 없습니다.") from None
-    channels = root.findall("channel")
-    if root.tag != "rss" or root.get("version") != "2.0" or len(channels) != 1:
-        raise RssError("예상한 RSS 2.0 channel 형식이 아닙니다.")
+    if root.tag == ATOM + "feed":
+        items = [_atom_item(entry) for entry in root.findall(ATOM + "entry")]
+        offset = None
+    else:
+        channels = root.findall("channel")
+        if root.tag != "rss" or root.get("version") != "2.0" or len(channels) != 1:
+            raise RssError("예상한 RSS 2.0 channel 또는 Atom feed 형식이 아닙니다.")
+        items = [{"title": i.findtext("title"), "link": i.findtext("link"), "guid": i.findtext("guid"),
+                  "date": i.findtext("pubDate"), "excerpt": i.findtext("description")} for i in channels[0].findall("item")]
+        offset = source.local_offset
     data = []
-    for index, item in enumerate(channels[0].findall("item")):
-        title = item.findtext("title")
-        link = item.findtext("link")
+    for index, item in enumerate(items):
+        title = item["title"]
+        link = item["link"]
         if not title or not title.strip() or not link or not link.strip():
             raise RssError(f"RSS 항목 {index + 1}: 필수 제목 또는 URL이 없습니다.")
-        guid = item.findtext("guid")
+        guid = item["guid"]
         guid = guid if guid and guid.strip() else None
         try:
             url = str(TypeAdapter(HttpUrl).validate_python(link.strip()))
@@ -214,13 +248,13 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
             raise RssError(f"RSS 항목 {index + 1}: HTTP(S) URL이 필요합니다.") from None
         identity = "guid:" + guid if guid else "url:" + url
         digest = hashlib.sha256((source.source_id + "\n" + identity).encode("utf-8")).hexdigest()
-        excerpt = item.findtext("description")
+        excerpt = item["excerpt"]
         data.append({
             "schema_version": 1, "article_id": source.source_id + ":" + digest,
             "source_id": source.source_id, "source_name": source.source_name,
             "original_title": title, "url": url, "collection_method": "rss",
             "source_item_id": guid, "collected_at": now.isoformat(),
-            "published_at": publication_time(item.findtext("pubDate"), source.local_offset),
+            "published_at": publication_time(item["date"], offset),
             "feed_excerpt": excerpt if excerpt and excerpt.strip() else None,
         })
     try:
@@ -229,8 +263,11 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
         raise RssError("RSS 기사 Schema 또는 Feed 내부 ID 중복 검증에 실패했습니다.") from None
 
 
+TOPIC_DAYS = 7  # 보안 외 주제 Source 는 게시가 드물어 7일 안 게시물을 저장하고, 처음 수집된 날에만 메일에 낸다 (F13)
+
+
 def select_articles(articles: list[Article], now: datetime, *, bootstrap=False,
-                    since: datetime | None = None, date_only=False) -> tuple[list[Article], dict[str, int]]:
+                    since: datetime | None = None, date_only=False, wide=False) -> tuple[list[Article], dict[str, int]]:
     if bootstrap and since is not None:
         raise RssError("bootstrap과 since는 함께 사용할 수 없습니다.")
     if since is not None:
@@ -242,6 +279,8 @@ def select_articles(articles: list[Article], now: datetime, *, bootstrap=False,
         hours = 48 if date_only else 24
         if now.astimezone(timezone(KST)).weekday() == 0:  # 월요일은 주말 게시분도 저장 (+48시간, 표시 기간과 같음, D-063)
             hours += 48
+        if wide:
+            hours = max(hours, TOPIC_DAYS * 24)
         start = now - timedelta(days=30) if bootstrap else now - timedelta(hours=hours)
     unknown = [article for article in articles if article.published_at is None]
     dated = [article for article in articles

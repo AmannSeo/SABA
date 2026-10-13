@@ -871,8 +871,11 @@ class ListManagementTests(AdminBase):
             self.assertIn("총 1일", html)
             for value in ("자동 실행", "수집 오류", "부분 발송", "불명확 1명", "진행 단계", filename):
                 self.assertIn(value, html)
-            self.assertNotIn("예전 실행", html)
+            # 실행 주체 선택 목록 (F14) 에는 모든 주체가 나오므로, 목록 본문 (필터 form 뒤) 에서만 확인한다
+            self.assertNotIn("예전 실행", html.split("</form>", 1)[1])
             self.assertIn(f"tab=detail&day={TODAY:%Y%m%d}", html)
+            only_auto = self.get("/logs?" + urlencode({"year": "all", "origin": "자동 실행"}))
+            self.assertNotIn("예전 실행", only_auto.split("</form>", 1)[1])  # 항목별 필터
             sends = self.get("/logs?tab=sends")
             self.assertIn(f"회차 {first} 재발송", sends)
             self.assertIn("수신자별 결과", sends)

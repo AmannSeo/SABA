@@ -6,7 +6,7 @@ from itertools import combinations
 import re
 
 from saba.analysis import FeedTextParser, normalize_text
-from saba.rss import KST, SOURCE_BY_ID
+from saba.rss import KST, SOURCE_BY_ID, TOPIC_DAYS
 from saba.schema import Article, SourceReference
 
 CVE_PATTERN = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
@@ -147,7 +147,16 @@ def in_window(article: Article, now) -> bool:
     hours = 48 if source is not None and source.date_only else 24
     if now.astimezone(timezone(KST)).weekday() == 0:  # 월요일은 주말 기사 포함 (+48시간, D-063)
         hours += 48
+    if source is not None and source.topic != "보안":
+        # 게시가 드문 주제 Source (F13): 7일 안 게시물 중 이번 기간에 처음 수집된 것만. 같은 글이 매일 반복되지 않는다.
+        return (article.published_at is not None and now - timedelta(days=TOPIC_DAYS) <= article.published_at <= now
+                and now - timedelta(hours=hours) <= article.collected_at <= now)
     return article.published_at is not None and now - timedelta(hours=hours) <= article.published_at <= now
+
+
+def section_key(source) -> str:
+    """선별 상한 묶음: 보안 Source 는 출처 국가, 주제 Source 는 주제 (F13)."""
+    return source.region if source.topic == "보안" else source.topic
 
 
 def select_issues(articles: list[Article], now) -> Selection:
@@ -166,11 +175,11 @@ def select_issues(articles: list[Article], now) -> Selection:
         if per_source.get(source.source_id, 0) >= MAX_PER_SOURCE:
             source_cut += 1
             continue
-        if per_section.get(source.region, 0) >= MAX_PER_SECTION:
+        if per_section.get(section_key(source), 0) >= MAX_PER_SECTION:
             section_cut += 1
             continue
         per_source[source.source_id] = per_source.get(source.source_id, 0) + 1
-        per_section[source.region] = per_section.get(source.region, 0) + 1
+        per_section[section_key(source)] = per_section.get(section_key(source), 0) + 1
         selected.append(issue)
     return Selection(selected, candidates, len(window), source_cut, section_cut)
 

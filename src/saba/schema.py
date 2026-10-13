@@ -25,7 +25,7 @@ def nonblank(value: str) -> str:
 
 
 Text = Annotated[str, StringConstraints(strict=True), AfterValidator(nonblank)]
-Department = Literal["경영전략팀", "기술개발연구소", "보안사업팀", "STE본"]
+Department = Literal["경영전략팀 · 사업지원팀", "기술개발연구소", "보안사업팀", "STE본"]
 
 
 def utc_datetime(value: object) -> datetime:

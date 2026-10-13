@@ -71,6 +71,8 @@ class HistoryTests(unittest.TestCase):
             with patch.object(Path, "is_symlink", lambda p: p == blocked), self.assertRaises(ValueError):
                 mail_path(output, "26/10/daily_x.eml")
         outside = self.root / "outside"
+        (output / "26/10").mkdir(parents=True, exist_ok=True)  # 밖을 가리키는 검사는 실제로 있는 파일에 한다
+        (output / "26/10/daily_x.eml").write_bytes(b"x")
         original = Path.resolve
         with patch.object(Path, "resolve", lambda p, *a, **k: outside if p.name == "daily_x.eml" else original(p, *a, **k)), self.assertRaises(ValueError):
             mail_path(output, "26/10/daily_x.eml")

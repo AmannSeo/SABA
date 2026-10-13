@@ -25,7 +25,9 @@ def mail_path(output: Path, name: str) -> Path:
     for component in (output, *[output.joinpath(*name.split('/')[:i]) for i in range(1, len(name.split('/')) + 1)]):
         if component.is_symlink() or component.is_junction():
             raise ValueError("메일 경로의 링크는 허용하지 않습니다")
-    if not path.resolve().is_relative_to(output.resolve()):
+    # 형식 (상위 이동 없음) 과 링크 검사로 탈출은 이미 막힌다. resolve 비교는 실제로 있는 경로에만 한다:
+    # Windows 는 아직 없는 경로를 다른 표기로 resolve 해 동시 생성 중 오탐이 났다.
+    if path.exists() and not path.resolve().is_relative_to(output.resolve()):
         raise ValueError("메일 경로가 output 밖입니다")
     return path
 

@@ -95,7 +95,7 @@ class SchemaTests(unittest.TestCase):
             {"departments": ["STE본부"]},
             {"departments": ["보안사업팀", "보안사업팀"]},
             {"department_reasons": {"보안사업팀": "가상 이유"}},
-            {"departments": ["경영전략팀"], "department_reasons": {"보안사업팀": "가상 이유"}},
+            {"departments": ["경영전략팀 · 사업지원팀"], "department_reasons": {"보안사업팀": "가상 이유"}},
             {"departments": ["보안사업팀"], "department_reasons": {"보안사업팀": " "}},
         ]
         for fields in cases:
