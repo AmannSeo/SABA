@@ -1,7 +1,10 @@
 from datetime import datetime, timedelta
 from email.message import EmailMessage
+from dataclasses import replace
+from html.parser import HTMLParser
 import http.client
 import json
+import re
 from pathlib import Path
 import tempfile
 import threading
@@ -134,7 +137,7 @@ class AdminTests(AdminBase):
     def test_switch_off_shows_notice_instead_of_schedule(self):  # D-074
         self.shell.state = "Disabled"
         html = self.get("/")
-        self.assertIn("예약 발송이 꺼져 있습니다.", html)
+        self.assertIn("예약 발송 꺼져 있습니다", html)
         self.assertNotIn("<th>다음 예약</th>", html)
         self.assertIn('type="checkbox" onchange', html)  # 스위치 꺼짐
 
@@ -595,6 +598,153 @@ class ResendPageTests(AdminBase):
         html = self.get("/")
         self.assertIn("부분 발송", html)
         self.assertNotIn("/action/run_send", html)  # 일부 보낸 날에 전원 재발송을 권하지 않음
+
+
+class UiFeedbackTests(AdminBase):
+    def test_schedule_state_and_send_setting_are_distinct(self):
+        config = self.app.config()
+        for state in ("Ready", "Disabled", "확인 실패"):
+            for send in (True, False):
+                with self.subTest(state=state, send=send), patch.object(self.app, "config", return_value=replace(config, send=send)):
+                    self.shell.state = state
+                    html = self.get("/")
+                    if state == "Ready":
+                        self.assertIn("<th>다음 예약</th>", html)
+                        self.assertIn("TEST 1명에게 발송" if send else "메일 생성까지만", html)
+                    else:
+                        self.assertNotIn("<th>다음 예약</th>", html)
+                        self.assertIn("예약 발송 꺼져 있습니다" if state == "Disabled" else "예약 발송 상태를 확인하지 못했습니다", html)
+                    self.assertIn("<h2>운영 현황</h2>", html)
+        with patch.object(self.app, "shell", return_value=(1, "")):
+            self.assertIn("확인 불가", self.get("/"))
+
+    def test_sent_newsletter_is_on_right_and_uses_its_file(self):
+        name = f"daily_{TODAY:%Y%m%d}_1015.eml"
+        message = EmailMessage()
+        message.set_content("가상 뉴스레터")
+        message.add_alternative("<html><body><h1>가상 뉴스레터</h1></body></html>", subtype="html")
+        (self.root / "output" / name).write_bytes(message.as_bytes())
+        html = self.get("/")
+        self.assertIn('class="grid dashboard"', html)
+        self.assertLess(html.index("<h2>운영 현황</h2>"), html.index("<h2>오늘 보내진 뉴스레터</h2>"))
+        self.assertIn(f'src="/newsletter/view?name={name}"', html)
+        self.assertIn('title="오늘 보내진 뉴스레터 미리보기"', html)
+        self.assertIn('sandbox="allow-popups"', html)
+        self.assertIn("<h1>가상 뉴스레터</h1>", self.get(f"/newsletter/view?name={name}"))
+
+    def test_latest_generated_mail_does_not_replace_sent_preview(self):
+        from saba.history import Run
+        name = f"daily_{TODAY:%Y%m%d}_1015.eml"
+        (self.root / "output" / name).write_bytes(b"virtual")
+        sent = Run(f"{STAMP} 10:15:00", "자동 실행", result="성공", sent=True, mail_file=name)
+        generated = Run(f"{STAMP} 11:00:00", "자동 실행", result="성공 (발송 안 함)", mail_file="daily_new.eml")
+        with patch.object(self.app, "real_runs_today", return_value=[generated, sent]):
+            html = self.get("/")
+        self.assertIn(f'src="/newsletter/view?name={name}"', html)
+        self.assertNotIn('src="/newsletter/view?name=daily_new.eml"', html)
+
+    def test_preview_empty_failed_unclear_generated_and_missing_states(self):
+        from saba.history import Run
+        cases = [([], "오늘 보내진 뉴스레터가 없습니다"),
+                 ([Run(STAMP + " 08:00:00", "자동 실행", result="성공 (발송 안 함)")], "생성했지만 발송하지 않았습니다"),
+                 ([Run(STAMP + " 08:00:00", "자동 실행", result="실패")], "확인된 발송 성공 기록이 없습니다"),
+                 ([Run(STAMP + " 08:00:00", "자동 실행", result="실패", error="발송 여부 불명확")], "발송 여부가 불명확합니다"),
+                 ([Run(STAMP + " 08:00:00", "자동 실행", result="부분 발송", sent=True, mail_file="daily_missing.eml")], "메일 파일이 없습니다"),
+                 ([Run(STAMP + " 08:00:00", "자동 실행", result="성공", sent=True, mail_file="../config/daily.json")], "메일 파일이 없습니다")]
+        for runs, text in cases:
+            with self.subTest(text=text):
+                html = admin.today_newsletter(self.app, runs)
+                self.assertIn(text, html)
+                self.assertNotIn("<iframe", html)
+
+    def test_unclear_send_does_not_offer_whole_run_again(self):
+        self.log.write_text(f"{STAMP} 08:00:00,000 INFO 실행 시작: 자동 실행 (발송 포함)\n"
+                            f"{STAMP} 08:00:01,000 ERROR 발송 단계 실패: SendLogError · 발송 여부 불명확 (발송 이력·받은 편지함 확인)\n",
+                            encoding="utf-8")
+        html = self.get("/")
+        self.assertIn("발송 여부 불명확", html)
+        self.assertNotIn("/action/run_send", html)
+        self.assertNotIn("때문에 발송하지 않았습니다", html)
+
+    def test_table_action_links_keep_href_and_use_buttons(self):
+        from saba import sendlog
+        sendlog.record("가상 실행", "TEST 주소", [sendlog.Result("virtual@tbell.co.kr", "성공")],
+                       "daily_virtual.eml", self.root / "data" / "send_history.db")
+
+        class TableLinks(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.depth, self.links = 0, []
+
+            def handle_starttag(self, tag, attrs):
+                if tag == "table":
+                    self.depth += 1
+                if tag == "a" and self.depth:
+                    self.links.append(dict(attrs))
+
+            def handle_endtag(self, tag):
+                if tag == "table":
+                    self.depth -= 1
+
+        links = []
+        for path in ("/logs", "/test", "/logs?tab=sends", "/newsletter", "/sources", "/recipients"):
+            parser = TableLinks()
+            parser.feed(self.get(path))
+            links.extend(parser.links)
+        self.assertTrue(links)
+        for attrs in links:
+            self.assertTrue(attrs.get("href", "").startswith("/"))
+            self.assertIn("btn", attrs.get("class", "").split())
+        self.assertEqual(self.commands, [])
+        self.assertEqual(self.launched, [])
+        self.assertEqual(self.fetched, [])
+
+    def test_shared_table_and_control_rules(self):
+        css = admin.CSS
+        table = re.search(r"(?<![\w.])table\{([^}]+)\}", css).group(1)
+        cells = re.search(r"th,td\{([^}]+)\}", css).group(1)
+        self.assertIn("border:1px solid var(--line)", table)
+        self.assertIn("border:1px solid var(--line)", cells)
+        self.assertIn("vertical-align:middle", cells)
+        self.assertIn("padding:", cells)
+        self.assertIn(".dashboard{align-items:start}", css)
+        self.assertIn("@media (max-width:1000px)", css)
+        self.assertIn("prefers-reduced-motion", css)
+
+
+class RssEvidenceTests(unittest.TestCase):
+    def test_fixture_funnel_keeps_missing_analysis_and_separates_exclusions(self):
+        from types import SimpleNamespace
+        from saba import briefing
+        from saba.analysis import analysis_input
+        from saba.issues import select_issues
+        from saba.storage import save_articles
+        from test_issues import NOW, article, build
+
+        rows = [article("a0", "the-hacker-news", "CVE-2026-12345"),
+                article("a1", "the-hacker-news", "CVE-2026-12345")]
+        rows += [article(f"b{i}", "the-hacker-news", f"가상 뉴스 {i}") for i in range(6)]
+        rows.append(article("old", "the-hacker-news", "기간 밖", days_ago=7))
+        articles = build(*rows)
+        selection = select_issues(articles, NOW)
+        self.assertEqual((selection.in_window, len(selection.issues), selection.excluded_by_source_cap), (8, 5, 2))
+        representative = selection.issues[0].representative
+        stored = {(representative.article_id, analysis_input(representative)[2]): SimpleNamespace(status=briefing.OUT_OF_SCOPE)}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            db = root / "articles.db"
+            save_articles(db, articles)
+            before = db.read_bytes()
+            with patch.object(briefing, "stored_results", return_value=stored):
+                views, selected, stats = briefing.build_views(db, root / "analysis.db", NOW,
+                                                            body_cache=root / "bodies.json", insight_db=root / "insights.db",
+                                                            max_new_calls=0, insight_calls=0)
+            self.assertEqual((len(selected.issues), stats.out_of_scope, len(views)), (5, 1, 4))
+            self.assertTrue(all(not view.has_full_analysis for view in views))
+            self.assertNotIn("openai-news", {issue.representative.source_id for issue in selected.issues})
+            self.assertEqual(db.read_bytes(), before)
+            self.assertFalse((root / "analysis.db").exists())
+            self.assertFalse((root / "bodies.json").exists())
 
 
 if __name__ == "__main__":

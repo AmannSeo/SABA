@@ -190,6 +190,8 @@ class AdminApp:
         runs = self.real_runs_today()
         if not config.send or any(run.sent for run in runs) or self.running():
             return None
+        if any("불명확" in run.error for run in runs):
+            return None
         if runs and runs[0].result == "실패":
             return f"오늘 {runs[0].start[11:16]} 실행이 실패해 발송하지 않았습니다. {runs[0].error}"
         now = datetime.now().astimezone()
@@ -675,16 +677,16 @@ h1{font-size:22px;letter-spacing:-.3px;margin:0 0 20px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow)}
 .card h2{font-size:15.5px;margin:0 0 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .card h2 .right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-table{border-collapse:collapse;width:100%}
+table{border-collapse:collapse;width:100%;border:1px solid var(--line)}
 .tw{overflow-x:auto;max-width:100%}
-th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th,td{padding:10px 12px;border:1px solid var(--line);text-align:left;vertical-align:middle}
 th{background:var(--subtle);color:var(--muted);font-weight:600;font-size:12.5px;white-space:nowrap}
 tr:first-child th{border-top:1px solid var(--line)}
 tr.group td{background:var(--subtle);color:var(--text);font-weight:700;font-size:13px}
 .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
 .b-ok{background:var(--ok-soft);color:var(--ok)}.b-bad{background:var(--bad-soft);color:var(--bad)}.b-warn{background:var(--warn-soft);color:var(--warn)}
 .b-mute{background:var(--subtle);color:var(--muted);box-shadow:inset 0 0 0 1px var(--line)}.b-info{background:var(--accent-soft);color:var(--accent)}
-.btn{display:inline-block;padding:7px 14px;border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--surface);color:var(--text);
+.btn{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;min-height:36px;padding:7px 14px;border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--surface);color:var(--text);
  cursor:pointer;font:inherit;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background-color .15s,border-color .15s}
 .btn:hover{background:var(--subtle)}.btn:active{transform:translateY(1px)}
 .btn:focus-visible,a:focus-visible,summary:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
@@ -698,7 +700,8 @@ tr.group td{background:var(--subtle);color:var(--text);font-weight:700;font-size
 .tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}
 .tabs a{padding:8px 14px;border-radius:var(--r-ctl);color:var(--muted);text-decoration:none;font-weight:600}
 .tabs a:hover{background:var(--surface)}.tabs a.on{background:var(--surface);color:var(--accent);box-shadow:inset 0 0 0 1px var(--line)}
-form.inline{display:inline}
+form.inline{display:inline-block;vertical-align:middle}
+td .btn{margin:2px 0}
 .row{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:8px 0}
 .field{margin-bottom:16px}.field>label.t{display:block;font-weight:700;margin-bottom:6px}
 .chips label{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface);cursor:pointer}
@@ -709,6 +712,10 @@ dialog{border:none;border-radius:var(--r-card);max-width:560px;padding:22px 26px
 dialog h3{margin:0 0 10px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch;margin-bottom:16px}
 .grid>.card{margin-bottom:0}
+.dashboard{align-items:start}
+.dashboard>div{min-width:0}
+.newsletter-preview{width:100%;height:680px;border:1px solid var(--line);border-radius:var(--r-ctl);background:var(--surface)}
+.newsletter-file{overflow-wrap:anywhere;margin-bottom:12px}
 .side{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
 .sticky{position:sticky;top:16px}
 @media (max-width:1000px){.grid,.side,.tiles{grid-template-columns:minmax(0,1fr)}main{padding:0 16px}header{padding:0 16px;gap:16px}}
@@ -798,6 +805,8 @@ def run_sentence(run) -> str:
     if run.result == "부분 발송":
         return f"{head}: 일부만 보냈습니다. 발송 이력에서 실패한 사람을 확인하세요."
     if run.result == "실패":
+        if "불명확" in run.error:
+            return f"{head}: {run.error}. 발송 이력과 받은 편지함을 확인하세요."
         return f"{head}: {run.error} 때문에 발송하지 않았습니다."
     if run.result == "성공 (발송 안 함)":
         return f"{head}: 기사 {run.articles}건으로 메일을 만들었습니다 (발송 안 함 설정)."
@@ -844,7 +853,8 @@ def dashboard(app: AdminApp) -> str:
     config, task, use, runs = app.config(), app.task(), app.usage(), app.runs()
     now = datetime.now().astimezone()
     real_today = app.real_runs_today()
-    on = task.get("state") not in ("Disabled", "등록 안 됨", "확인 실패")
+    on = task.get("state") in ("Ready", "Running", "Enabled")
+    task_unknown = task.get("state") not in ("Ready", "Running", "Enabled", "Disabled", "등록 안 됨")
     upcoming = next_runs(config, now, 3)
     running = app.running()
     sent = next((r for r in real_today if r.sent), None)
@@ -854,12 +864,16 @@ def dashboard(app: AdminApp) -> str:
 
     tile_task = (badge("켜짐", "b-ok") if on else badge("꺼짐", "b-mute")) + (
         f'<div class="s">다음 예약 {escape(kst_label(upcoming[0]))}</div>' if on and upcoming else '<div class="s">예약 발송이 꺼져 있습니다</div>')
+    if task_unknown:
+        tile_task = badge("확인 불가", "b-warn") + '<div class="s">예약 발송 상태를 확인하지 못했습니다.</div>'
     if running:
         today_state, today_sub = badge("실행 중", "b-info"), "끝나면 결과가 표시됩니다"
     elif sent and sent.result == "부분 발송":
         today_state, today_sub = badge(f"{sent.start[11:16]} 부분 발송", "b-bad"), "실행 이력·뉴스레터의 발송 이력에서 확인"
     elif sent:
         today_state, today_sub = badge(f"{sent.start[11:16]} 발송 완료", "b-ok"), escape(sent.origin)
+    elif any("불명확" in r.error for r in real_today):
+        today_state, today_sub = badge("발송 여부 불명확", "b-warn"), "발송 이력과 받은 편지함을 확인하세요"
     elif need:
         today_state, today_sub = badge("발송 안 됨", "b-bad"), "아래 \"지금 발송\" 으로 보낼 수 있습니다"
     else:
@@ -888,11 +902,13 @@ def dashboard(app: AdminApp) -> str:
         schedule_body = (f'<table><tr><th>일정</th><td>{escape(schedule_summary(config))}</td></tr>'
                          f'<tr><th>다음 예약</th><td><ul style="margin:0;padding-left:18px">{upcoming_rows}</ul></td></tr>'
                          f'<tr><th>발송</th><td>{"TEST 1명에게 발송" if config.send else "메일 생성까지만"}</td></tr></table>')
+    elif task_unknown:
+        schedule_body = '<div class="info">예약 발송 상태를 확인하지 못했습니다. 예약 설정과 작업 스케줄러 접근 권한을 확인하세요.</div>'
     else:
-        schedule_body = (f'<div class="info"><b>예약 발송이 꺼져 있습니다.</b><br>정해진 시각에 뉴스레터를 보내지 않습니다. '
+        schedule_body = (f'<div class="info"><b>예약 발송 꺼져 있습니다</b><br>정해진 시각에 뉴스레터를 보내지 않습니다. '
                          f'스위치를 켜면 저장된 일정 ({escape(schedule_summary(config))}) 으로 다시 발송합니다.</div>')
     schedule_card = (f'<div class="card"><h2>예약 발송<a class="btn right" href="/schedule">설정 변경</a></h2>'
-                     f'{task_switch(app, on)}{schedule_body}</div>')
+                     f'{"" if task_unknown else task_switch(app, on)}{schedule_body}</div>')
 
     status_rows = [
         ("이번 달 AI 호출", f'{use["calls"]}건 (성공 {use["ok"]} · 실패 {use["failed"]})'),
@@ -908,8 +924,35 @@ def dashboard(app: AdminApp) -> str:
                           f"<td>{badge(r.result, RESULT_BADGE.get(r.result, 'b-mute'))}</td></tr>" for r in runs[:5])
     recent_card = ('<div class="card"><h2>최근 실행<a class="btn right" href="/logs">더 보기</a></h2>'
                    f'<table><tr><th>시각</th><th>실행 주체</th><th>결과</th></tr>{recent_rows or "<tr><td colspan=3>기록 없음</td></tr>"}</table></div>')
-    return (tiles + f'<div class="grid">{today_card}{schedule_card}</div>'
-            + f'<div class="grid">{recent_card}{status_card}</div>')
+    return (tiles + f'<div class="grid dashboard"><div>{today_card}{schedule_card}{recent_card}{status_card}</div>'
+            + today_newsletter(app, real_today) + '</div>')
+
+
+def today_newsletter(app: AdminApp, runs: list) -> str:
+    sent = next((run for run in runs if run.sent), None)
+    body = '<p class="muted">오늘 보내진 뉴스레터가 없습니다.</p>'
+    if sent is not None:
+        body = (f'<p>{badge(sent.result, RESULT_BADGE.get(sent.result, "b-mute"))} '
+                f'{escape(sent.start[11:16])} · {escape(sent.origin)}</p>')
+        name = sent.mail_file
+        if name and re.fullmatch(r"daily_[\w-]+\.eml", name) and (app.root / "output" / name).is_file():
+            body += (f'<div class="newsletter-file"><a class="btn" href="/logs?tab=mail&name={quote(name)}">뉴스레터 열기</a> '
+                     f'<span class="muted">{escape(name)}</span></div>'
+                     f'<iframe class="newsletter-preview" title="오늘 보내진 뉴스레터 미리보기" '
+                     f'src="/newsletter/view?name={quote(name)}" loading="lazy" sandbox="allow-popups"></iframe>')
+        else:
+            body += '<p class="muted">발송 기록은 있으나 메일 파일이 없습니다. 보관 기간과 파일 경로를 확인하세요.</p>'
+    elif any("불명확" in run.error for run in runs):
+        body = '<p class="info">발송 여부가 불명확합니다. 발송 이력과 받은 편지함을 먼저 확인하세요.</p>'
+    elif runs:
+        latest = runs[0]
+        if latest.result == "성공 (발송 안 함)":
+            body = '<p class="muted">오늘 메일은 생성했지만 발송하지 않았습니다.</p>'
+        elif latest.result == "실패":
+            body = '<p class="muted">오늘 실행이 실패했으며 확인된 발송 성공 기록이 없습니다.</p>'
+        elif latest.result == "진행 중":
+            body = '<p class="muted">실행 중입니다. 발송 결과가 확인되면 표시합니다.</p>'
+    return f'<section class="card"><h2>오늘 보내진 뉴스레터</h2>{body}</section>'
 
 
 def test_page(app: AdminApp) -> str:
@@ -942,7 +985,7 @@ def test_page(app: AdminApp) -> str:
         f"<tr><td style='white-space:nowrap'>{escape(r.start[:16])}</td><td>{'즉시' if '즉시' in r.origin else '예약'}</td>"
         f"<td>{badge(r.result, RESULT_BADGE.get(r.result, 'b-mute'))}</td><td>{'-' if r.articles is None else r.articles}</td>"
         f"<td>{escape(r.mail_bytes or '-')}</td><td>{'발송' if r.sent else '-'}</td><td>{escape(r.error) or '-'}</td>"
-        f"<td>{f'<a href=/logs?tab=mail&name={quote(r.mail_file)}>메일 보기</a>' if r.mail_file else ''}</td></tr>" for r in tests)
+        f"<td>{f'<a class=btn href=/logs?tab=mail&name={quote(r.mail_file)}>메일 보기</a>' if r.mail_file else ''}</td></tr>" for r in tests)
     history = ('<div class="card"><h2>테스트 발송 기록</h2><table><tr><th>시각</th><th>종류</th><th>결과</th><th>기사</th>'
                f'<th>메일 크기 (bytes)</th><th>발송</th><th>실패 사유</th><th></th></tr>{rows or "<tr><td colspan=8>아직 테스트 발송 기록이 없습니다.</td></tr>"}</table></div>')
     tool_rows = "".join(
@@ -1067,12 +1110,12 @@ def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None)
         rows = ""
         for run in app.runs():
             day_key = run.start[:10].replace("-", "")
-            mail = f"<a href='/logs?tab=mail&name={quote(run.mail_file)}'>메일</a> · " if run.mail_file else ""
+            mail = f"<a class='btn' href='/logs?tab=mail&name={quote(run.mail_file)}'>메일</a> " if run.mail_file else ""
             rows += (f"<tr><td style='white-space:nowrap'>{escape(run.start[:16])}</td><td>{escape(run.origin)}</td>"
                      f"<td>{badge(run.result, RESULT_BADGE.get(run.result, 'b-mute'))}</td>"
                      f"<td>{'-' if run.articles is None else run.articles}</td><td>{'-' if run.ai_calls is None else run.ai_calls}</td>"
                      f"<td>{escape(run.mail_bytes or '-')}</td><td>{'발송' if run.sent else '-'}</td>"
-                     f"<td>{escape(run.error) or '-'}</td><td style='white-space:nowrap'>{mail}<a href='/logs?tab=detail&day={day_key}'>로그</a></td></tr>")
+                      f"<td>{escape(run.error) or '-'}</td><td style='white-space:nowrap'>{mail}<a class='btn' href='/logs?tab=detail&day={day_key}'>로그</a></td></tr>")
         body = ("<table><tr><th>시작</th><th>실행 주체</th><th>결과</th><th>기사</th><th>AI 신규 호출</th><th>메일 크기 (bytes)</th>"
                 f"<th>발송</th><th>실패 사유</th><th>보기</th></tr>{rows or '<tr><td colspan=9>실행 기록 없음</td></tr>'}</table>")
     return f'<div class="tabs">{tabs}</div><div class="card tabbody">{keep}{body}</div>'
@@ -1090,8 +1133,8 @@ def sends_body(app: AdminApp, selected: str | None) -> str:
         origin = escape(send.origin) + (f" <span class=muted>(회차 {send.parent_id} 재발송)</span>" if send.parent_id else "")
         rows += (f"<tr><td style='white-space:nowrap'>{send.id}</td><td style='white-space:nowrap'>{escape(send.at[:16])}</td>"
                  f"<td>{origin}</td><td>{escape(send.target)}</td><td>{send.total}명</td><td>{counts or '-'}</td>"
-                 f"<td style='white-space:nowrap'>{'<a href=/logs?tab=mail&name=' + quote(send.mail_file) + '>메일</a> · ' if send.mail_file else ''}"
-                 f"<a href='/logs?tab=sends&day={send.id}'>수신자별 결과</a></td></tr>")
+                 f"<td style='white-space:nowrap'>{'<a class=btn href=/logs?tab=mail&name=' + quote(send.mail_file) + '>메일</a> ' if send.mail_file else ''}"
+                 f"<a class='btn' href='/logs?tab=sends&day={send.id}'>수신자별 결과</a></td></tr>")
     body = ('<p class="muted" style="margin-top:0">결과 구분: 성공 (서버가 받음) · 실패 (서버가 거부) · 미시도 (보내지 않음) · '
             '불명확 (보내는 도중 끊김, 받았을 수도 있어 받은 편지함 확인 필요, 재발송 대상 아님). 주소는 이 화면에서만 보입니다.</p>'
             '<table><tr><th>회차</th><th>시각</th><th>실행 주체</th><th>대상</th><th>인원</th><th>결과</th><th>보기</th></tr>'
@@ -1129,7 +1172,7 @@ def _show(value) -> str:
 def newsletter_body(app: AdminApp, name: str | None) -> str:
     files = app.mail_files()
     kind_badge = {"발송본": "b-ok", "생성만 (발송 안 함)": "b-info", "미리보기": "b-warn"}
-    rows = "".join(f"<tr><td><a href='/logs?tab=mail&name={quote(f['name'])}'>{escape(f['name'])}</a></td>"
+    rows = "".join(f"<tr><td><a class='btn' href='/logs?tab=mail&name={quote(f['name'])}'>{escape(f['name'])}</a></td>"
                    f"<td>{badge(f['kind'], kind_badge.get(f['kind'], 'b-mute'))}</td><td>{escape(f['made'])}</td>"
                    f"<td>{escape(f['origin'])}</td><td>{f['size'] / 1024:.0f} KB</td></tr>" for f in files)
     name = name or (files[0]["name"] if files else None)
