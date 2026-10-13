@@ -1,7 +1,7 @@
 """실제 수집 기사 Newsletter 화면 구성 (D-029, D-033). 기사 DB는 읽기만 한다."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
 
@@ -11,7 +11,7 @@ from saba.insights import DEFAULT_INSIGHT_DB, InsightResult, insight_hash, load_
 from saba.issues import Issue, Selection, preview_article, select_issues
 from saba.newsletter import ArticleView, build_article_view
 from saba.notice_body import DEFAULT_CACHE, notice_excerpts, with_excerpt
-from saba.openai_adapter import DEFAULT_LEDGER, LiveOutcome, read_ledger, run_openai
+from saba.openai_adapter import DEFAULT_LEDGER, KST, LIMIT_STATUSES, LiveOutcome, daily_used, read_ledger, run_openai
 from saba.schema import Article
 from saba.storage import list_articles
 
@@ -41,17 +41,27 @@ def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
             for r in list_analyses(analysis_db)}
 
 
+def _kst_today() -> date:
+    return datetime.now(KST).date()
+
+
 def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
                    ledger_path: Path = DEFAULT_LEDGER, max_new_calls: int = MAX_NEW_CALLS,
                    run: Callable[..., LiveOutcome] = run_openai,
-                   excerpts: dict[str, str] | None = None) -> tuple[dict[str, AnalysisResult], AnalysisStats]:
+                   excerpts: dict[str, str] | None = None, daily_limit: int | None = None,
+                   today: date | None = None) -> tuple[dict[str, AnalysisResult], AnalysisStats]:
     """대표 기사만 분석한다. 저장된 결과는 재사용하고, 새 유효 결과만 분석 DB에 저장한다.
 
     excerpts: 발췌 없는 공지의 본문 발췌 (D-038). 분석 입력과 저장 검증에 같이 쓴다.
     """
     excerpts = excerpts or {}
     stored = stored_results(analysis_db)
-    max_calls = len(read_ledger(ledger_path)) + max_new_calls
+    ledger = read_ledger(ledger_path)
+    max_calls = len(ledger) + max_new_calls
+    limit = {}
+    if daily_limit is not None:  # 같은 한국 날짜의 모든 실행이 함께 쓰는 하루 상한 (D-077)
+        max_new_calls = min(max_new_calls, max(0, daily_limit - daily_used(ledger, None, today or _kst_today())))
+        limit = {"daily_limit": daily_limit}
     results: dict[str, AnalysisResult] = {}
     stats = AnalysisStats()
     for issue in issues:
@@ -64,7 +74,10 @@ def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
             stats.skipped_by_cap += 1
             continue
         else:
-            outcome = run(article, ledger_path=ledger_path, max_calls=max_calls)
+            outcome = run(article, ledger_path=ledger_path, max_calls=max_calls, **limit)
+            if outcome.status in LIMIT_STATUSES:  # 전송 전 거부: 호출로 세지 않는다
+                stats.skipped_by_cap += 1
+                continue
             if outcome.status == "input_insufficient":
                 stats.insufficient += 1
                 continue
@@ -104,10 +117,16 @@ def display_insight(insight: InsightResult) -> InsightResult:
 
 def add_insights(issues: list[Issue], results: dict[str, AnalysisResult], excerpts: dict[str, str],
                  stats: AnalysisStats, *, insight_db: Path, ledger_path: Path, max_new_calls: int,
-                 run: Callable[..., tuple[str, InsightResult | None]] = run_insight) -> dict[str, InsightResult]:
+                 run: Callable[..., tuple[str, InsightResult | None]] = run_insight,
+                 daily_limit: int | None = None, today: date | None = None) -> dict[str, InsightResult]:
     """검토 필요 결과에만 시사점을 붙인다 (D-041). 저장된 것은 재사용하고 새 호출은 max_new_calls 까지."""
     stored = load_insights(insight_db)
-    max_calls = len(read_ledger(ledger_path)) + max_new_calls
+    ledger = read_ledger(ledger_path)
+    max_calls = len(ledger) + max_new_calls
+    limit = {}
+    if daily_limit is not None:
+        max_new_calls = min(max_new_calls, max(0, daily_limit - daily_used(ledger, "insight", today or _kst_today())))
+        limit = {"daily_limit": daily_limit}
     insights: dict[str, InsightResult] = {}
     for issue in issues:
         result = results.get(issue.representative.article_id)
@@ -118,8 +137,10 @@ def add_insights(issues: list[Issue], results: dict[str, AnalysisResult], excerp
         if insight is not None:
             stats.insights_reused += 1
         elif stats.insights_called < max_new_calls:
+            status, insight = run(article, result, ledger_path=ledger_path, max_calls=max_calls, **limit)
+            if status in LIMIT_STATUSES:
+                continue
             stats.insights_called += 1
-            status, insight = run(article, result, ledger_path=ledger_path, max_calls=max_calls)
             if insight is None:
                 stats.insights_failed += 1
                 continue
@@ -132,9 +153,16 @@ def add_insights(issues: list[Issue], results: dict[str, AnalysisResult], excerp
 
 def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: bool = True,
                 body_cache: Path = DEFAULT_CACHE, insight_db: Path = DEFAULT_INSIGHT_DB, insight_calls: int = 0,
-                insight_run: Callable[..., tuple[str, InsightResult | None]] = run_insight,
+                insight_run: Callable[..., tuple[str, InsightResult | None]] = run_insight, daily_caps: bool = False,
                 **analyze_options) -> tuple[list[ArticleView], Selection, AnalysisStats | None]:
-    """insight_calls: 시사점 신규 호출 상한. 기본 0 이면 저장된 시사점만 쓴다 (실제 호출은 별도 승인)."""
+    """insight_calls: 시사점 신규 호출 상한. 기본 0 이면 저장된 시사점만 쓴다 (실제 호출은 별도 승인).
+
+    daily_caps=True (매일 실행, D-077): max_new_calls·insight_calls 를 이 실행이 아니라 now 의 한국 날짜 전체 상한으로 쓴다.
+    """
+    today = now.astimezone(KST).date()
+    insight_limit = {"daily_limit": insight_calls, "today": today} if daily_caps else {}
+    if daily_caps:
+        analyze_options = {**analyze_options, "daily_limit": analyze_options.get("max_new_calls", MAX_NEW_CALLS), "today": today}
     selection = select_issues(list_articles(article_db), now)
     results: dict[str, AnalysisResult] = {}
     stats = None
@@ -145,7 +173,7 @@ def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: b
         results, stats = analyze_issues(selection.issues, article_db, analysis_db, excerpts=excerpts, **analyze_options)
         insights = add_insights(selection.issues, results, excerpts, stats, insight_db=insight_db,
                                 ledger_path=analyze_options.get("ledger_path", DEFAULT_LEDGER),
-                                max_new_calls=insight_calls, run=insight_run)
+                                max_new_calls=insight_calls, run=insight_run, **insight_limit)
     else:
         insights = {}
     views = []

@@ -1,7 +1,7 @@
 """OpenAI Responses API 실제 호출 (D-013~D-017). 기사 제목과 RSS 발췌문만 전송한다."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import http.client
 import json
 import os
@@ -208,6 +208,30 @@ def worst_case_cost(body: dict) -> float:
     return len(json.dumps(body, ensure_ascii=False).encode("utf-8")) * INPUT_PRICE + MAX_OUTPUT_TOKENS * OUTPUT_PRICE
 
 
+KST = timezone(timedelta(hours=9))
+LIMIT_STATUSES = ("call_limit_reached", "daily_limit_reached")  # 전송 전 거부 (사용량 기록 없음)
+
+
+def daily_used(entries: list[dict], purpose: str | None, day) -> int:
+    """한국 시간 날짜 day 에 이미 소비한 호출 수 (D-077). 실제 전송 시도와 전송 전 예약 기록을 모두 센다.
+
+    purpose 가 "insight" 면 시사점, 그 밖 (purpose 없는 예전 기록 포함) 은 분석으로 센다.
+    시각이 없거나 읽을 수 없는 기록은 날짜를 추정하지 않고 세지 않는다.
+    """
+    kind = "insight" if purpose == "insight" else "analysis"
+    used = 0
+    for entry in entries:
+        try:
+            at = datetime.fromisoformat(entry["at"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if at.tzinfo is None:
+            continue
+        if at.astimezone(KST).date() == day and ("insight" if entry.get("purpose") == "insight" else "analysis") == kind:
+            used += 1
+    return used
+
+
 def read_ledger(path: Path) -> list[dict]:
     try:
         entries = json.loads(path.read_text(encoding="utf-8"))
@@ -336,7 +360,8 @@ class Sent:
 
 
 def send_once(body: dict, article_id: str, *, ledger_path: Path, max_calls: int | None,
-              transport: Transport | None, now: datetime | None, purpose: str | None = None) -> Sent:
+              transport: Transport | None, now: datetime | None, purpose: str | None = None,
+              daily_limit: int | None = None) -> Sent:
     """Key·호출 상한·월 예산을 확인하고 최대 1회 보낸다. 호출 전에 최악 비용을 기록한다.
 
     status 가 "completed" 면 호출자가 출력을 검증한 뒤 entry["status"] 를 정하고 ledger 를 다시 쓴다.
@@ -351,6 +376,9 @@ def send_once(body: dict, article_id: str, *, ledger_path: Path, max_calls: int 
     entries = read_ledger(ledger_path)
     if max_calls is not None and len(entries) >= max_calls:
         return Sent("call_limit_reached")
+    # 하루 상한은 같은 한국 날짜의 모든 실행이 함께 쓴다 (D-077). 예약 직전에 기록을 다시 읽어 판단한다.
+    if daily_limit is not None and daily_used(entries, purpose, now.astimezone(KST).date()) >= daily_limit:
+        return Sent("daily_limit_reached")
     reserved = worst_case_cost(body)
     if sum(e["cost_usd"] for e in entries if e["month"] == month) + reserved > MONTHLY_LIMIT_USD:
         return Sent("budget_exceeded")
@@ -379,14 +407,15 @@ def send_once(body: dict, article_id: str, *, ledger_path: Path, max_calls: int 
 
 
 def run_openai(article: Article, *, ledger_path: Path = DEFAULT_LEDGER, max_calls: int | None = None,
-               transport: Transport | None = None, now: datetime | None = None) -> LiveOutcome:
+               transport: Transport | None = None, now: datetime | None = None,
+               daily_limit: int | None = None) -> LiveOutcome:
     """최대 1회 호출하고 재시도하지 않는다. 결과 저장·Newsletter 반영은 하지 않는다."""
     prepared = prepare_request(article)
     if prepared.request is None:
         return LiveOutcome(prepared.status, prepared.result)
     request = prepared.request
     sent = send_once(build_body(request), request.snapshot.article_id, ledger_path=ledger_path,
-                     max_calls=max_calls, transport=transport, now=now)
+                     max_calls=max_calls, transport=transport, now=now, daily_limit=daily_limit)
     if sent.entry is None:
         return LiveOutcome(sent.status)
     status, output, entry, entries = sent.status, sent.output, sent.entry, sent.entries

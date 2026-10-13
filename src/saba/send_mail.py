@@ -141,14 +141,27 @@ def _login(env: Mapping[str, str], smtp_factory):
     return server
 
 
-def send_group(message: EmailMessage, emails: list[str], *, env: Mapping[str, str] = os.environ,
-               smtp_factory: Callable[..., smtplib.SMTP_SSL] = smtplib.SMTP_SSL, allowed: bool | None = None,
-               pause: float = PAUSE_SECONDS, sleep: Callable[[float], None] = time.sleep) -> list:
-    """수신자마다 1통 개별 발송 (D-076). 받는 사람 칸에는 본인만. 한 번 로그인해 차례로 보내고, 실패는 사람별로 기록한다.
+def _rejection(error: smtplib.SMTPException) -> int | None:
+    """서버가 명시적으로 거부한 응답 코드 (받지 않은 것이 확실). 그 밖 (연결 끊김 등) 은 None."""
+    if isinstance(error, smtplib.SMTPRecipientsRefused):
+        codes = [code for code, _ in error.recipients.values() if isinstance(code, int)]
+        return codes[0] if codes else 550
+    code = getattr(error, "smtp_code", None)
+    return code if isinstance(code, int) and 400 <= code < 600 else None
 
-    잠금 (GROUP_SEND_APPROVED) 이 꺼져 있으면 접속하지 않고 거부한다. 재시도는 연결이 끊긴 경우 다시 로그인해 그 사람에게 1번만.
+
+def send_group(message: EmailMessage, emails: list[str], *, log: Callable[[str, str, str], None],
+               env: Mapping[str, str] = os.environ, smtp_factory: Callable[..., smtplib.SMTP_SSL] = smtplib.SMTP_SSL,
+               allowed: bool | None = None, pause: float = PAUSE_SECONDS, sleep: Callable[[float], None] = time.sleep) -> list:
+    """수신자마다 1통 개별 발송 (D-076). 결과는 log(주소, 결과, 내용) 로 한 명씩 바로 저장한다 (D-077).
+
+    - 성공: 서버가 받음. 실패: 서버가 거부 (받지 않은 것이 확실). 불명확: 보내는 도중·이후 끊김 (자동 재발송 안 함).
+    - 재시도: 일시 거부 (4xx, 받지 않은 것이 확실) 일 때만 같은 사람에게 1번. 끊김 뒤에는 다시 로그인해 다음 사람부터.
+    - log 가 실패하면 (기록 저장 실패) 더 보내지 않고 오류를 낸다. 보내기 전에 "전송 중" 을 남기므로
+      보낸 뒤 기록이 실패해도 그 사람은 미발송이 아니라 불명확으로 남는다.
+    - 잠금 (GROUP_SEND_APPROVED) 이 꺼져 있으면 접속하지 않고 거부한다.
     """
-    from saba.sendlog import Result
+    from saba.sendlog import FAILED, NOT_TRIED, OK, SENDING, UNCLEAR, Result
     if not (GROUP_SEND_APPROVED if allowed is None else allowed):
         raise SendError("그룹 발송은 잠겨 있습니다 (별도 승인 전에는 TEST 주소 1명에게만 발송).")
     if not all(env.get(name, "").strip() for name in (ENV_HOST, ENV_USER, ENV_PASSWORD)):
@@ -156,34 +169,54 @@ def send_group(message: EmailMessage, emails: list[str], *, env: Mapping[str, st
     for header in ("Cc", "Bcc", "From", "To"):
         del message[header]
     message["From"] = TEST_ADDRESS
-    results, server = [], None
+    results: list = []
+
+    def done(email: str, status: str, detail: str) -> None:
+        log(email, status, detail)  # 기록 실패는 그대로 올려 보내 발송을 멈춘다
+        results.append(Result(email, status, detail))
+
+    def stop_rest(start: int, detail: str) -> list:
+        for rest in emails[start:]:
+            done(rest, NOT_TRIED, detail)
+        return results
+
+    server = None
     try:
         try:
             server = _login(env, smtp_factory)
         except smtplib.SMTPAuthenticationError:
-            raise SendError("SMTP 인증 실패 (아이디·비밀번호·SMTP 사용 설정 확인)") from None
-        except (smtplib.SMTPException, OSError) as error:
-            raise SendError(f"SMTP 연결 실패: {type(error).__name__}") from None
+            return stop_rest(0, "SMTP 인증 실패")
+        except (SendError, smtplib.SMTPException, OSError) as error:
+            return stop_rest(0, f"SMTP 연결 실패: {type(error).__name__}")
         for index, email in enumerate(emails):
+            if server is None:  # 앞 사람에서 끊겼다: 다시 로그인
+                try:
+                    server = _login(env, smtp_factory)
+                except (SendError, smtplib.SMTPException, OSError) as error:
+                    return stop_rest(index, f"재접속 실패: {type(error).__name__}")
             del message["To"]
             message["To"] = email
+            log(email, SENDING, "")
             for attempt in (1, 2):
                 try:
                     refused = server.send_message(message, from_addr=TEST_ADDRESS, to_addrs=[email])
-                    results.append(Result(email, not refused, "거부됨" if refused else "성공"))
+                    done(email, FAILED if refused else OK, "거부됨" if refused else "성공")
                     break
-                except smtplib.SMTPServerDisconnected:
-                    if attempt == 2:
-                        results.append(Result(email, False, "연결 끊김"))
-                        break
-                    try:
-                        server = _login(env, smtp_factory)
-                    except (SendError, smtplib.SMTPException, OSError):
-                        server = None  # 다시 접속하지 못하면 남은 사람은 모두 실패로 남긴다 (나중에 실패한 사람만 다시 보내기)
-                        results += [Result(rest, False, "재접속 실패") for rest in emails[index:]]
-                        return results
                 except smtplib.SMTPException as error:
-                    results.append(Result(email, False, f"{type(error).__name__}, {_code_text(error)}"))
+                    code = _rejection(error)
+                    if code is not None and 400 <= code < 500 and attempt == 1:
+                        continue  # 일시 거부: 받지 않은 것이 확실하므로 1번 더
+                    if code is not None:
+                        done(email, FAILED, f"{type(error).__name__}, 응답 코드 {code}")
+                    else:
+                        done(email, UNCLEAR, f"{type(error).__name__} (받았는지 알 수 없음)")
+                        _quit(server)
+                        server = None
+                    break
+                except OSError as error:  # TimeoutError 포함: 어디서 끊겼는지 알 수 없다
+                    done(email, UNCLEAR, f"{type(error).__name__} (받았는지 알 수 없음)")
+                    _quit(server)
+                    server = None
                     break
             if pause and index < len(emails) - 1:
                 sleep(pause)

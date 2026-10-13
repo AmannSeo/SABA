@@ -51,6 +51,7 @@ CONFIRM_TEXT = {
     "group_delete": "이 그룹을 삭제할까요? 수신자는 그대로 두고 그룹 소속만 지웁니다.",
     "department_delete": "이 부서를 목록에서 삭제할까요?",
     "domain_delete": "이 도메인을 허용 목록에서 삭제할까요?",
+    "resend_failed": "이 회차에서 실패·미시도인 사람에게만 원본 메일을 다시 보냅니다 (성공·불명확 제외). 진행할까요?",
     "criteria_save": "부서별 분류 기준을 저장합니다. 다음 실행부터 새 기준으로 시사점을 만듭니다 (이미 만든 시사점도 다시 만듦, 하루 상한 안). 진행할까요?",
     "smtp_check": "메일 서버 로그인 점검: 회사 메일 서버에 접속해 로그인만 확인합니다 (발송 없음). 진행할까요?",
     "save_schedule": "예약 발송 설정을 저장합니다. 일정이 바뀌면 작업 스케줄러에 다시 등록합니다. 진행할까요?",
@@ -336,6 +337,8 @@ class AdminApp:
             return self.change_source(_first(form, "id"), delete=action == "source_delete")
         if action.startswith(("recipient_", "group_", "department_", "domain_", "csv_")):
             return self.recipient_action(action, form)
+        if action == "resend_failed":
+            return self.resend_failed(_first(form, "id"))
         if action == "criteria_save":
             return self.save_criteria(form)
         if action == "task_state":
@@ -533,6 +536,22 @@ class AdminApp:
         append_change(self.changes_path, {"수신자 명단": (f"{before}명", f"{after}명 ({done if action != 'recipient_save' else '수신자 ' + done})")}, False)
         return message
 
+    def resend_failed(self, value: str) -> str:
+        """실패 수신자 재발송 (D-077): 여기서 먼저 검사하고, 실제 발송은 매일 실행과 같은 잠금 안의 별도 프로세스로."""
+        from saba import daily, sendlog
+        if not value.isdigit():
+            raise AdminError("회차 번호가 필요합니다.")
+        if self.running():
+            return "다른 실행이 진행 중입니다. 끝난 뒤 다시 시도하세요."
+        try:
+            _original, emails, _data, skipped = daily.resend_check(
+                int(value), history=self.root / "data" / "send_history.db", recipients_path=self.recipients_path,
+                output_dir=self.root / "output")
+        except (daily.DailyError, sendlog.SendLogError) as error:
+            raise AdminError(f"재발송하지 않음 · {error}") from None
+        self.launch([sys.executable, "-m", "saba.daily", "--resend", value])
+        return f"회차 {value} 실패 재발송을 시작했습니다: {len(emails)}명" + (f" (제외 {skipped}명)" if skipped else "")
+
     def save_criteria(self, form: dict) -> str:
         """부서별 분류 기준 (D-075). 이름 4개 고정, 담당 업무·판단 예시만 편집."""
         from saba.history import append_change
@@ -715,7 +734,9 @@ details.guide ol{margin:10px 0 0;padding-left:20px;line-height:1.8}
 
 MENU = [("/", "대시보드"), ("/test", "테스트"), ("/schedule", "예약 발송 설정"), ("/sources", "RSS Source"),
         ("/recipients", "수신자·그룹"), ("/logs", "실행 이력·뉴스레터"), ("/settings", "설정")]
-RESULT_BADGE = {"성공": "b-ok", "성공 (발송 안 함)": "b-info", "실패": "b-bad", "건너뜀": "b-warn", "진행 중": "b-mute"}
+RESULT_BADGE = {"성공": "b-ok", "성공 (발송 안 함)": "b-info", "부분 발송": "b-bad", "실패": "b-bad", "건너뜀": "b-warn",
+                "진행 중": "b-mute"}
+SEND_STATUS_BADGE = {"성공": "b-ok", "실패": "b-bad", "미시도": "b-warn", "불명확": "b-warn", "전송 중": "b-mute"}
 
 
 def badge(text: str, cls: str) -> str:
@@ -771,6 +792,8 @@ def run_sentence(run) -> str:
         return f"{head}: 실행 중입니다."
     if run.result == "건너뜀":
         return f"{head}: 다른 실행이 진행 중이라 건너뛰었습니다."
+    if run.result == "부분 발송":
+        return f"{head}: 일부만 보냈습니다. 발송 이력에서 실패한 사람을 확인하세요."
     if run.result == "실패":
         return f"{head}: {run.error} 때문에 발송하지 않았습니다."
     if run.result == "성공 (발송 안 함)":
@@ -830,6 +853,8 @@ def dashboard(app: AdminApp) -> str:
         f'<div class="s">다음 예약 {escape(kst_label(upcoming[0]))}</div>' if on and upcoming else '<div class="s">예약 발송이 꺼져 있습니다</div>')
     if running:
         today_state, today_sub = badge("실행 중", "b-info"), "끝나면 결과가 표시됩니다"
+    elif sent and sent.result == "부분 발송":
+        today_state, today_sub = badge(f"{sent.start[11:16]} 부분 발송", "b-bad"), "실행 이력·뉴스레터의 발송 이력에서 확인"
     elif sent:
         today_state, today_sub = badge(f"{sent.start[11:16]} 발송 완료", "b-ok"), escape(sent.origin)
     elif need:
@@ -972,7 +997,7 @@ def schedule_page(app: AdminApp) -> str:
 <div class="card"><h2>AI 호출과 발송</h2>
  <div class="row"><label>하루 AI 분석 상한 <input type="number" name="max_analysis_calls" min="0" max="50" value="{config.max_analysis_calls}"> 건</label>
  <label>하루 AI 시사점 상한 <input type="number" name="max_insight_calls" min="0" max="50" value="{config.max_insight_calls}"> 건</label></div>
- <div class="muted">현재 하루 최대 {per_day}건 · 매일 발송해도 한 달 최대 약 ${per_day * COST_PER_CALL * 31:.2f} (월 상한 $3, 변경 불가). 이미 분석한 기사는 다시 호출하지 않습니다.</div>
+ <div class="muted">현재 하루 최대 {per_day}건 · 매일 발송해도 한 달 최대 약 ${per_day * COST_PER_CALL * 31:.2f} (월 상한 $3, 변경 불가). 하루 상한은 같은 날의 예약·지금·테스트 실행이 함께 씁니다. 이미 분석한 기사는 다시 호출하지 않습니다.</div>
  <div class="row"><label><input type="radio" name="send" value="on"{" checked" if config.send else ""}> 예약 시각에 발송</label>
  <label><input type="radio" name="send" value="off"{"" if config.send else " checked"}> 메일 생성까지만 (발송 안 함)</label></div>
 </div>
@@ -1051,23 +1076,38 @@ def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None)
 
 
 def sends_body(app: AdminApp, selected: str | None) -> str:
-    """발송 이력 (D-076): 회차별 대상·인원·성공·실패, 회차를 고르면 수신자별 결과. 주소는 이 화면에만."""
+    """발송 이력 (D-076, D-077): 회차별 결과 구분, 회차를 고르면 수신자별 결과와 실패 재발송. 주소는 이 화면에만."""
     from saba import sendlog
+    from saba.send_mail import GROUP_SEND_APPROVED
     path = app.root / "data" / "send_history.db"
     rows = ""
     for send in sendlog.sends(path):
-        state = badge("성공", "b-ok") if send.failed == 0 else badge(f"실패 {send.failed}", "b-bad")
-        rows += (f"<tr><td style='white-space:nowrap'>{escape(send.at[:16])}</td><td>{escape(send.origin)}</td><td>{escape(send.target)}</td>"
-                 f"<td>{send.total}명</td><td>{send.ok}</td><td>{state}</td>"
-                 f"<td>{'<a href=/logs?tab=mail&name=' + quote(send.mail_file) + '>메일</a> · ' if send.mail_file else ''}"
+        counts = " ".join(badge(f"{name} {n}", SEND_STATUS_BADGE.get(name, "b-mute")) for name, n in sorted(send.counts.items()) if n)
+        origin = escape(send.origin) + (f" <span class=muted>(회차 {send.parent_id} 재발송)</span>" if send.parent_id else "")
+        rows += (f"<tr><td style='white-space:nowrap'>{send.id}</td><td style='white-space:nowrap'>{escape(send.at[:16])}</td>"
+                 f"<td>{origin}</td><td>{escape(send.target)}</td><td>{send.total}명</td><td>{counts or '-'}</td>"
+                 f"<td style='white-space:nowrap'>{'<a href=/logs?tab=mail&name=' + quote(send.mail_file) + '>메일</a> · ' if send.mail_file else ''}"
                  f"<a href='/logs?tab=sends&day={send.id}'>수신자별 결과</a></td></tr>")
-    body = ('<p class="muted" style="margin-top:0">발송할 때마다 한 줄씩 남습니다. 로그에는 인원만 쓰고 주소는 이 화면에서만 보입니다.</p>'
-            '<table><tr><th>시각</th><th>실행 주체</th><th>대상</th><th>인원</th><th>성공</th><th>결과</th><th>보기</th></tr>'
+    body = ('<p class="muted" style="margin-top:0">결과 구분: 성공 (서버가 받음) · 실패 (서버가 거부) · 미시도 (보내지 않음) · '
+            '불명확 (보내는 도중 끊김, 받았을 수도 있어 받은 편지함 확인 필요, 재발송 대상 아님). 주소는 이 화면에서만 보입니다.</p>'
+            '<table><tr><th>회차</th><th>시각</th><th>실행 주체</th><th>대상</th><th>인원</th><th>결과</th><th>보기</th></tr>'
             f'{rows or "<tr><td colspan=7>아직 발송 이력이 없습니다. 다음 발송부터 쌓입니다.</td></tr>"}</table>')
     if selected and selected.isdigit():
-        detail = "".join(f"<tr><td>{escape(r.email)}</td><td>{badge('성공', 'b-ok') if r.ok else badge('실패', 'b-bad')}</td>"
-                         f"<td>{escape(r.detail)}</td></tr>" for r in sendlog.results(int(selected), path))
-        body += (f'<h2 style="margin-top:22px">수신자별 결과</h2><table><tr><th>메일</th><th>결과</th><th>내용</th></tr>'
+        send_id = int(selected)
+        detail = "".join(f"<tr><td>{escape(r.email)}</td><td>{badge(r.status, SEND_STATUS_BADGE.get(r.status, 'b-mute'))}</td>"
+                         f"<td>{escape(r.detail)}</td></tr>" for r in sendlog.results(send_id, path))
+        targets = sendlog.resend_targets(send_id, path)
+        if not targets:
+            resend = '<p class="muted">다시 보낼 사람 (실패·미시도) 이 없습니다.</p>'
+        elif not GROUP_SEND_APPROVED:
+            resend = (f'<div class="lock">실패·미시도 {len(targets)}명. 그룹 발송 잠금 중에는 재발송할 수 없습니다 '
+                      '(TEST 주소로 대신 보내지 않음).</div>')
+        else:
+            resend = (button(app, "resend_failed", f"실패한 {len(targets)}명만 다시 보내기", "primary", back="/logs",
+                             fields={"id": str(send_id)})
+                      + ' <span class="muted">원본 메일 파일을 그대로 다시 씁니다. 성공·불명확한 사람은 보내지 않습니다.</span>')
+        body += (f'<h2 style="margin-top:22px">회차 {send_id} 수신자별 결과</h2>{resend}'
+                 f'<table style="margin-top:10px"><tr><th>메일</th><th>결과</th><th>내용</th></tr>'
                  f'{detail or "<tr><td colspan=3>결과가 없습니다.</td></tr>"}</table>')
     return body
 
@@ -1206,7 +1246,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
     target = ('<div class="card"><h2>발송 대상 그룹</h2><div class="row"><select disabled>'
               + "".join(f'<option{" selected" if g == "TEST" else ""}>{escape(g)} ({n}명)</option>' for g, n in group_list)
               + '</select>' + badge("TEST 로 잠금", "b-warn") + '</div>'
-              '<p class="muted">지금은 예약·지금·테스트 발송 모두 고정 TEST 주소 1명에게만 보냅니다. 그룹 발송은 발송 전 미리보기·승인 절차와 함께 별도 승인 후 열립니다.</p></div>')
+              '<p class="muted">지금은 예약·지금·테스트 발송 모두 고정 TEST 주소 1명에게만 보냅니다. 그룹 발송은 발송 전 승인 화면 없이 예약 시각에 수신자마다 1통씩 보내는 방식으로 만들어 두었지만 잠겨 있고, 잠금 해제는 회사 IT·보안 정책 확인 후 별도 승인이 필요합니다.</p></div>')
 
     filters = "".join(f'<a class="btn{" primary" if (group or "") == (g if g != "모두" else "") else ""}" href="/recipients{"?group=" + quote(g) if g != "모두" else ""}">{escape(g)} ({n})</a> '
                       for g, n in [("모두", len(people))] + group_list)

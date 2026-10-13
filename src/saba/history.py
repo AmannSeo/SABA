@@ -28,7 +28,7 @@ class LogLine:
 class Run:
     start: str
     origin: str
-    result: str = "진행 중"  # 성공 · 성공 (발송 안 함) · 실패 · 건너뜀 · 진행 중
+    result: str = "진행 중"  # 성공 · 성공 (발송 안 함) · 부분 발송 · 실패 · 건너뜀 · 진행 중
     stages: list[tuple[str, str, str, str]] = field(default_factory=list)  # 단계, 시각, 결과, 내용
     articles: int | None = None
     ai_calls: int | None = None
@@ -87,12 +87,19 @@ def parse_runs(lines: list[LogLine]) -> list[Run]:
             size = SENT_BYTES.search(msg)
             current.stages.append(("발송", clock, "완료", f"TEST 1명 · {size.group(1) if size else '-'} bytes"))
             current.result, current.sent = "성공", True
+        elif msg.startswith("그룹 발송 완료"):  # D-076: 인원만 기록
+            current.stages.append(("발송", clock, "완료", msg.split(":", 1)[-1].strip()))
+            current.result, current.sent = "성공", True
+        elif line.level == "ERROR" and msg.startswith("발송 단계 부분 실패"):  # D-077: 일부만 보냄 (실행은 실패)
+            reason = msg.split(":", 1)[-1].strip()
+            current.stages.append(("발송", clock, "실패", reason))
+            current.result, current.sent, current.error = "부분 발송", True, f"발송 단계: 일부만 보냄 ({reason})"
         elif msg.startswith("발송하지 않음") or "send=false" in msg:
             current.stages.append(("발송", clock, "안 함", "설정: 발송 안 함"))
             current.result = "성공 (발송 안 함)"
         elif line.level == "ERROR":
             stage = msg.split(" 단계 실패")[0] if " 단계 실패" in msg else "실행"
-            reason = msg.split(":", 1)[-1].replace("· 오늘은 발송하지 않음", "").strip()
+            reason = msg.split(":", 1)[-1].replace("· 오늘은 발송하지 않음", "").replace("· 재발송하지 않음", "").strip()
             current.stages.append((stage, clock, "실패", reason))
             current.result, current.error = "실패", f"{stage} 단계: {reason}"
     return runs

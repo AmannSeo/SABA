@@ -503,7 +503,7 @@ class SendHistoryTests(AdminBase):
         from saba import sendlog
         path = self.root / "data" / "send_history.db"
         send_id = sendlog.record("자동 실행 (발송 포함)", "TEST 주소",
-                                 [sendlog.Result("virtual.one@tbell.co.kr", True, "성공")], "daily_x.eml", path)
+                                 [sendlog.Result("virtual.one@tbell.co.kr", "성공", "성공")], "daily_x.eml", path)
         html = self.get("/logs?tab=sends")
         self.assertIn("TEST 주소", html)
         self.assertIn("수신자별 결과", html)
@@ -523,6 +523,59 @@ class SendHistoryTests(AdminBase):
                 "target_group": "TEST", "back": "/schedule"}
         self.post("save_schedule", **form)
         self.assertEqual(load_config(self.root / "config" / "daily.json").target_group, "TEST")
+
+
+class ResendPageTests(AdminBase):
+    """실패 수신자 재발송 화면 (D-077). 실제 발송은 띄우지 않고 명령만 확인한다."""
+
+    def setUp(self):
+        super().setUp()
+        import hashlib
+        from saba import recipients as rc, sendlog
+        self.sendlog = sendlog
+        mail = self.root / "output" / "daily_20261013_0803.eml"
+        mail.write_bytes(b"EML")
+        for i, email in enumerate(("virtual.one@tbell.co.kr", "virtual.two@tbell.co.kr")):
+            rc.save(f"가상 {i}", email, "보안사업팀", ["파일럿"], path=self.app.recipients_path)
+        path = self.root / "data" / "send_history.db"
+        self.send_id = sendlog.start("자동 실행", "파일럿 그룹", ["virtual.one@tbell.co.kr", "virtual.two@tbell.co.kr"],
+                                     mail_file=mail.name, mail_sha256=hashlib.sha256(b"EML").hexdigest(), path=path)
+        sendlog.mark(self.send_id, "virtual.one@tbell.co.kr", "성공", path=path)
+        sendlog.mark(self.send_id, "virtual.two@tbell.co.kr", "실패", "SMTPDataError", path=path)
+        sendlog.finish(self.send_id, path)
+
+    def test_locked_shows_note_and_refuses(self):
+        html = self.get(f"/logs?tab=sends&day={self.send_id}")
+        self.assertIn("그룹 발송 잠금 중에는 재발송할 수 없습니다", html)
+        self.assertNotIn("/action/resend_failed", html)
+        self.post("resend_failed", id=str(self.send_id), back="/logs")
+        self.assertIn("재발송하지 않음", self.app.message)
+        self.assertEqual(self.launched, [])
+
+    def test_unlocked_needs_confirm_and_launches(self):
+        from saba import send_mail
+        with patch.object(send_mail, "GROUP_SEND_APPROVED", True):
+            html = self.get(f"/logs?tab=sends&day={self.send_id}")
+            self.assertIn("실패한 1명만 다시 보내기", html)
+            self.assertEqual(self.post("resend_failed", confirm=False, id=str(self.send_id))[0], 400)
+            self.post("resend_failed", id=str(self.send_id), back="/logs")
+        self.assertEqual(self.launched[0][2:], ["saba.daily", "--resend", str(self.send_id)])
+
+    def test_running_refused(self):
+        from saba import send_mail
+        from saba.daily import run_lock
+        with patch.object(send_mail, "GROUP_SEND_APPROVED", True), run_lock(self.root / "data" / "daily.lock"):
+            self.post("resend_failed", id=str(self.send_id))
+        self.assertIn("진행 중", self.app.message)
+        self.assertEqual(self.launched, [])
+
+    def test_partial_run_shown_on_dashboard(self):
+        self.log.write_text(f"{STAMP} 08:03:00,000 INFO 실행 시작: 자동 실행 (발송 포함)\n"
+                            f"{STAMP} 08:03:02,000 ERROR 발송 단계 부분 실패: 파일럿 그룹 2명 중 성공 1 · 실패 1 · 불명확 0 · 미시도 0\n",
+                            encoding="utf-8")
+        html = self.get("/")
+        self.assertIn("부분 발송", html)
+        self.assertNotIn("/action/run_send", html)  # 일부 보낸 날에 전원 재발송을 권하지 않음
 
 
 if __name__ == "__main__":

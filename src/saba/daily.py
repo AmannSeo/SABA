@@ -149,7 +149,7 @@ def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:
 
     views, _selection, stats = build_views(DEFAULT_DB, DEFAULT_ANALYSIS_DB, now,
                                            max_new_calls=config.max_analysis_calls,
-                                           insight_calls=config.max_insight_calls)
+                                           insight_calls=config.max_insight_calls, daily_caps=True)
     if not views:
         raise DailyError("메일 생성 실패 (표시할 기사 0건)")
     local = now.astimezone()
@@ -169,13 +169,39 @@ def send(eml: bytes, mail_file: str = "") -> str:
     return send_test(message_from_bytes(eml, _class=EmailMessage, policy=SMTP), send=True)
 
 
+class PartialSendError(DailyError):
+    """그룹 발송에 실패·불명확·미시도가 있다 (D-077): 성공 인원은 이력에 남기고 실행은 실패 (종료 코드 1)."""
+
+
+def _counts_text(counts: dict) -> str:
+    return " · ".join(f"{name} {counts.get(name, 0)}" for name in ("성공", "실패", "불명확", "미시도"))
+
+
+def deliver_group(message, emails: list[str], *, origin: str, target: str, mail_file: str, mail_sha256: str,
+                  history: Path, parent_id: int | None = None) -> str:
+    """회차를 먼저 만들고 (기록 실패면 보내지 않음) 한 명씩 결과를 저장하며 보낸다. 로그용 문구에는 인원만."""
+    from saba import send_mail, sendlog
+    send_id = sendlog.start(origin, target, emails, mail_file=mail_file, mail_sha256=mail_sha256, parent_id=parent_id,
+                            path=history)
+    try:
+        send_mail.send_group(message, emails, log=lambda email, status, detail: sendlog.mark(send_id, email, status, detail, history))
+    finally:
+        sendlog.finish(send_id, history)
+    counts = next(item for item in sendlog.sends(history) if item.id == send_id).counts
+    text = f"{target} {len(emails)}명 중 {_counts_text(counts)}"
+    if counts.get("성공", 0) != len(emails):
+        raise PartialSendError(f"그룹 발송 부분 실패: {text} (실패·미시도는 발송 이력에서 다시 보낼 수 있음, 불명확은 받은 편지함 확인)")
+    return f"그룹 발송 완료: {text}"
+
+
 def send_newsletter(eml: bytes, mail_file: str, *, config: DailyConfig, origin: str,
                     history: Path | None = None, recipients_path: Path | None = None) -> str:
-    """발송 대상에 맞춰 보내고 발송 이력을 남긴다 (D-076).
+    """발송 대상에 맞춰 보내고 발송 이력을 남긴다 (D-076, D-077).
 
     그룹 발송 잠금 (send_mail.GROUP_SEND_APPROVED) 이 꺼져 있으면 대상 설정과 관계없이 고정 TEST 주소 1명만.
     로그에는 인원·건수만 쓰고 주소는 발송 이력 DB (관리 화면) 에만 둔다.
     """
+    import hashlib
     from email import message_from_bytes
     from email.message import EmailMessage
     from email.policy import SMTP
@@ -188,18 +214,79 @@ def send_newsletter(eml: bytes, mail_file: str, *, config: DailyConfig, origin: 
                   if r.enabled]
         if not emails:
             raise DailyError(f"발송 대상 그룹 '{config.target_group}' 에 사용 중인 수신자가 없습니다")
-        results = send_mail.send_group(message, emails)
-        sendlog.record(origin, f"{config.target_group} 그룹", results, mail_file, history)
-        ok = sum(r.ok for r in results)
-        return f"그룹 발송 완료: {config.target_group} {len(results)}명 · 성공 {ok} · 실패 {len(results) - ok}"
+        return deliver_group(message, emails, origin=origin, target=f"{config.target_group} 그룹", mail_file=mail_file,
+                             mail_sha256=hashlib.sha256(eml).hexdigest(), history=history)
     try:
         text = send_mail.send_test(message, send=True)
     except send_mail.SendError as error:
-        sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, False, str(error)[:120])], mail_file, history)
+        # 발송 단계 (메일 전송 중) 오류는 받았는지 알 수 없다 (D-077). 연결·로그인 단계 오류는 보내지 않은 것이 확실하다.
+        status = sendlog.UNCLEAR if "발송 단계" in str(error) else sendlog.FAILED
+        sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, status, str(error)[:120])], mail_file, history)
         raise
-    sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, True, "성공")], mail_file, history)
+    sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, sendlog.OK, "성공")], mail_file, history)
     locked = " (그룹 발송 잠금: TEST 주소만)" if config.target_group != "TEST" else ""
     return text + locked
+
+
+def resend_check(send_id: int, *, history: Path | None = None, recipients_path: Path | None = None,
+                 output_dir: Path | None = None, allowed: bool | None = None) -> tuple:
+    """실패 수신자 재발송 전 검사 (D-077). (원회차, 보낼 주소, 원본 메일 바이트, 건너뛴 인원). 문제가 있으면 DailyError."""
+    from saba import recipients, send_mail, sendlog
+    history = history or sendlog.DEFAULT_PATH
+    original = next((item for item in sendlog.sends(history) if item.id == send_id), None)
+    if original is None:
+        raise DailyError("발송 이력에 없는 회차입니다")
+    if not (send_mail.GROUP_SEND_APPROVED if allowed is None else allowed):
+        raise DailyError("그룹 발송 잠금 중에는 재발송할 수 없습니다 (TEST 주소로 대신 보내지 않음)")
+    if original.target == "TEST 주소":
+        raise DailyError("TEST 주소 회차는 재발송 대상이 아닙니다 (테스트 화면의 즉시 테스트 발송을 쓰세요)")
+    targets = sendlog.resend_targets(send_id, history)
+    rpath = recipients_path or recipients.DEFAULT_PATH
+    current = {r.email: r for r in recipients.recipients(rpath)}
+    domains = set(recipients.domains(rpath))
+    emails = [e for e in targets if e in current and current[e].enabled and e.rsplit("@", 1)[-1] in domains]
+    if not emails:
+        raise DailyError("다시 보낼 수신자가 없습니다 (성공·불명확·이미 재발송 성공·중지·삭제된 수신자는 제외)")
+    mail = (output_dir or ROOT / "output") / original.mail_file
+    if not original.mail_file or not mail.exists():
+        raise DailyError("원본 메일 파일이 없습니다 (보관 기간 만료 등). 재발송하지 않습니다")
+    data = mail.read_bytes()
+    if original.mail_sha256 and sendlog.file_hash(mail) != original.mail_sha256:
+        raise DailyError("원본 메일 파일이 처음 발송 때와 다릅니다. 재발송하지 않습니다")
+    return original, emails, data, len(targets) - len(emails)
+
+
+def resend_failed(send_id: int, **options) -> str:
+    """원본 .eml 을 그대로 다시 쓴다 (새 AI 호출·메일 생성 없음). 원회차에 연결된 새 회차로 기록한다."""
+    from email import message_from_bytes
+    from email.message import EmailMessage
+    from email.policy import SMTP
+
+    from saba import sendlog
+    original, emails, data, skipped = resend_check(send_id, **options)
+    message = message_from_bytes(data, _class=EmailMessage, policy=SMTP)
+    text = deliver_group(message, emails, origin=f"실패 재발송 (회차 {send_id})", target=original.target,
+                         mail_file=original.mail_file, mail_sha256=original.mail_sha256,
+                         history=options.get("history") or sendlog.DEFAULT_PATH, parent_id=send_id)
+    return text + (f" · 제외 {skipped}명 (중지·삭제·도메인)" if skipped else "")
+
+
+def save_mail_file(folder: Path, base: str, data: bytes) -> Path:
+    """같은 분에 다시 실행해도 덮어쓰지 않는다 (D-077). 이름이 있으면 -2, -3 을 붙이고, 새 파일로만 연다 ("x")."""
+    for number in range(1, 1000):
+        path = folder / (base + ("" if number == 1 else f"-{number}") + ".eml")
+        try:
+            handle = path.open("xb")
+        except FileExistsError:
+            continue
+        try:
+            with handle:
+                handle.write(data)
+        except OSError:
+            path.unlink(missing_ok=True)  # 쓰다 실패한 파일은 남기지 않는다 (발송도 하지 않음)
+            raise
+        return path
+    raise DailyError("메일 파일 이름을 정하지 못했습니다 (같은 분에 1000번 넘게 실행)")
 
 
 def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "output",
@@ -213,9 +300,8 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         logging.info("RSS 수집 완료")
         stage = "분석·메일 생성"
         eml, summary = build(now, config)
-        path = output_dir / f"daily_{now.astimezone():%Y%m%d_%H%M}.eml"  # 실행마다 따로 보관 (D-072)
         output_dir.mkdir(exist_ok=True)  # 새 PC·실행 파일 묶음에는 output 폴더가 없다
-        path.write_bytes(eml)
+        path = save_mail_file(output_dir, f"daily_{now.astimezone():%Y%m%d_%H%M}", eml)  # 실행마다 따로 보관 (D-072, D-077)
         logging.info("메일 생성 완료: %s · %s · %s bytes", path.name, summary, f"{len(eml):,}")
         if not config.send:
             logging.info("발송하지 않음 (send=false)")
@@ -223,6 +309,9 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
         stage = "발송"
         logging.info(deliver(eml, path.name))
         return 0
+    except PartialSendError as error:  # 일부는 보냈다: "발송하지 않음" 으로 쓰지 않는다 (D-077)
+        logging.error("발송 단계 부분 실패: %s", str(error).removeprefix("그룹 발송 부분 실패: "))
+        return 1
     except Exception as error:  # 단계 실패는 종류만 남기고 발송하지 않는다 (재시도 없음).
         detail = str(error) if isinstance(error, DailyError) or type(error).__name__ == "SendError" else type(error).__name__
         logging.error("%s 단계 실패: %s · 오늘은 발송하지 않음", stage, detail)
@@ -295,11 +384,35 @@ def is_running(path: Path = LOCK_PATH) -> bool:
         return True
 
 
+def resend_main(send_id: int, now: datetime) -> int:
+    """실패 수신자 재발송 (관리 화면에서 띄움). 매일 실행과 같은 잠금 안에서 한 번에 하나만."""
+    LOG_DIR.mkdir(exist_ok=True)
+    logging.basicConfig(filename=LOG_DIR / f"daily_{now:%Y%m%d}.log", level=logging.INFO, encoding="utf-8",
+                        format="%(asctime)s %(levelname)s %(message)s")
+    origin = f"실패 재발송 (회차 {send_id})"
+    try:
+        with run_lock(LOCK_PATH):
+            logging.info("실행 시작: %s (발송 포함)", origin)
+            try:
+                logging.info(resend_failed(send_id))
+                return 0
+            except PartialSendError as error:
+                logging.error("발송 단계 부분 실패: %s", str(error).removeprefix("그룹 발송 부분 실패: "))
+            except Exception as error:  # 잠금·검사 실패는 문구, 그 밖은 종류만
+                detail = str(error) if isinstance(error, DailyError) or type(error).__name__ in ("SendError", "SendLogError") else type(error).__name__
+                logging.error("발송 단계 실패: %s · 재발송하지 않음", detail)
+            return 1
+    except DailyError as error:
+        logging.warning("%s: %s · 이번 실행은 건너뜀", origin, error)
+        return 3
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--run", action="store_true", help="오늘 분량 실행 (수집 → 분석 → 메일 → 발송)")
     group.add_argument("--register", action="store_true", help="작업 스케줄러 등록 명령 출력 (--apply 로 실제 등록)")
+    group.add_argument("--resend", type=int, metavar="회차", help="발송 이력 회차의 실패·미시도 수신자만 다시 보내기 (D-077, 그룹 발송 잠금 중에는 거부)")
     parser.add_argument("--apply", action="store_true", help="--register 와 함께: 실제로 작업 스케줄러에 등록 (승인 후)")
     parser.add_argument("--unattended", action="store_true",
                         help="--register 와 함께: 로그인 없이 실행 + 놓친 실행 보완 (부서 PC, D-068)")
@@ -315,6 +428,8 @@ def main() -> int:
             return 0
         return subprocess.run(["powershell", "-NoProfile", "-Command", command]).returncode
     now = datetime.now().astimezone()
+    if args.resend is not None:
+        return resend_main(args.resend, now)
     if not (args.manual or args.test) and not scheduled_on(config, now.date()):
         return 0  # 예약일이 아니다 (작업 스케줄러는 매일 깨운다, D-072). 로그도 남기지 않는다.
     LOG_DIR.mkdir(exist_ok=True)

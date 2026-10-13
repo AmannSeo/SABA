@@ -159,14 +159,14 @@ def to_insight(parsed: object, units: list[tuple[str, str]], article: Article, i
 
 def run_insight(article: Article, analysis: AnalysisResult, *, ledger_path: Path = DEFAULT_LEDGER,
                 max_calls: int | None = None, transport: Transport | None = None,
-                now=None) -> tuple[str, InsightResult | None]:
+                now=None, daily_limit: int | None = None) -> tuple[str, InsightResult | None]:
     """최대 1회 호출. 요약이 있는 검토 필요 결과만 대상이다. (상태, 결과)."""
     prepared = prepare_request(article)
     if prepared.request is None or analysis.status != "검토 필요" or analysis.summary is None:
         return "not_applicable", None
     units = sentence_units(prepared.request)
     sent = send_once(build_insight_body(units, analysis.summary), article.article_id, ledger_path=ledger_path,
-                     max_calls=max_calls, transport=transport, now=now, purpose="insight")
+                     max_calls=max_calls, transport=transport, now=now, purpose="insight", daily_limit=daily_limit)
     if sent.status != "completed":
         return sent.status, None
     try:
