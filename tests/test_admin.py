@@ -4,13 +4,14 @@ from dataclasses import replace
 from html.parser import HTMLParser
 import http.client
 import json
+import os
 import re
 from pathlib import Path
 import tempfile
 import threading
 import unittest
 from unittest.mock import patch
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from saba import admin
 from saba.admin import TOOLS, AdminApp, AdminError, load_admin_config, serve
@@ -710,6 +711,150 @@ class UiFeedbackTests(AdminBase):
         self.assertIn(".dashboard{align-items:start}", css)
         self.assertIn("@media (max-width:1000px)", css)
         self.assertIn("prefers-reduced-motion", css)
+
+
+class ListManagementTests(AdminBase):
+    def mails(self, count, *, date=None):
+        date = date or TODAY.replace(day=1)
+        stamp = date.timestamp()
+        names = []
+        for i in range(count):
+            name = f"daily_{date:%Y%m%d}_{i:04}.eml"
+            path = self.root / "output" / name
+            path.write_bytes(b"virtual mail")
+            os.utime(path, (stamp, stamp))
+            names.append(name)
+        return names
+
+    def table_names(self, html):
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.names = []
+
+            def handle_starttag(self, tag, attrs):
+                values = dict(attrs)
+                if tag == "a" and "name=" in values.get("href", ""):
+                    self.names.append(parse_qs(urlparse(values["href"]).query)["name"][0])
+        parser = Links()
+        parser.feed(html)
+        return parser.names
+
+    def test_mail_boundaries_and_stable_order(self):
+        for count in (0, 25, 26):
+            with self.subTest(count=count):
+                for p in (self.root / "output").glob("*.eml"):
+                    p.unlink()
+                names = self.mails(count)
+                first = self.get("/logs?tab=mail")
+                self.assertEqual(self.table_names(first), sorted(names, reverse=True)[:25])
+                self.assertIn(f"총 {count}개", first)
+                second = self.get("/logs?tab=mail&page=2")
+                self.assertEqual(self.table_names(second), sorted(names, reverse=True)[25:] if count == 26 else sorted(names, reverse=True))
+                if not count:
+                    self.assertNotIn("<iframe", first)
+                    self.assertIn("조건에 맞는 파일 없음", first)
+
+    def test_mail_month_search_and_link_context(self):
+        names = self.mails(26)
+        old = self.mails(1, date=TODAY.replace(year=TODAY.year - 1))[0]
+        self.assertNotIn(old, self.table_names(self.get("/newsletter")))
+        html = self.get("/logs?" + urlencode({"tab": "mail", "year": TODAY.year - 1, "month": f"{TODAY.month:02}", "q": "기록 없음"}))
+        self.assertEqual(self.table_names(html), [old])
+        self.assertIn(f"year={TODAY.year - 1}", html)
+        self.assertIn(f"month={TODAY.month:02}", html)
+        self.assertIn("q=%EA%B8%B0%EB%A1%9D", html)
+        matched = self.get("/logs?" + urlencode({"tab": "mail", "q": names[0]}))
+        self.assertEqual(self.table_names(matched), [names[0]])
+        all_years = self.get("/newsletter?year=all&month=all&page=2")
+        self.assertEqual(len(self.table_names(all_years)), 2)
+        self.assertIn('name="year"', all_years)
+        self.assertNotIn('name="page"', all_years)  # 필터 폼은 페이지를 이어 보내지 않는다.
+
+    def test_empty_current_month_and_direct_mail_selection(self):
+        old = self.mails(1, date=TODAY.replace(year=TODAY.year - 1))[0]
+        html = self.get("/newsletter")
+        self.assertEqual(self.table_names(html), [])
+        self.assertIn(f'>{TODAY.year - 1}년</option>', html)
+        self.assertNotIn("<iframe", html)
+        selected = self.get("/logs?" + urlencode({"tab": "mail", "name": old}))
+        self.assertIn("현재 목록 조건 밖", selected)
+        self.assertIn(f"/newsletter/view?name={old}", selected)
+        for name in ("../config/admin.json", "daily_missing.eml", '\"><script>alert(1)</script>'):
+            html = self.get("/logs?" + urlencode({"tab": "mail", "name": name}))
+            self.assertNotIn("<iframe", html)
+            self.assertNotIn("<script>alert(1)</script>", html)
+
+    def test_bad_filters_pages_and_escaping(self):
+        self.mails(26)
+        for page in ("0", "-1", "abc", "9" * 500):
+            html = self.get("/logs?" + urlencode({"tab": "mail", "page": page}))
+            self.assertIn("1 / 2 페이지", html)
+            self.assertIn("페이지 값", html)
+        self.assertIn("2 / 2 페이지", self.get("/logs?tab=mail&page=999"))
+        bad = self.get("/logs?" + urlencode({"tab": "mail", "year": "bad", "month": "13", "q": '\"><script>alert(1)</script>'}))
+        self.assertIn("연도 필터", bad)
+        self.assertIn("월 필터", bad)
+        self.assertIn("&lt;script&gt;", bad)
+        self.assertNotIn('<script>alert(1)</script>', bad)
+        self.assertIn("200자", self.get("/logs?" + urlencode({"q": "가" * 201})))
+        for params in ({"start": "2026-02-30"}, {"start": "2026-10-14", "end": "2026-10-13"}, {"year": "0000"}):
+            self.assertIn("필터" if "end" not in params else "초기화", self.get("/logs?" + urlencode(params)))
+
+    def test_day_group_boundaries(self):
+        from saba.history import Run
+        for count in (0, 25, 26):
+            runs = [Run((TODAY - timedelta(days=i)).strftime("%Y-%m-%d 08:00:00"), f"가상 회차 {i}", "성공") for i in range(count)]
+            with patch.object(self.app, "runs", return_value=runs):
+                html = self.get("/logs")
+                self.assertIn(f"총 {count}일", html)
+                self.assertEqual(html.count('<details class="guide">'), min(count, 25))
+                second = self.get("/logs?page=2")
+                self.assertEqual(second.count('<details class="guide">'), 1 if count == 26 else count)
+
+    def test_run_search_preserves_full_day_and_rounds(self):
+        from saba.history import Run
+        from saba import sendlog
+        filename = self.mails(1)[0]
+        runs = [Run(f"{STAMP} 08:00:00", "실패 재발송 (회차 1)", "부분 발송", sent=True,
+                    mail_file=filename, error="불명확 1명", stages=[("발송", "08:01", "실패", "불명확 1명")]),
+                Run(f"{STAMP} 07:00:00", "자동 실행", "실패", error="수집 오류"),
+                Run(f"{TODAY.year - 1}-01-01 08:00:00", "예전 실행", "성공")]
+        db = self.root / "data" / "send_history.db"
+        first = sendlog.record("자동 실행", "TEST 주소", [sendlog.Result("virtual@tbell.co.kr", "실패")], filename, db)
+        child = sendlog.start("재발송", "TEST 주소", ["virtual@tbell.co.kr"], mail_file=filename, path=db, parent_id=first)
+        sendlog.mark(child, "virtual@tbell.co.kr", "성공", "", db)
+        sendlog.finish(child, db)
+        with patch.object(self.app, "runs", return_value=runs):
+            html = self.get("/logs?" + urlencode({"year": TODAY.year, "start": STAMP, "end": STAMP, "q": "재발송"}))
+            self.assertIn("총 1일", html)
+            for value in ("자동 실행", "수집 오류", "부분 발송", "불명확 1명", "진행 단계", filename):
+                self.assertIn(value, html)
+            self.assertNotIn("예전 실행", html)
+            self.assertIn(f"tab=detail&day={TODAY:%Y%m%d}", html)
+            sends = self.get("/logs?tab=sends")
+            self.assertIn(f"회차 {first} 재발송", sends)
+            self.assertIn("수신자별 결과", sends)
+            self.assertIn("TEST 주소 회차는 재발송 대상이 아닙니다", self.get(f"/logs?tab=sends&day={first}"))
+
+    def test_read_failures_are_not_empty_success(self):
+        for attribute, path in (("mail_files", "/newsletter"), ("runs", "/logs")):
+            with patch.object(self.app, attribute, side_effect=PermissionError("private")):
+                status, html, _ = self.request("GET", path)
+                self.assertEqual(status, 500)
+                self.assertIn("화면을 만들지 못했습니다: PermissionError", html)
+                self.assertNotIn("private", html)
+                self.assertNotIn("총 0", html)
+
+    def test_listing_does_not_write_or_call_services(self):
+        self.mails(2)
+        files = [p for p in self.root.rglob("*") if p.is_file()]
+        before = {p: p.read_bytes() for p in files}
+        for path in ("/logs", "/newsletter", "/logs?" + urlencode({"tab": "mail", "q": "기록"}), "/logs?year=all&page=999"):
+            self.get(path)
+        self.assertEqual(before, {p: p.read_bytes() for p in files})
+        self.assertEqual(set(files), {p for p in self.root.rglob("*") if p.is_file()})
+        self.assertEqual((self.commands, self.launched, self.fetched, self.shell.calls), ([], [], [], []))
 
 
 class RssEvidenceTests(unittest.TestCase):

@@ -26,7 +26,7 @@ import subprocess
 import sys
 import time
 from typing import Callable
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 import webbrowser
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -265,7 +265,7 @@ class AdminApp:
             if run.mail_file:
                 by_file[run.mail_file] = run
         files = []
-        for path in sorted((self.root / "output").glob("daily_*.eml"), key=lambda p: p.stat().st_mtime, reverse=True):
+        for path in sorted((self.root / "output").glob("daily_*.eml"), key=lambda p: (p.stat().st_mtime, p.name), reverse=True):
             run = by_file.get(path.name)
             if "preview" in path.name:
                 kind = "미리보기"
@@ -1073,7 +1073,74 @@ showMode();
 LOG_TABS = (("runs", "실행 이력"), ("sends", "발송 이력"), ("mail", "뉴스레터"), ("detail", "상세 로그"), ("changes", "설정 변경 이력"))
 
 
-def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None) -> str:
+def list_filters(query: dict, years: set[str], *, mail: bool = False) -> tuple[dict, str]:
+    now = datetime.now().astimezone()
+    state = {"tab": "mail" if mail else "runs", "year": _first(query, "year") or (str(now.year) if mail else "all"),
+             "q": _first(query, "q").strip()}
+    errors = []
+    if state["year"] != "all" and not re.fullmatch(r"[0-9]{4}", state["year"]):
+        errors.append("연도 필터가 올바르지 않습니다.")
+        state["year"] = str(now.year) if mail else "all"
+    if state["year"] == "0000":
+        errors.append("연도 필터가 올바르지 않습니다.")
+        state["year"] = str(now.year) if mail else "all"
+    if mail:
+        state["month"] = _first(query, "month") or f"{now.month:02}"
+        if state["month"] != "all" and state["month"] not in {f"{m:02}" for m in range(1, 13)}:
+            errors.append("월 필터가 올바르지 않습니다.")
+            state["month"] = f"{now.month:02}"
+    else:
+        for key in ("start", "end"):
+            state[key] = _first(query, key)
+            try:
+                if state[key]:
+                    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", state[key]):
+                        raise ValueError
+                    datetime.strptime(state[key], "%Y-%m-%d")
+            except ValueError:
+                errors.append("기간 필터가 올바르지 않습니다.")
+                state[key] = ""
+        if state["start"] and state["end"] and state["start"] > state["end"]:
+            errors.append("시작 날짜가 종료 날짜보다 늦어 기간을 초기화했습니다.")
+            state["start"] = state["end"] = ""
+    if len(state["q"]) > 200:
+        errors.append("검색어는 200자 이내로 입력하세요. 검색을 초기화했습니다.")
+        state["q"] = ""
+    years = (years | {str(now.year), state["year"]}) - {"all"}
+    options = '<option value="all"' + (' selected' if state["year"] == "all" else '') + '>전체 연도</option>'
+    options += "".join(f'<option value="{escape(y)}"{" selected" if state["year"] == y else ""}>{escape(y)}년</option>' for y in sorted(years, reverse=True))
+    fields = f'<label>연도 <select name="year">{options}</select></label>'
+    if mail:
+        months = '<option value="all"' + (' selected' if state["month"] == "all" else '') + '>전체 월</option>'
+        months += "".join(f'<option value="{m:02}"{" selected" if state["month"] == f"{m:02}" else ""}>{m}월</option>' for m in range(1, 13))
+        fields += f'<label>월 <select name="month">{months}</select></label>'
+    else:
+        fields += ''.join(f'<label>{label} <input type="date" name="{key}" value="{escape(state[key], quote=True)}"></label>' for key, label in (("start", "시작"), ("end", "종료")))
+    hint = "파일명·종류·실행 주체" if mail else "날짜·실행 주체·결과·메일명"
+    fields += f'<label>검색 <input type="search" name="q" maxlength="200" value="{escape(state["q"], quote=True)}" placeholder="{hint}"></label>'
+    form = (f'<form method="get" action="/logs" class="row"><input type="hidden" name="tab" value="{state["tab"]}">{fields}'
+            '<button class="btn">적용</button></form>')
+    return state, ''.join(f'<p class="info">{escape(e)}</p>' for e in errors) + form
+
+
+def list_page(items: list, query: dict, state: dict, *, unit: str) -> tuple[list, str, dict]:
+    pages = max(1, (len(items) + 24) // 25)
+    raw = _first(query, "page") or "1"
+    valid = bool(re.fullmatch(r"[0-9]{1,8}", raw)) and int(raw) >= 1
+    number = min(int(raw), pages) if valid else 1
+    warning = '<p class="info">페이지 값이 범위를 벗어나 조정했습니다.</p>' if not valid or int(raw) > pages else ''
+    context = {**state, "page": str(number)}
+    links = ''
+    for label, target in (("이전", number - 1), ("다음", number + 1)):
+        if 1 <= target <= pages:
+            links += f'<a class="btn" href="/logs?{escape(urlencode({**state, "page": target}), quote=True)}">{label}</a> '
+        else:
+            links += f'<button class="btn" disabled>{label}</button> '
+    nav = warning + f'<nav class="row" aria-label="목록 페이지"><span>총 {len(items)}{unit} · {number} / {pages} 페이지</span>{links}</nav>'
+    return items[(number - 1) * 25:number * 25], nav, context
+
+
+def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None, query: dict | None = None) -> str:
     """실행 이력·뉴스레터 (D-074 합침): 탭 실행 이력 · 뉴스레터 · 상세 로그 · 설정 변경 이력."""
     from saba.history import log_files, read_changes, read_log, storage_status
     config = app.config()
@@ -1085,7 +1152,7 @@ def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None)
     if tab == "sends":
         return f'<div class="tabs">{tabs}</div><div class="card tabbody">{sends_body(app, day)}</div>'
     if tab == "mail":
-        return f'<div class="tabs">{tabs}</div><div class="card tabbody">{keep}{newsletter_body(app, name)}</div>'
+        return f'<div class="tabs">{tabs}</div><div class="card tabbody">{keep}{newsletter_body(app, name, query)}</div>'
     if tab == "detail":
         files = log_files(app.root / "logs")
         names = [p.name[6:14] for p in files]
@@ -1107,17 +1174,35 @@ def logs_page(app: AdminApp, tab: str, day: str | None, name: str | None = None)
         body = ("<table><tr><th>시각</th><th>항목</th><th>이전 값</th><th>새 값</th><th>스케줄러 재등록</th></tr>"
                 f"{rows or '<tr><td colspan=5>변경 기록 없음</td></tr>'}</table>")
     else:
+        runs = sorted(app.runs(), key=lambda r: r.start, reverse=True)
+        state, picker = list_filters(query or {}, {r.start[:4] for r in runs})
+        grouped = {}
+        for run in runs:
+            grouped.setdefault(run.start[:10], []).append(run)
+        needle = state["q"].casefold()
+        days = [d for d, group in grouped.items() if (state["year"] == "all" or d[:4] == state["year"])
+                and (not state["start"] or d >= state["start"]) and (not state["end"] or d <= state["end"])
+                and any(needle in ' '.join((r.start, r.origin, r.result, r.mail_file or '')).casefold() for r in group)]
+        days, nav, _ = list_page(days, query or {}, state, unit="일")
         rows = ""
-        for run in app.runs():
-            day_key = run.start[:10].replace("-", "")
-            mail = f"<a class='btn' href='/logs?tab=mail&name={quote(run.mail_file)}'>메일</a> " if run.mail_file else ""
-            rows += (f"<tr><td style='white-space:nowrap'>{escape(run.start[:16])}</td><td>{escape(run.origin)}</td>"
+        for date in days:
+            detail = ""
+            group = grouped[date]
+            counts = ' · '.join(f'{escape(result)} {sum(r.result == result for r in group)}회' for result in sorted({r.result for r in group}))
+            for run in group:
+                day_key = run.start[:10].replace("-", "")
+                mail = f"<a class='btn' href='/logs?tab=mail&name={quote(run.mail_file)}'>메일</a> " if run.mail_file else ""
+                stages = ''.join(f'<li>{escape(stage)} · {escape(clock)} · {escape(result)} · {escape(text)}</li>' for stage, clock, result, text in run.stages)
+                detail += (f"<tr><td style='white-space:nowrap'>{escape(run.start[:16])}</td><td>{escape(run.origin)}</td>"
                      f"<td>{badge(run.result, RESULT_BADGE.get(run.result, 'b-mute'))}</td>"
                      f"<td>{'-' if run.articles is None else run.articles}</td><td>{'-' if run.ai_calls is None else run.ai_calls}</td>"
                      f"<td>{escape(run.mail_bytes or '-')}</td><td>{'발송' if run.sent else '-'}</td>"
-                      f"<td>{escape(run.error) or '-'}</td><td style='white-space:nowrap'>{mail}<a class='btn' href='/logs?tab=detail&day={day_key}'>로그</a></td></tr>")
-        body = ("<table><tr><th>시작</th><th>실행 주체</th><th>결과</th><th>기사</th><th>AI 신규 호출</th><th>메일 크기 (bytes)</th>"
-                f"<th>발송</th><th>실패 사유</th><th>보기</th></tr>{rows or '<tr><td colspan=9>실행 기록 없음</td></tr>'}</table>")
+                      f"<td>{escape(run.error) or '-'}</td><td>{mail}<a class='btn' href='/logs?tab=detail&day={day_key}'>로그</a>"
+                      f"<details><summary>진행 단계</summary><ul>{stages or '<li>단계 기록 없음</li>'}</ul></details></td></tr>")
+            rows += (f'<details class="guide"><summary>{escape(date)} · {len(group)}회 · {counts}</summary><div class="tw">'
+                     '<table><tr><th>시작</th><th>실행 주체</th><th>결과</th><th>기사</th><th>AI 신규 호출</th><th>메일 크기 (bytes)</th>'
+                     f'<th>발송</th><th>실패 사유</th><th>보기</th></tr>{detail}</table></div></details>')
+        body = picker + '<p class="muted">검색에 맞는 실행이 있는 날짜를 표시하며, 상세에는 그 날짜의 모든 실행을 보존합니다. 발송 회차와 재발송 관계는 발송 이력 탭에서 확인하세요.</p>' + nav + (rows or '<p>조건에 맞는 실행 기록이 없습니다.</p>')
     return f'<div class="tabs">{tabs}</div><div class="card tabbody">{keep}{body}</div>'
 
 
@@ -1169,20 +1254,28 @@ def _show(value) -> str:
     return MODE_LABEL.get(str(value), str(value))
 
 
-def newsletter_body(app: AdminApp, name: str | None) -> str:
+def newsletter_body(app: AdminApp, name: str | None, query: dict | None = None) -> str:
     files = app.mail_files()
+    state, picker = list_filters(query or {}, {f["made"][:4] for f in files}, mail=True)
+    needle = state["q"].casefold()
+    filtered = [f for f in files if (state["year"] == "all" or f["made"][:4] == state["year"])
+                and (state["month"] == "all" or f["made"][5:7] == state["month"])
+                and needle in ' '.join((f["name"], f["kind"], f["origin"])).casefold()]
+    shown, nav, context = list_page(filtered, query or {}, state, unit="개")
     kind_badge = {"발송본": "b-ok", "생성만 (발송 안 함)": "b-info", "미리보기": "b-warn"}
-    rows = "".join(f"<tr><td><a class='btn' href='/logs?tab=mail&name={quote(f['name'])}'>{escape(f['name'])}</a></td>"
+    rows = "".join(f"<tr><td><a class='btn' href='/logs?{escape(urlencode({**context, 'name': f['name']}), quote=True)}'>{escape(f['name'])}</a></td>"
                    f"<td>{badge(f['kind'], kind_badge.get(f['kind'], 'b-mute'))}</td><td>{escape(f['made'])}</td>"
-                   f"<td>{escape(f['origin'])}</td><td>{f['size'] / 1024:.0f} KB</td></tr>" for f in files)
-    name = name or (files[0]["name"] if files else None)
+                   f"<td>{escape(f['origin'])}</td><td>{f['size'] / 1024:.0f} KB</td></tr>" for f in shown)
+    requested = name
+    name = name if name in {f["name"] for f in files} else (shown[0]["name"] if shown and not requested else None)
     guide = ('<div class="muted" style="margin-bottom:10px">발송본: 실제로 TEST 수신자에게 보낸 메일 · 생성만: 만들었지만 보내지 않은 메일 · '
              '미리보기: 점검 도구 "미리보기 다시 만들기" 로 만든 확인용 (최신 1개만 보관). 메일은 만든 시각 기준 최근 24시간 (월요일 72시간) 기사로 '
              '구성되므로 만든 시각이 다르면 기사 구성이 다릅니다.</div>')
-    frame = (f'<h2 style="margin-top:18px">{escape(name)}</h2><iframe src="/newsletter/view?name={quote(name)}" style="width:100%;height:900px;border:1px solid var(--line);border-radius:8px"></iframe>'
-             if name else "<p>생성된 메일이 없습니다.</p>")
-    return (f'{guide}<table><tr><th>파일</th><th>종류</th><th>만든 시각</th><th>실행 주체</th><th>크기</th></tr>'
-            f'{rows or "<tr><td colspan=5>없음</td></tr>"}</table>{frame}')
+    note = '<p class="info">선택한 메일은 현재 목록 조건 밖의 파일입니다.</p>' if name and name not in {f["name"] for f in shown} else ''
+    frame = (f'{note}<h2 style="margin-top:18px">{escape(name)}</h2><iframe title="선택한 뉴스레터 미리보기" sandbox="allow-popups" src="/newsletter/view?name={quote(name)}" style="width:100%;height:900px;border:1px solid var(--line);border-radius:8px"></iframe>'
+             if name else "<p>선택한 메일 파일이 없거나 허용되지 않는 이름입니다.</p>" if requested else "<p>조건에 맞는 메일 파일이 없습니다.</p>")
+    return (f'{guide}{picker}{nav}<table><tr><th>파일</th><th>종류</th><th>만든 시각</th><th>실행 주체</th><th>크기</th></tr>'
+            f'{rows or "<tr><td colspan=5>조건에 맞는 파일 없음</td></tr>"}</table>{frame}')
 
 
 SOURCE_GUIDE = """
@@ -1457,10 +1550,10 @@ def make_handler(app: AdminApp, port: int):
                 return self._send(200, page("예약 발송 설정", schedule_page(app), message, active="/schedule"))
             if url.path == "/logs":
                 tab = _first(query, "tab") or "runs"
-                return self._send(200, page("실행 이력·뉴스레터", logs_page(app, tab, _first(query, "day") or None, _first(query, "name") or None),
+                return self._send(200, page("실행 이력·뉴스레터", logs_page(app, tab, _first(query, "day") or None, _first(query, "name") or None, query),
                                             message, active="/logs"))
             if url.path == "/newsletter":  # 예전 주소: 실행 이력·뉴스레터의 뉴스레터 탭 (D-074)
-                return self._send(200, page("실행 이력·뉴스레터", logs_page(app, "mail", None, _first(query, "name") or None), message, active="/logs"))
+                return self._send(200, page("실행 이력·뉴스레터", logs_page(app, "mail", None, _first(query, "name") or None, query), message, active="/logs"))
             if url.path == "/newsletter/view":
                 html = app.newsletter_html(_first(query, "name") or None)
                 return self._send(200, html or "<p>생성된 메일이 없습니다.</p>")
