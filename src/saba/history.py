@@ -90,10 +90,15 @@ def parse_runs(lines: list[LogLine]) -> list[Run]:
         elif msg.startswith("그룹 발송 완료"):  # D-076: 인원만 기록
             current.stages.append(("발송", clock, "완료", msg.split(":", 1)[-1].strip()))
             current.result, current.sent = "성공", True
-        elif line.level == "ERROR" and msg.startswith("발송 단계 부분 실패"):  # D-077: 일부만 보냄 (실행은 실패)
+        elif line.level == "ERROR" and msg.startswith("발송 단계 부분 실패"):  # D-077: 실행은 실패
             reason = msg.split(":", 1)[-1].strip()
             current.stages.append(("발송", clock, "실패", reason))
-            current.result, current.sent, current.error = "부분 발송", True, f"발송 단계: 일부만 보냄 ({reason})"
+            if _count(reason, "성공"):  # 한 명이라도 받았다
+                current.result, current.sent, current.error = "부분 발송", True, f"발송 단계: 일부만 보냄 ({reason})"
+            elif _count(reason, "불명확"):  # 성공 0 이지만 받았을 수도 있다: "보내지 않음" 이라고 하지 않는다
+                current.result, current.error = "실패", f"발송 단계: 성공 0, 받았는지 불명확한 사람 있음 ({reason})"
+            else:
+                current.result, current.error = "실패", f"발송 단계: 아무도 받지 못함 ({reason})"
         elif msg.startswith("발송하지 않음") or "send=false" in msg:
             current.stages.append(("발송", clock, "안 함", "설정: 발송 안 함"))
             current.result = "성공 (발송 안 함)"
@@ -166,3 +171,9 @@ def storage_status(root: Path) -> dict:
         status[key] = {"count": len(files), "bytes": sum(p.stat().st_size for p in files),
                        "oldest": min(days).isoformat() if days else "-"}
     return status
+
+
+def _count(text: str, name: str) -> int:
+    """"성공 2 · 실패 1" 같은 문구에서 이름 뒤 인원. 없으면 0. """
+    found = re.search(rf"{name} (\d+)", text)
+    return int(found.group(1)) if found else 0

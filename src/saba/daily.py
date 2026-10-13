@@ -6,7 +6,7 @@
 """
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass, replace
 from datetime import date, datetime, timedelta
 import json
@@ -177,12 +177,23 @@ def _counts_text(counts: dict) -> str:
     return " · ".join(f"{name} {counts.get(name, 0)}" for name in ("성공", "실패", "불명확", "미시도"))
 
 
+def open_round(origin: str, target: str, emails: list[str], *, mail_file: str, mail_sha256: str, history: Path,
+               parent_id: int | None = None) -> int:
+    """발송 회차를 먼저 만든다. 만들지 못하면 (DB 잠김·예전 형식 등) 아무에게도 보내지 않았으므로 DailyError."""
+    from saba import sendlog
+    try:
+        return sendlog.start(origin, target, emails, mail_file=mail_file, mail_sha256=mail_sha256, parent_id=parent_id,
+                             path=history)
+    except sendlog.SendLogError as error:
+        raise DailyError(f"{error} (보내기 전이라 아무에게도 보내지 않음)") from None
+
+
 def deliver_group(message, emails: list[str], *, origin: str, target: str, mail_file: str, mail_sha256: str,
                   history: Path, parent_id: int | None = None) -> str:
     """회차를 먼저 만들고 (기록 실패면 보내지 않음) 한 명씩 결과를 저장하며 보낸다. 로그용 문구에는 인원만."""
     from saba import send_mail, sendlog
-    send_id = sendlog.start(origin, target, emails, mail_file=mail_file, mail_sha256=mail_sha256, parent_id=parent_id,
-                            path=history)
+    send_id = open_round(origin, target, emails, mail_file=mail_file, mail_sha256=mail_sha256, history=history,
+                         parent_id=parent_id)
     try:
         send_mail.send_group(message, emails, log=lambda email, status, detail: sendlog.mark(send_id, email, status, detail, history))
     finally:
@@ -216,14 +227,27 @@ def send_newsletter(eml: bytes, mail_file: str, *, config: DailyConfig, origin: 
             raise DailyError(f"발송 대상 그룹 '{config.target_group}' 에 사용 중인 수신자가 없습니다")
         return deliver_group(message, emails, origin=origin, target=f"{config.target_group} 그룹", mail_file=mail_file,
                              mail_sha256=hashlib.sha256(eml).hexdigest(), history=history)
+    # TEST 주소도 그룹과 같은 순서: 회차 → "전송 중" → 보내기 → 결과 → 마침 (D-077). 앞의 두 기록이 실패하면 보내지 않고,
+    # 보낸 뒤 기록이 실패하거나 중단되면 "전송 중" 이 불명확으로 남는다.
+    address = send_mail.TEST_ADDRESS
+    send_id = open_round(origin, "TEST 주소", [address], mail_file=mail_file, mail_sha256=hashlib.sha256(eml).hexdigest(),
+                         history=history)
     try:
-        text = send_mail.send_test(message, send=True)
-    except send_mail.SendError as error:
-        # 발송 단계 (메일 전송 중) 오류는 받았는지 알 수 없다 (D-077). 연결·로그인 단계 오류는 보내지 않은 것이 확실하다.
-        status = sendlog.UNCLEAR if "발송 단계" in str(error) else sendlog.FAILED
-        sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, status, str(error)[:120])], mail_file, history)
-        raise
-    sendlog.record(origin, "TEST 주소", [sendlog.Result(send_mail.TEST_ADDRESS, sendlog.OK, "성공")], mail_file, history)
+        try:
+            sendlog.mark(send_id, address, sendlog.SENDING, "", history)
+        except sendlog.SendLogError as error:
+            raise DailyError(f"{error} (보내기 전이라 보내지 않음)") from None
+        try:
+            text = send_mail.send_test(message, send=True)
+        except send_mail.SendError as error:
+            # 발송 단계 (메일 전송 중) 오류는 받았는지 알 수 없다. 연결·로그인 단계 오류는 보내지 않은 것이 확실하다.
+            status = sendlog.UNCLEAR if "발송 단계" in str(error) else sendlog.FAILED
+            with suppress(sendlog.SendLogError):  # 기록 실패면 "전송 중" → 불명확. 원래 오류를 그대로 알린다
+                sendlog.mark(send_id, address, status, str(error)[:120], history)
+            raise
+        sendlog.mark(send_id, address, sendlog.OK, "성공", history)
+    finally:
+        sendlog.finish(send_id, history)
     locked = " (그룹 발송 잠금: TEST 주소만)" if config.target_group != "TEST" else ""
     return text + locked
 
@@ -312,10 +336,17 @@ def run_daily(now: datetime, config: DailyConfig, *, output_dir: Path = ROOT / "
     except PartialSendError as error:  # 일부는 보냈다: "발송하지 않음" 으로 쓰지 않는다 (D-077)
         logging.error("발송 단계 부분 실패: %s", str(error).removeprefix("그룹 발송 부분 실패: "))
         return 1
-    except Exception as error:  # 단계 실패는 종류만 남기고 발송하지 않는다 (재시도 없음).
-        detail = str(error) if isinstance(error, DailyError) or type(error).__name__ == "SendError" else type(error).__name__
-        logging.error("%s 단계 실패: %s · 오늘은 발송하지 않음", stage, detail)
+    except Exception as error:  # 단계 실패는 종류만 남긴다 (재시도 없음).
+        logging.error("%s 단계 실패: %s", stage, failure_text(stage, error, "오늘은 발송하지 않음"))
         return 1
+
+
+def failure_text(stage: str, error: Exception, not_sent: str) -> str:
+    """실패 문구. 보낸 뒤일 수 있는 오류 (발송 이력 기록 실패, SMTP 전송 중 오류) 에는 "발송하지 않음" 을 쓰지 않는다 (D-077)."""
+    name = type(error).__name__
+    detail = str(error) if isinstance(error, DailyError) or name in ("SendError", "SendLogError") else name
+    unclear = stage == "발송" and not isinstance(error, DailyError) and (name == "SendLogError" or "발송 단계," in str(error))
+    return f"{detail} · " + ("발송 여부 불명확 (발송 이력·받은 편지함 확인)" if unclear else not_sent)
 
 
 def register_command(config: DailyConfig, python: Path = PYTHON, *,
@@ -399,8 +430,7 @@ def resend_main(send_id: int, now: datetime) -> int:
             except PartialSendError as error:
                 logging.error("발송 단계 부분 실패: %s", str(error).removeprefix("그룹 발송 부분 실패: "))
             except Exception as error:  # 잠금·검사 실패는 문구, 그 밖은 종류만
-                detail = str(error) if isinstance(error, DailyError) or type(error).__name__ in ("SendError", "SendLogError") else type(error).__name__
-                logging.error("발송 단계 실패: %s · 재발송하지 않음", detail)
+                logging.error("발송 단계 실패: %s", failure_text("발송", error, "재발송하지 않음"))
             return 1
     except DailyError as error:
         logging.warning("%s: %s · 이번 실행은 건너뜀", origin, error)

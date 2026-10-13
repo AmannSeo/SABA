@@ -653,7 +653,7 @@ def _first(form: dict, key: str) -> str:
 CSS = """
 :root{
  --bg:#f4f5f7;--surface:#fff;--subtle:#f8f9fb;--line:#e3e6eb;--text:#151a23;--muted:#596273;
- --accent:#2457d6;--accent-soft:#e8eefc;
+ --accent:#2457d6;--accent-strong:#1d47b3;--accent-soft:#e8eefc;
  --ok:#15703a;--ok-soft:#e5f4ea;--warn:#9a5200;--warn-soft:#fdf1e1;--bad:#b42318;--bad-soft:#fdecea;
  --r-card:12px;--r-ctl:8px;--shadow:0 1px 2px rgba(21,26,35,.05)}
 /* 모서리 규칙: 카드 12px, 버튼·입력 8px, 배지 둥근 알약. 색 규칙: 강조색은 --accent 하나, 초록·주황·빨강은 상태를 뜻할 때만. */
@@ -674,8 +674,9 @@ h1{font-size:22px;letter-spacing:-.3px;margin:0 0 20px}
 .tile .s{color:var(--muted);font-size:12.5px;margin-top:6px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-card);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow)}
 .card h2{font-size:15.5px;margin:0 0 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.card h2 .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.card h2 .right{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 table{border-collapse:collapse;width:100%}
+.tw{overflow-x:auto;max-width:100%}
 th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
 th{background:var(--subtle);color:var(--muted);font-weight:600;font-size:12.5px;white-space:nowrap}
 tr:first-child th{border-top:1px solid var(--line)}
@@ -686,15 +687,15 @@ tr.group td{background:var(--subtle);color:var(--text);font-weight:700;font-size
 .btn{display:inline-block;padding:7px 14px;border-radius:var(--r-ctl);border:1px solid var(--line);background:var(--surface);color:var(--text);
  cursor:pointer;font:inherit;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background-color .15s,border-color .15s}
 .btn:hover{background:var(--subtle)}.btn:active{transform:translateY(1px)}
-.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn.primary:hover{background:#1d47b3}
+.btn:focus-visible,a:focus-visible,summary:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn.primary:hover{background:var(--accent-strong)}
 .btn.success{color:var(--ok);border-color:#a8d8b9}.btn.warn{color:var(--warn);border-color:#f0c48a}.btn.danger{color:var(--bad);border-color:#f3b1aa}
 .btn:disabled{opacity:.55;cursor:not-allowed}
-.help{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-weight:700;cursor:pointer;font-size:12px;padding:0;margin-left:6px}
+.help{width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-weight:700;cursor:pointer;font-size:12px;padding:0;margin-left:6px}
 .msg{background:var(--accent-soft);border:1px solid #c9d7f7;border-radius:var(--r-card);padding:12px 16px;margin-bottom:16px;white-space:pre-wrap}
 .info{background:var(--subtle);border:1px solid var(--line);border-radius:var(--r-ctl);padding:14px 16px;color:var(--muted)}
 .muted{color:var(--muted);font-size:12.5px}
-.tabs{display:flex;gap:4px;margin-bottom:12px}
+.tabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:12px}
 .tabs a{padding:8px 14px;border-radius:var(--r-ctl);color:var(--muted);text-decoration:none;font-weight:600}
 .tabs a:hover{background:var(--surface)}.tabs a.on{background:var(--surface);color:var(--accent);box-shadow:inset 0 0 0 1px var(--line)}
 form.inline{display:inline}
@@ -710,7 +711,7 @@ dialog h3{margin:0 0 10px}
 .grid>.card{margin-bottom:0}
 .side{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
 .sticky{position:sticky;top:16px}
-@media (max-width:1000px){.grid,.side,.tiles{grid-template-columns:1fr}main{padding:0 16px}header{padding:0 16px;gap:16px}}
+@media (max-width:1000px){.grid,.side,.tiles{grid-template-columns:minmax(0,1fr)}main{padding:0 16px}header{padding:0 16px;gap:16px}}
 .switch{position:relative;display:inline-block;width:48px;height:26px;vertical-align:middle;margin-right:8px}
 .switch input{opacity:0;width:0;height:0}
 .slider{position:absolute;cursor:pointer;inset:0;background:#c3c9d2;border-radius:26px;transition:background-color .2s}
@@ -726,9 +727,11 @@ dialog h3{margin:0 0 10px}
 .need{background:var(--warn-soft);border:1px solid #f0d3a8;border-radius:var(--r-ctl);padding:12px 14px;margin-top:12px}
 .lock{background:var(--subtle);border:1px dashed #c3c9d2;border-radius:var(--r-ctl);padding:12px 14px;color:var(--muted)}
 td.url{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.search{width:300px}
+.search{width:300px;max-width:100%}
 details.guide summary{cursor:pointer;font-weight:700;color:var(--accent)}
 details.guide ol{margin:10px 0 0;padding-left:20px;line-height:1.8}
+input[type=checkbox],input[type=radio]{width:18px;height:18px;vertical-align:-3px;accent-color:var(--accent)}
+@media (max-width:640px){header{height:auto;flex-wrap:wrap;padding:10px 16px;gap:4px 16px}header nav{width:100%;flex-wrap:wrap;overflow:visible}header nav a{padding:8px 10px}main{margin-top:20px}.card{padding:16px}.steps{flex-direction:column}.arrow{transform:rotate(90deg);align-self:flex-start;margin-left:16px}.tile{padding:14px 16px}.card h2 .right{margin-left:0;width:100%}.search{width:100%}input[type=file]{max-width:100%}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 """
 
@@ -750,7 +753,7 @@ def page(title: str, body: str, message: str = "", refresh: bool = False, active
     return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">{meta}'
             f'<meta name="viewport" content="width=device-width, initial-scale=1"><title>{escape(title)} · SABA 관리</title>'
             f'<style>{CSS}</style></head><body><header><div class="logo">SABA 관리</div><nav>{links}</nav></header>'
-            f'<main><h1>{escape(title)}</h1>{note}{body}</main></body></html>')
+            f'<main><h1>{escape(title)}</h1>{note}{body.replace("<table", "<div class=tw><table").replace("</table>", "</table></div>")}</main></body></html>')
 
 
 def button(app: AdminApp, action: str, label: str, style: str = "", back: str = "/", fields: dict | None = None) -> str:
@@ -985,8 +988,8 @@ def schedule_page(app: AdminApp) -> str:
  <div id="m-monthly" class="field"><label class="t">매월 날짜</label><div class="chips">{month_boxes}</div>
   <div class="muted">그 달에 없는 날짜 (예: 31일) 는 건너뜁니다.</div></div>
  <div id="m-dates" class="field"><label class="t">특정 날짜</label>
-  <div class="row"><input type="date" id="pick"> <button type="button" class="btn" onclick="addDate()">날짜 추가</button></div>
-  <textarea name="dates" id="dates" rows="4" cols="30" placeholder="한 줄에 하나 (예: 2026-10-20)">{escape(chr(10).join(config.dates))}</textarea>
+  <div class="row"><input type="date" id="pick" aria-label="추가할 날짜"> <button type="button" class="btn" onclick="addDate()">날짜 추가</button></div>
+  <textarea name="dates" id="dates" aria-label="특정 날짜 목록" rows="4" cols="30" placeholder="한 줄에 하나 (예: 2026-10-20)">{escape(chr(10).join(config.dates))}</textarea>
   <div class="muted">지난 날짜는 무시됩니다. 줄을 지우면 날짜가 빠집니다.</div></div>
 </div>
 <div class="card"><h2>시각</h2>
@@ -1081,7 +1084,8 @@ def sends_body(app: AdminApp, selected: str | None) -> str:
     from saba.send_mail import GROUP_SEND_APPROVED
     path = app.root / "data" / "send_history.db"
     rows = ""
-    for send in sendlog.sends(path):
+    rounds = sendlog.sends(path)
+    for send in rounds:
         counts = " ".join(badge(f"{name} {n}", SEND_STATUS_BADGE.get(name, "b-mute")) for name, n in sorted(send.counts.items()) if n)
         origin = escape(send.origin) + (f" <span class=muted>(회차 {send.parent_id} 재발송)</span>" if send.parent_id else "")
         rows += (f"<tr><td style='white-space:nowrap'>{send.id}</td><td style='white-space:nowrap'>{escape(send.at[:16])}</td>"
@@ -1097,7 +1101,9 @@ def sends_body(app: AdminApp, selected: str | None) -> str:
         detail = "".join(f"<tr><td>{escape(r.email)}</td><td>{badge(r.status, SEND_STATUS_BADGE.get(r.status, 'b-mute'))}</td>"
                          f"<td>{escape(r.detail)}</td></tr>" for r in sendlog.results(send_id, path))
         targets = sendlog.resend_targets(send_id, path)
-        if not targets:
+        if any(r.id == send_id and r.target == "TEST 주소" for r in rounds):
+            resend = '<p class="muted">TEST 주소 회차는 재발송 대상이 아닙니다. 테스트 화면의 즉시 테스트 발송을 쓰세요.</p>'
+        elif not targets:
             resend = '<p class="muted">다시 보낼 사람 (실패·미시도) 이 없습니다.</p>'
         elif not GROUP_SEND_APPROVED:
             resend = (f'<div class="lock">실패·미시도 {len(targets)}명. 그룹 발송 잠금 중에는 재발송할 수 없습니다 '
@@ -1177,7 +1183,7 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                          + button(app, "source_toggle", "중지" if e.enabled else "사용", "warn" if e.enabled else "success",
                                   back="/sources", fields={"id": s.source_id}) + " "
                          + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id}) + "</td></tr>")
-    search = ('<input class="search" placeholder="검색: 이름·ID·주소·구분·종류" oninput="var q=this.value.toLowerCase();'
+    search = ('<input class="search" placeholder="검색: 이름·ID·주소·구분·종류" aria-label="검색: 이름·ID·주소·구분·종류" oninput="var q=this.value.toLowerCase();'
               'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
     table = (f'<div class="card"><h2>RSS Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
              f'변경은 다음 실행부터 반영</span><span class="right">{search} <a class="btn primary" href="/sources?edit=new">추가</a></span></h2>'
@@ -1206,10 +1212,10 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
 <input type="hidden" name="confirm" value="yes"><input type="hidden" name="mode" value="{"edit" if editing else "new"}">
 <div class="grid" style="margin-bottom:0">
 <div>
-<div class="field"><label class="t">RSS 주소 (https)</label><input name="url" value="{escape(str(values.get("url", "")))}" required style="width:100%"></div>
+<div class="field"><label class="t">RSS 주소 (https)</label><input aria-label="RSS 주소 (https)" name="url" value="{escape(str(values.get("url", "")))}" required style="width:100%"></div>
 <div class="field"><label class="t">ID (영문 소문자·숫자·하이픈 3~40자, 만든 뒤 바꿀 수 없음)</label>
  <input name="id" value="{escape(str(values.get("id", "")))}" {"readonly" if editing else "required"} pattern="[a-z0-9][a-z0-9-]{{2,39}}" style="width:100%"></div>
-<div class="field"><label class="t">이름 (메일 출처 표시)</label><input name="name" value="{escape(str(values.get("name", "")))}" required maxlength="60" style="width:100%"></div>
+<div class="field"><label class="t">이름 (메일 출처 표시)</label><input aria-label="이름 (메일 출처 표시)" name="name" value="{escape(str(values.get("name", "")))}" required maxlength="60" style="width:100%"></div>
 </div>
 <div>
 <div class="field"><label class="t">구분 (메일 섹션)</label><div class="chips">
@@ -1243,7 +1249,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
              f'<div class="tile"><div class="k">그룹</div><div class="v">{len(group_list) - 1}개</div><div class="s">"전체" 는 사용 중인 전원 자동</div></div>'
              f'<div class="tile"><div class="k">부서</div><div class="v">{len(dept_list)}개</div><div class="s">허용 도메인 {", ".join(domain_list)}</div></div>'
              f'<div class="tile"><div class="k">실제 발송 대상</div><div class="v">TEST 1명</div><div class="s">TEST 외 발송은 별도 승인 후</div></div></div>')
-    target = ('<div class="card"><h2>발송 대상 그룹</h2><div class="row"><select disabled>'
+    target = ('<div class="card"><h2>발송 대상 그룹</h2><div class="row"><select disabled aria-label="발송 대상 그룹 (잠금)">'
               + "".join(f'<option{" selected" if g == "TEST" else ""}>{escape(g)} ({n}명)</option>' for g, n in group_list)
               + '</select>' + badge("TEST 로 잠금", "b-warn") + '</div>'
               '<p class="muted">지금은 예약·지금·테스트 발송 모두 고정 TEST 주소 1명에게만 보냅니다. 그룹 발송은 발송 전 승인 화면 없이 예약 시각에 수신자마다 1통씩 보내는 방식으로 만들어 두었지만 잠겨 있고, 잠금 해제는 회사 IT·보안 정책 확인 후 별도 승인이 필요합니다.</p></div>')
@@ -1259,7 +1265,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
                  f"<td style='white-space:nowrap'><a class=btn href='/recipients?edit={p.id}'>수정</a> "
                  + button(app, "recipient_toggle", "중지" if p.enabled else "사용", "warn" if p.enabled else "success", back="/recipients", fields={"id": str(p.id)}) + " "
                  + button(app, "recipient_delete", "삭제", "danger", back="/recipients", fields={"id": str(p.id)}) + "</td></tr>")
-    search = ('<input class="search" placeholder="검색: 이름·메일·부서·그룹" oninput="var q=this.value.toLowerCase();'
+    search = ('<input class="search" placeholder="검색: 이름·메일·부서·그룹" aria-label="검색: 이름·메일·부서·그룹" oninput="var q=this.value.toLowerCase();'
               'document.querySelectorAll(\'tr.src\').forEach(function(r){r.style.display=r.dataset.q.indexOf(q)<0?\'none\':\'\'})">')
     listing = (f'<div class="card"><h2>수신자 목록<span class="right">{search} <a class="btn" href="/recipients/export.csv">명단 CSV 내려받기</a> '
                f'<a class="btn primary" href="/recipients?edit=new#form">추가</a></span></h2><div class="row">{filters}</div>'
@@ -1274,10 +1280,10 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
     form = (f'<div class="card" id="form"><h2>{"수신자 수정" if current else "수신자 추가"}</h2>'
             f'<form method="post" action="/action/recipient_save"><input type="hidden" name="token" value="{app.token}">'
             f'<input type="hidden" name="back" value="/recipients"><input type="hidden" name="id" value="{current.id if current else ""}">'
-            f'<div class="field"><label class="t">이름</label><input name="name" value="{escape(values.name)}" required maxlength="40" style="width:100%"></div>'
+            f'<div class="field"><label class="t">이름</label><input aria-label="이름" name="name" value="{escape(values.name)}" required maxlength="40" style="width:100%"></div>'
             f'<div class="field"><label class="t">메일 ({escape(", ".join("@" + d for d in domain_list))} 만)</label>'
-            f'<input name="email" type="email" value="{escape(values.email)}" required style="width:100%"></div>'
-            f'<div class="field"><label class="t">부서</label><select name="department">{dept_options}</select></div>'
+            f'<input name="email" type="email" aria-label="메일" value="{escape(values.email)}" required style="width:100%"></div>'
+            f'<div class="field"><label class="t">부서</label><select aria-label="부서" name="department">{dept_options}</select></div>'
             f'<div class="field"><label class="t">그룹 (여러 개 가능, "전체" 는 자동)</label><div class="chips">{group_boxes}</div></div>'
             f'<div class="field"><label><input type="checkbox" name="enabled" value="on"{" checked" if values.enabled else ""}> 사용</label></div>'
             f'<div class="row"><button class="btn primary">저장</button><a class="btn" href="/recipients">취소</a></div></form></div>')
@@ -1286,9 +1292,9 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
                 '<p class="muted">형식: <b>이름,메일,부서,그룹</b> (첫 줄은 제목). 그룹이 여러 개면 <b>;</b> 로 구분 (예: TEST;파일럿). '
                 '엑셀에서 "CSV UTF-8" 로 저장한 파일을 고르거나, 엑셀 표를 복사해 아래 칸에 붙여 넣어도 됩니다. 이미 있는 메일은 정보가 갱신됩니다.</p>'
                 f'<form method="post" action="/action/csv_preview"><input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/recipients">'
-                '<div class="row"><input type="file" accept=".csv,text/csv" onchange="var f=this.files[0];if(!f)return;var r=new FileReader();'
+                '<div class="row"><input type="file" aria-label="CSV 파일 고르기" accept=".csv,text/csv" onchange="var f=this.files[0];if(!f)return;var r=new FileReader();'
                 'r.onload=function(){document.getElementById(\'csvtext\').value=r.result};r.readAsText(f,\'utf-8\')"></div>'
-                '<textarea name="csv" id="csvtext" rows="7" style="width:100%" placeholder="이름,메일,부서,그룹"></textarea>'
+                '<textarea name="csv" id="csvtext" aria-label="CSV 내용" rows="7" style="width:100%" placeholder="이름,메일,부서,그룹"></textarea>'
                 '<div class="row"><button class="btn primary">미리보기</button><span class="muted">미리보기는 저장하지 않습니다.</span></div></form></div>')
     preview = ""
     if app.csv_rows:
@@ -1307,7 +1313,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
                        + "</td></tr>" for name, count in items)
         return (f'<div class="card {cls}"><h2>{title}</h2><table>{rows}</table>'
                 f'<form method="post" action="/action/{action}_add" class="row"><input type="hidden" name="token" value="{app.token}">'
-                f'<input type="hidden" name="back" value="/recipients"><input name="name" placeholder="{placeholder}" required>'
+                f'<input type="hidden" name="back" value="/recipients"><input name="name" placeholder="{placeholder}" aria-label="{placeholder}" required>'
                 f'<button class="btn primary">추가</button></form></div>')
     groups_card = manage("그룹", group_list, "group", "새 그룹 이름", "c-teal", locked=(rc.ALL_GROUP, "TEST"))
     dept_card = manage("부서 목록", dept_list, "department", "새 부서 이름", "c-purple")
@@ -1343,8 +1349,8 @@ def criteria_card(app: AdminApp) -> str:
     scopes, examples = load_departments(app.departments_path)
     rows = "".join(
         f'<tr><th style="width:130px">{escape(name)}</th>'
-        f'<td><textarea name="scope_{i}" rows="2" style="width:100%" maxlength="200">{escape(scopes[name])}</textarea></td>'
-        f'<td><textarea name="examples_{i}" rows="3" style="width:100%" maxlength="300">{escape(examples[name])}</textarea></td></tr>'
+        f'<td><textarea name="scope_{i}" aria-label="{escape(name)} 담당 업무" rows="2" style="width:100%" maxlength="200">{escape(scopes[name])}</textarea></td>'
+        f'<td><textarea name="examples_{i}" aria-label="{escape(name)} 판단 예시" rows="3" style="width:100%" maxlength="300">{escape(examples[name])}</textarea></td></tr>'
         for i, name in enumerate(DEPARTMENT_NAMES))
     return (f'<div class="card"><h2>부서별 분류 기준<span class="muted">AI 가 기사마다 관련 부서를 고르는 기준입니다. '
             f'부서 이름 4개는 메일 부서 카드와 같아 고정입니다.</span></h2>'

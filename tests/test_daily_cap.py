@@ -188,6 +188,53 @@ class DailyMailUsesDailyCapsTests(unittest.TestCase):
         self.assertEqual((kwargs["max_new_calls"], kwargs["insight_calls"], kwargs["daily_caps"]), (7, 4, True))
 
 
+class KstGateTests(unittest.TestCase):
+    def test_build_views_counts_by_korean_date(self):
+        from unittest.mock import patch
+        from saba import briefing
+        now = datetime(2026, 10, 12, 15, 30, tzinfo=timezone.utc)  # 한국 10월 13일 00:30
+        with patch.object(briefing, "list_articles", return_value=[]), \
+                patch.object(briefing, "notice_excerpts", return_value={}), \
+                patch.object(briefing, "analyze_issues", return_value=({}, AnalysisStats())) as analyze, \
+                patch.object(briefing, "add_insights", return_value={}) as insights:
+            briefing.build_views(Path("a.db"), Path("b.db"), now, max_new_calls=7, insight_calls=4, daily_caps=True)
+        self.assertEqual((analyze.call_args.kwargs["today"], analyze.call_args.kwargs["daily_limit"]), (date(2026, 10, 13), 7))
+        self.assertEqual((insights.call_args.kwargs["today"], insights.call_args.kwargs["daily_limit"]), (date(2026, 10, 13), 4))
+
+    def test_without_daily_caps_no_day_limit(self):
+        from unittest.mock import patch
+        from saba import briefing
+        with patch.object(briefing, "list_articles", return_value=[]), \
+                patch.object(briefing, "notice_excerpts", return_value={}), \
+                patch.object(briefing, "analyze_issues", return_value=({}, AnalysisStats())) as analyze, \
+                patch.object(briefing, "add_insights", return_value={}) as insights:
+            briefing.build_views(Path("a.db"), Path("b.db"), NOW, max_new_calls=7)
+        self.assertNotIn("daily_limit", analyze.call_args.kwargs)
+        self.assertNotIn("daily_limit", insights.call_args.kwargs)
+
+
+class AllPathsShareCapTests(unittest.TestCase):
+    """예약·지금 발송·테스트 발송 (즉시·예약) 이 모두 같은 build_mail (하루 공유 상한) 을 쓴다."""
+
+    def test_every_origin_uses_build_mail(self):
+        import sys
+        import tempfile as tf
+        from unittest.mock import patch
+        from saba import daily
+        config = daily.DailyConfig(time="08:00", random_delay_minutes=5, weekdays=("MON",), max_analysis_calls=7,
+                                   max_insight_calls=4, send=True)
+        self.assertIs(daily.run_daily.__kwdefaults__["build"], daily.build_mail)
+        for flags, origin in (([], "자동 실행"), (["--manual"], "관리 페이지 수동 실행"),
+                              (["--test"], "테스트 발송 (예약)"), (["--test", "--manual"], "테스트 발송 (즉시)")):
+            with self.subTest(origin=origin), tf.TemporaryDirectory() as temp, \
+                    patch.object(sys, "argv", ["daily", "--run", *flags]), \
+                    patch.multiple(daily, ROOT=Path(temp), LOG_DIR=Path(temp) / "logs", LOCK_PATH=Path(temp) / "lock",
+                                   load_config=lambda: config, scheduled_on=lambda c, d: True), \
+                    patch("logging.basicConfig"), patch.object(daily, "run_daily", return_value=0) as run:
+                self.assertEqual(daily.main(), 0)
+                self.assertNotIn("build", run.call_args.kwargs)  # 기본값 build_mail (daily_caps=True)
+                self.assertEqual(run.call_args.kwargs["deliver"].keywords["origin"], origin)
+
+
 if __name__ == "__main__":
     unittest.main()
-

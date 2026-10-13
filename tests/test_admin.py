@@ -569,6 +569,25 @@ class ResendPageTests(AdminBase):
         self.assertIn("진행 중", self.app.message)
         self.assertEqual(self.launched, [])
 
+    def test_unlocked_refusals_over_http(self):  # 버튼이 없는 회차를 직접 POST 해도 띄우지 않는다
+        from saba import send_mail
+        path = self.root / "data" / "send_history.db"
+        test_id = self.sendlog.record("자동 실행", "TEST 주소", [self.sendlog.Result("ch.seo@tbell.co.kr", "실패", "x")],
+                                      path=path)
+        child = self.sendlog.start("실패 재발송", "파일럿 그룹", ["virtual.two@tbell.co.kr"], parent_id=self.send_id, path=path)
+        self.sendlog.mark(child, "virtual.two@tbell.co.kr", "성공", path=path)
+        self.sendlog.finish(child, path)
+        with patch.object(send_mail, "GROUP_SEND_APPROVED", True):
+            for send_id, words in ((test_id, "TEST 주소 회차"), (self.send_id, "다시 보낼 수신자가 없습니다"),
+                                   (9999, "없는 회차"), ("abc", "")):
+                with self.subTest(send_id=send_id):
+                    html = self.get(f"/logs?tab=sends&day={send_id}") if send_id != "abc" else ""
+                    self.assertNotIn("/action/resend_failed", html)
+                    status, _, _ = self.post("resend_failed", id=str(send_id), back="/logs")
+                    self.assertIn(status, (303, 400))
+                    self.assertIn(words, self.app.message)
+        self.assertEqual(self.launched, [])
+
     def test_partial_run_shown_on_dashboard(self):
         self.log.write_text(f"{STAMP} 08:03:00,000 INFO 실행 시작: 자동 실행 (발송 포함)\n"
                             f"{STAMP} 08:03:02,000 ERROR 발송 단계 부분 실패: 파일럿 그룹 2명 중 성공 1 · 실패 1 · 불명확 0 · 미시도 0\n",

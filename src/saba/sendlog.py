@@ -72,11 +72,11 @@ def _connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path, timeout=5)
     connection.execute("PRAGMA foreign_keys = ON")
-    connection.executescript(SCHEMA)
     columns = {row[1] for row in connection.execute("PRAGMA table_info(results)")}
-    if "status" not in columns:  # 예전 구조: 마이그레이션은 별도 승인 전 하지 않는다 (D-077)
+    if columns and "status" not in columns:  # 예전 구조: 표 추가도 하지 않는다. 마이그레이션은 별도 승인 (D-077)
         connection.close()
         raise SendLogError("발송 이력 DB 구조가 예전 형식입니다. 마이그레이션은 별도 승인이 필요합니다.")
+    connection.executescript(SCHEMA)
     return connection
 
 
@@ -158,11 +158,15 @@ def results(send_id: int, path: Path = DEFAULT_PATH) -> list[Result]:
 
 
 def resend_targets(send_id: int, path: Path = DEFAULT_PATH) -> list[str]:
-    """원회차에서 받지 않은 것이 확실한 사람 (실패·미시도) 중 이후 재발송에서 성공·불명확·전송 중이 아닌 사람 (D-077)."""
+    """원회차에서 받지 않은 것이 확실한 사람 (실패·미시도) 중 이후 모든 재발송 (재발송의 재발송 포함) 에서
+    성공·불명확·전송 중이 아닌 사람 (D-077)."""
     if not path.exists():
         return []
     with closing(_connect(path)) as c:
         base = [e for e, s in c.execute("SELECT email, status FROM results WHERE send_id = ?", (send_id,)) if s in RESENDABLE]
-        later = {e for (e,) in c.execute("SELECT r.email FROM results r JOIN sends s ON s.id = r.send_id "
-                                         "WHERE s.parent_id = ? AND r.status NOT IN (?, ?)", (send_id, FAILED, NOT_TRIED))}
+        later = {e for (e,) in c.execute(
+            "WITH RECURSIVE tree(id) AS (SELECT id FROM sends WHERE parent_id = ? "
+            "UNION SELECT s.id FROM sends s JOIN tree t ON s.parent_id = t.id) "
+            "SELECT r.email FROM results r JOIN tree t ON t.id = r.send_id WHERE r.status NOT IN (?, ?)",
+            (send_id, FAILED, NOT_TRIED))}
     return [e for e in base if e not in later]
