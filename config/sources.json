@@ -147,6 +147,6 @@
     "kind": "공식 기관",
     "kst": true,
     "date_only": true,
-    "enabled": false
+    "enabled": true
   }
 ]

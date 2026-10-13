@@ -16,3 +16,4 @@ output/daily_*.eml
 backups/
 data_before_restore_*/
 config_before_restore_*/
+config/sources.json
