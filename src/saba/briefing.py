@@ -28,9 +28,11 @@ class AnalysisStats:
     insufficient: int = 0
     failed: list[str] = field(default_factory=list)
     skipped_by_cap: int = 0
+    capped_ids: set[str] = field(default_factory=set)  # 상한 때문에 분석하지 못한 대표 기사
     insights_reused: int = 0
     insights_called: int = 0
     insights_failed: int = 0
+    dropped_unanalyzed: int = 0
 
 
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
@@ -72,11 +74,13 @@ def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
             result = cached
         elif stats.called >= max_new_calls:
             stats.skipped_by_cap += 1
+            stats.capped_ids.add(article.article_id)
             continue
         else:
             outcome = run(article, ledger_path=ledger_path, max_calls=max_calls, **limit)
             if outcome.status in LIMIT_STATUSES:  # 전송 전 거부: 호출로 세지 않는다
                 stats.skipped_by_cap += 1
+                stats.capped_ids.add(article.article_id)
                 continue
             if outcome.status == "input_insufficient":
                 stats.insufficient += 1
@@ -154,7 +158,7 @@ def add_insights(issues: list[Issue], results: dict[str, AnalysisResult], excerp
 def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: bool = True,
                 body_cache: Path = DEFAULT_CACHE, insight_db: Path = DEFAULT_INSIGHT_DB, insight_calls: int = 0,
                 insight_run: Callable[..., tuple[str, InsightResult | None]] = run_insight, daily_caps: bool = False,
-                **analyze_options) -> tuple[list[ArticleView], Selection, AnalysisStats | None]:
+                analyzed_only: bool = False, **analyze_options) -> tuple[list[ArticleView], Selection, AnalysisStats | None]:
     """insight_calls: 시사점 신규 호출 상한. 기본 0 이면 저장된 시사점만 쓴다 (실제 호출은 별도 승인).
 
     daily_caps=True (매일 실행, D-077): max_new_calls·insight_calls 를 이 실행이 아니라 now 의 한국 날짜 전체 상한으로 쓴다.
@@ -180,6 +184,11 @@ def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: b
     for issue in selection.issues:
         result = results.get(issue.representative.article_id)
         if result is not None and result.status == OUT_OF_SCOPE:
+            continue
+        # 상한 때문에 분석하지 못한 글은 관련성 확인 전이라 메일에서 뺀다 (D-080).
+        # 본문이 없어 분석할 수 없는 공지 (보호나라 등) 와 분석 실패 글은 지금처럼 원문 발췌로 남긴다.
+        if analyzed_only and stats is not None and issue.representative.article_id in stats.capped_ids:
+            stats.dropped_unanalyzed += 1
             continue
         insight = insights.get(issue.representative.article_id)
         views.append(build_article_view(preview_article(issue), display_result(result) if result else None,

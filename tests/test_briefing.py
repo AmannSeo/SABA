@@ -116,6 +116,17 @@ class BriefingTests(unittest.TestCase):
         self.assertGreaterEqual(stats.skipped_by_cap, 1)
         self.assertTrue(all(max_calls == 2 for _, max_calls in run.calls))  # 빈 사용량 기록 + 2
 
+    def test_analyzed_only_drops_capped_but_keeps_title_only_and_failed(self):
+        run = FakeRun(self.plan)
+        views, _, stats = self.views(run, max_new_calls=2, analyzed_only=True)
+        shown = {v.article_id for v in views}
+        self.assertTrue(stats.capped_ids)
+        self.assertFalse(shown & stats.capped_ids)  # 상한으로 분석 못 한 글은 메일에서 뺀다 (D-080)
+        self.assertEqual(stats.dropped_unanalyzed, len(stats.capped_ids))
+        self.assertIn("boho", shown)  # 본문 없는 공지는 분석 불가라도 남긴다
+        _, _, plain = self.views(FakeRun(self.plan), max_new_calls=2)
+        self.assertEqual(plain.dropped_unanalyzed, 0)  # 기본값은 이전 동작 그대로
+
     def test_no_ai_path_makes_no_calls(self):
         run = FakeRun(self.plan)
         views, _, stats = self.views(run, use_ai=False)

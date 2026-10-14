@@ -41,6 +41,13 @@ class HistoryTests(unittest.TestCase):
         self.assertEqual((nosend.mail_file, nosend.ai_calls, nosend.sent), ("daily_20261012_1500.eml", 16, False))
         self.assertEqual(skipped.error, "이미 실행 중이라 건너뜀")
 
+    def test_summary_with_dropped_count_still_parsed(self):
+        self.log.write_text("2026-10-12 16:00:01,000 INFO 실행 시작: 자동 실행 (발송 없이)\n"
+                            "2026-10-12 16:00:40,000 INFO 메일 생성 완료: daily_20261012_1600.eml · 표시 5건 · 분석 재사용 2 · 신규 3"
+                            " · 실패 0 · 분석 없음 제외 4 · 시사점 재사용 0 · 신규 1 · 실패 0 · 99,000 bytes\n", encoding="utf-8")
+        [run] = parse_runs(read_log(self.log))
+        self.assertEqual((run.mail_file, run.articles, run.ai_calls), ("daily_20261012_1600.eml", 5, 4))
+
     def test_load_runs_newest_first(self):
         starts = [r.start for r in load_runs(self.root / "logs")]
         self.assertEqual(starts, sorted(starts, reverse=True))

@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 
 LINE = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d+ (INFO|WARNING|ERROR) (.*)")
-MAIL = re.compile(r"메일 생성 완료: (\S+) · 표시 (\d+)건 · 분석 재사용 \d+ · 신규 (\d+) · 실패 \d+"
+MAIL = re.compile(r"메일 생성 완료: (\S+) · 표시 (\d+)건 · 분석 재사용 \d+ · 신규 (\d+) · 실패 \d+(?: · 분석 없음 제외 \d+)?"
                   r" · 시사점 재사용 \d+ · 신규 (\d+) · 실패 \d+ · ([\d,]+) bytes")
 SENT_BYTES = re.compile(r"메시지 ([\d,]+) bytes")
 LOG_NAME = re.compile(r"daily_(\d{8})\.log")

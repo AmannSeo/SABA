@@ -1148,7 +1148,7 @@ def target_field(config) -> str:
 
 def schedule_page(app: AdminApp) -> str:
     """예약 발송 설정 (D-072, 배치 정리 D-074): 왼쪽 입력, 오른쪽 현재 일정·다음 예약."""
-    from saba.daily import next_runs
+    from saba.daily import MAX_DAILY_CALLS, next_runs
     config = app.config()
     days = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
     mode_radios = "".join(f'<label><input type="radio" name="mode" value="{m}"{" checked" if config.mode == m else ""} onchange="showMode()"> {label}</label>'
@@ -1175,8 +1175,8 @@ def schedule_page(app: AdminApp) -> str:
  <div class="muted">무작위 지연: 정해진 시각부터 이 시간 안에서 아무 때나 실행합니다 (0 이면 정각).</div>
 </div>
 <div class="card"><h2>AI 호출과 발송</h2>
- <div class="row"><label>하루 AI 분석 상한 <input type="number" name="max_analysis_calls" min="0" max="50" value="{config.max_analysis_calls}"> 건</label>
- <label>하루 AI 시사점 상한 <input type="number" name="max_insight_calls" min="0" max="50" value="{config.max_insight_calls}"> 건</label></div>
+ <div class="row"><label>하루 AI 분석 상한 <input type="number" name="max_analysis_calls" min="0" max="{MAX_DAILY_CALLS}" value="{config.max_analysis_calls}"> 건</label>
+ <label>하루 AI 시사점 상한 <input type="number" name="max_insight_calls" min="0" max="{MAX_DAILY_CALLS}" value="{config.max_insight_calls}"> 건</label></div>
  <div class="muted">현재 하루 최대 {per_day}건 · 매일 발송해도 한 달 최대 약 ${per_day * COST_PER_CALL * 31:.2f} (월 상한 $3, 변경 불가). 하루 상한은 같은 날의 예약·지금·테스트 실행이 함께 씁니다. 이미 분석한 기사는 다시 호출하지 않습니다.</div>
  <div class="row"><label><input type="radio" name="send" value="on"{" checked" if config.send else ""}> 예약 시각에 발송</label>
  <label><input type="radio" name="send" value="off"{"" if config.send else " checked"}> 메일 생성까지만 (발송 안 함)</label></div>

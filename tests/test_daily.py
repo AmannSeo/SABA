@@ -101,8 +101,10 @@ class DailyTests(unittest.TestCase):
                 "max_insight_calls": 20, "send": True}
         path.write_text(json.dumps(base), encoding="utf-8")
         self.assertEqual(load_config(path).time, "08:00")
+        path.write_text(json.dumps(base | {"max_analysis_calls": 60, "max_insight_calls": 60}), encoding="utf-8")
+        self.assertEqual(load_config(path).max_analysis_calls, 60)  # 섹션 6개 × 10건 (D-080)
         for bad in ({"time": "8:00"}, {"time": "24:00"}, {"weekdays": ["XYZ"]}, {"weekdays": []},
-                    {"max_analysis_calls": 99}, {"random_delay_minutes": -1}, {"random_delay_minutes": 31},
+                    {"max_analysis_calls": 99}, {"max_analysis_calls": 61}, {"max_insight_calls": 61}, {"random_delay_minutes": -1}, {"random_delay_minutes": 31},
                     {"mode": "yearly"}, {"mode": "monthly", "month_days": []}, {"mode": "monthly", "month_days": [32]},
                     {"mode": "dates", "dates": []}, {"mode": "dates", "dates": ["2026-13-01"]}, {"log_days": 3},
                     {"mail_days": 0}):
@@ -110,7 +112,7 @@ class DailyTests(unittest.TestCase):
                 path.write_text(json.dumps(base | bad), encoding="utf-8")
                 with self.assertRaises(DailyError):
                     load_config(path)
-        self.assertEqual(load_config().max_analysis_calls, 30)  # 저장소 기본 설정 (D-061, 2026-10-13 사용자 승인으로 30)
+        self.assertEqual(load_config().max_analysis_calls, 60)  # 저장소 기본 설정 (D-061, 2026-10-14 사용자 승인으로 60, D-080)
         path.write_text(json.dumps(base), encoding="utf-8")  # 예전 형식 (mode 등 없음) 은 기본값
         config = load_config(path)
         self.assertEqual((config.mode, config.log_days, config.mail_days), ("weekly", 90, 30))

@@ -81,8 +81,8 @@ Get-ScheduledTask -TaskName SABA_Daily_Briefing
 | `dates` | 없음 | 특정 날짜 (YYYY-MM-DD) |
 | `time` | `08:00` | 발송 시각 (HH:MM) |
 | `random_delay_minutes` | `5` | 최대 무작위 지연 0~30분 (0 이면 정각) |
-| `max_analysis_calls` | `20` | 하루 AI 분석 신규 호출 상한 (0~50, 한국 날짜별 모든 실행 합계, D-077) |
-| `max_insight_calls` | `20` | 하루 AI 시사점 신규 호출 상한 (0~50, 한국 날짜별 모든 실행 합계, D-077) |
+| `max_analysis_calls` | `60` | 하루 AI 분석 신규 호출 상한 (0~60, 한국 날짜별 모든 실행 합계, D-077). 섹션 6개 × 10건이 하루 최대 필요량이다. 상한 때문에 분석하지 못한 글은 메일에서 뺀다 (D-080) |
+| `max_insight_calls` | `30` | 하루 AI 시사점 신규 호출 상한 (0~60, 한국 날짜별 모든 실행 합계, D-077) |
 | `send` | `true` | 예약 실행 때 발송 여부. `false` 면 메일만 만든다 ("지금 발송" 버튼은 항상 발송) |
 | `log_days` | `90` | 실행 로그 보관 일수 (7~3650) |
 | `mail_days` | `30` | 메일 파일 보관 일수 (1~3650) |

@@ -2,7 +2,7 @@
   "time": "08:00",
   "random_delay_minutes": 5,
   "weekdays": ["MON", "TUE", "WED", "THU", "FRI"],
-  "max_analysis_calls": 30,
+  "max_analysis_calls": 60,
   "max_insight_calls": 30,
   "send": true
 }

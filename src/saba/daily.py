@@ -37,6 +37,10 @@ class DailyError(Exception):
 MODES = ("daily", "weekly", "monthly", "dates")  # 매일·매주·매월·특정 날짜 (D-072)
 
 
+# 하루 AI 호출 상한 최대값: 섹션 6개 × 섹션당 10건 = 하루 1회 실행 최대 필요량 (2026-10-14 사용자 결정, D-080)
+MAX_DAILY_CALLS = 60
+
+
 @dataclass(frozen=True)
 class DailyConfig:
     time: str
@@ -80,9 +84,9 @@ def parse_config(data: dict) -> DailyConfig:
             raise DailyError(f"설정 오류: 날짜 형식이 아닙니다 ({value[:20]}).") from None
     if config.mode == "dates" and not config.dates:
         raise DailyError("설정 오류: 특정 날짜 반복은 날짜를 하나 이상 넣어야 합니다.")
-    if not (0 <= config.random_delay_minutes <= 30 and 0 <= config.max_analysis_calls <= 50
-            and 0 <= config.max_insight_calls <= 50):
-        raise DailyError("설정 오류: 무작위 지연은 0~30분, 하루 호출 상한은 0~50건이어야 합니다.")
+    if not (0 <= config.random_delay_minutes <= 30 and 0 <= config.max_analysis_calls <= MAX_DAILY_CALLS
+            and 0 <= config.max_insight_calls <= MAX_DAILY_CALLS):
+        raise DailyError(f"설정 오류: 무작위 지연은 0~30분, 하루 호출 상한은 0~{MAX_DAILY_CALLS}건이어야 합니다.")
     if not 1 <= len(config.target_group) <= 20:
         raise DailyError("설정 오류: 발송 대상 그룹 이름이 필요합니다.")
     if not (7 <= config.log_days <= 3650 and 1 <= config.mail_days <= 3650):
@@ -153,13 +157,14 @@ def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:
 
     views, _selection, stats = build_views(DEFAULT_DB, DEFAULT_ANALYSIS_DB, now,
                                            max_new_calls=config.max_analysis_calls,
-                                           insight_calls=config.max_insight_calls, daily_caps=True)
+                                           insight_calls=config.max_insight_calls, daily_caps=True, analyzed_only=True)
     if not views:
         raise DailyError("메일 생성 실패 (표시할 기사 0건)")
     local = now.astimezone()
     today = f"{local.year}년 {local.month}월 {local.day}일 {'월화수목금토일'[local.weekday()]}요일"
     message = build_message(to_mail_html(views, today=today), f"[TEST] Security & AI Briefing · {today}")
     summary = (f"표시 {len(views)}건 · 분석 재사용 {stats.reused} · 신규 {stats.called} · 실패 {len(stats.failed)}"
+               f" · 분석 없음 제외 {stats.dropped_unanalyzed}"
                f" · 시사점 재사용 {stats.insights_reused} · 신규 {stats.insights_called} · 실패 {stats.insights_failed}")
     return message.as_bytes(), summary
 
