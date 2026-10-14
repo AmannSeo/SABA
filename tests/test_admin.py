@@ -844,6 +844,17 @@ class UiFeedbackTests(AdminBase):
         self.assertIn(f'src="/newsletter/view?name={name}"', html)
         self.assertNotIn('src="/newsletter/view?name=daily_new.eml"', html)
 
+    def test_unsent_generated_mail_shown_when_nothing_sent(self):
+        from saba.history import Run
+        from saba.mail import build_message
+        name = "26/10/daily_unsent.eml"
+        (self.root / "output" / "26" / "10").mkdir(parents=True, exist_ok=True)
+        (self.root / "output" / name).write_bytes(build_message("<p>UNSENT</p>", "가상").as_bytes())
+        html = admin.today_newsletter(self.app, [Run(STAMP + " 08:00:00", "자동 실행", result="성공 (발송 안 함)", mail_file=name)])
+        self.assertIn("미발송", html)
+        self.assertIn("오늘 뉴스레터 (미발송)", html)
+        self.assertIn(f'src="/newsletter/view?name={name}"', html)
+
     def test_preview_empty_failed_unclear_generated_and_missing_states(self):
         from saba.history import Run
         cases = [([], "오늘 보내진 뉴스레터가 없습니다"),
@@ -939,6 +950,8 @@ class ListManagementTests(AdminBase):
             today = admin.today_newsletter(self.app, [new])
             self.assertIn('/newsletter/view?name=' + relative, today)
             self.assertIn(relative, self.get('/logs'))
+            self.assertIn('scrollIntoView', self.get('/logs?' + urlencode({'tab': 'mail', 'name': relative})))  # 고른 메일로 바로 이동
+            self.assertNotIn('scrollIntoView', self.get('/logs?tab=mail'))
         for invalid in ('../daily_x.eml', '26/10/../../daily_x.eml', 'C:/daily_x.eml'):
             self.assertEqual(self.get('/newsletter/view?' + urlencode({'name': invalid})), '<p>생성된 메일이 없습니다.</p>')
 

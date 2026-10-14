@@ -1048,27 +1048,35 @@ def dashboard(app: AdminApp) -> str:
             + today_newsletter(app, real_today) + '</div>')
 
 
+def _newsletter_frame(app: AdminApp, name: str | None, title: str = "오늘 보내진 뉴스레터 미리보기") -> str:
+    from saba.history import mail_path
+    try:
+        exists = bool(name) and mail_path(app.root / "output", name).is_file()
+    except ValueError:
+        exists = False
+    if not exists:
+        return ""
+    return (f'<div class="newsletter-file"><a class="btn" href="/logs?tab=mail&name={quote(name)}">뉴스레터 열기</a> '
+            f'<span class="muted">{escape(name)}</span></div>'
+            f'<iframe class="newsletter-preview" title="{title}" '
+            f'src="/newsletter/view?name={quote(name)}" loading="lazy" sandbox="allow-popups"></iframe>')
+
+
 def today_newsletter(app: AdminApp, runs: list) -> str:
     sent = next((run for run in runs if run.sent), None)
+    # 발송본이 없으면 오늘 생성만 한 최신 메일을 "미발송" 으로 보여 준다 (TEST 운영 중 확인용, 2026-10-14 사용자 결정)
+    generated = next((run for run in runs if run.mail_file and not run.sent and run.result == "성공 (발송 안 함)"), None)
     body = '<p class="muted">오늘 보내진 뉴스레터가 없습니다.</p>'
     if sent is not None:
         body = (f'<p>{badge(sent.result, RESULT_BADGE.get(sent.result, "b-mute"))} '
                 f'{escape(sent.start[11:16])} · {escape(sent.origin)}</p>')
-        name = sent.mail_file
-        from saba.history import mail_path
-        try:
-            exists = bool(name) and mail_path(app.root / "output", name).is_file()
-        except ValueError:
-            exists = False
-        if exists:
-            body += (f'<div class="newsletter-file"><a class="btn" href="/logs?tab=mail&name={quote(name)}">뉴스레터 열기</a> '
-                     f'<span class="muted">{escape(name)}</span></div>'
-                     f'<iframe class="newsletter-preview" title="오늘 보내진 뉴스레터 미리보기" '
-                     f'src="/newsletter/view?name={quote(name)}" loading="lazy" sandbox="allow-popups"></iframe>')
-        else:
-            body += '<p class="muted">발송 기록은 있으나 메일 파일이 없습니다. 보관 기간과 파일 경로를 확인하세요.</p>'
+        body += (_newsletter_frame(app, sent.mail_file)
+                 or '<p class="muted">발송 기록은 있으나 메일 파일이 없습니다. 보관 기간과 파일 경로를 확인하세요.</p>')
     elif any("불명확" in run.error for run in runs):
         body = '<p class="info">발송 여부가 불명확합니다. 발송 이력과 받은 편지함을 먼저 확인하세요.</p>'
+    elif generated is not None and (frame := _newsletter_frame(app, generated.mail_file, "오늘 생성한 미발송 뉴스레터 미리보기")):
+        body = (f'<p>{badge("미발송", "b-warn")} {escape(generated.start[11:16])} 생성 · {escape(generated.origin)}</p>'
+                '<p class="muted">아직 발송하지 않은 메일입니다. 받는 사람에게는 가지 않았습니다.</p>' + frame)
     elif runs:
         latest = runs[0]
         if latest.result == "성공 (발송 안 함)":
@@ -1077,7 +1085,8 @@ def today_newsletter(app: AdminApp, runs: list) -> str:
             body = '<p class="muted">오늘 실행이 실패했으며 확인된 발송 성공 기록이 없습니다.</p>'
         elif latest.result == "진행 중":
             body = '<p class="muted">실행 중입니다. 발송 결과가 확인되면 표시합니다.</p>'
-    return f'<section class="card"><h2>오늘 보내진 뉴스레터</h2>{body}</section>'
+    title = "오늘 보내진 뉴스레터" if sent is not None or generated is None else "오늘 뉴스레터 (미발송)"
+    return f'<section class="card"><h2>{title}</h2>{body}</section>'
 
 
 def test_page(app: AdminApp) -> str:
@@ -1413,7 +1422,9 @@ def newsletter_body(app: AdminApp, name: str | None, query: dict | None = None) 
              '미리보기: 점검 도구 "미리보기 다시 만들기" 로 만든 확인용 (최신 1개만 보관). 메일은 만든 시각 기준 최근 24시간 (월요일 72시간) 기사로 '
              '구성되므로 만든 시각이 다르면 기사 구성이 다릅니다.</div>')
     note = '<p class="info">선택한 메일은 현재 목록 조건 밖의 파일입니다.</p>' if name and name not in {f["name"] for f in shown} else ''
-    frame = (f'{note}<h2 style="margin-top:18px">{escape(name)}</h2><iframe title="선택한 뉴스레터 미리보기" sandbox="allow-popups" src="/newsletter/view?name={quote(name)}" style="width:100%;height:900px;border:1px solid var(--line);border-radius:8px"></iframe>'
+    # 파일을 고르고 들어오면 표 아래 미리보기로 바로 이동 (목록이 길면 화면 밖에 있어 안 보였음)
+    jump = '<script>document.getElementById("mail-preview").scrollIntoView()</script>' if name and requested else ''
+    frame = (f'{note}<h2 id="mail-preview" style="margin-top:18px;scroll-margin-top:16px">{escape(name)}</h2>{jump}<iframe title="선택한 뉴스레터 미리보기" sandbox="allow-popups" src="/newsletter/view?name={quote(name)}" style="width:100%;height:900px;border:1px solid var(--line);border-radius:8px"></iframe>'
              if name else "<p>선택한 메일 파일이 없거나 허용되지 않는 이름입니다.</p>" if requested else "<p>조건에 맞는 메일 파일이 없습니다.</p>")
     return (f'{guide}{picker}{nav}<table><tr><th>파일</th><th>종류</th><th>만든 시각</th><th>실행 주체</th><th>크기</th></tr>'
             f'{rows or "<tr><td colspan=5>조건에 맞는 파일 없음</td></tr>"}</table>{frame}')
