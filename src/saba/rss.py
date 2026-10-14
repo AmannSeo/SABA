@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 import hashlib
+import html
 import http.client
 import json
 from pathlib import Path
@@ -280,7 +281,8 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
         data.append({
             "schema_version": 1, "article_id": source.source_id + ":" + digest,
             "source_id": source.source_id, "source_name": source.source_name,
-            "original_title": title, "url": url, "collection_method": "rss",
+            "original_title": html.unescape(title),  # 일부 기관 피드는 제목 엔터티를 두 번 이스케이프 (&amp;#034;)
+            "url": url, "collection_method": "rss",
             "source_item_id": guid, "collected_at": now.isoformat(),
             "published_at": publication_time(item["date"], offset),
             "feed_excerpt": excerpt if excerpt and excerpt.strip() else None,

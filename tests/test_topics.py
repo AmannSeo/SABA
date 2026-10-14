@@ -40,6 +40,11 @@ class TopicTests(unittest.TestCase):
         with self.assertRaises(RssError):
             parse_feed(b'<?xml version="1.0"?><!DOCTYPE rss [<!ENTITY x "y">]><rss version="2.0"><channel/></rss>', NOW, SECURITY)
 
+    def test_double_escaped_title_entity_is_decoded(self):
+        body = (b'<?xml version="1.0"?><rss version="2.0"><channel><item><title>&amp;#034;v&amp;#034; &amp;amp; w</title>'
+                b'<link>https://example.com/x</link></item></channel></rss>')
+        self.assertEqual(parse_feed(body, NOW, SECURITY)[0].original_title, '"v" & w')
+
     def test_topic_sources_keep_seven_days_and_security_keeps_one(self):
         old = article(TESTING, 24 * 5, 0)
         self.assertEqual(len(select_articles([old], NOW, wide=True)[0]), 1)
