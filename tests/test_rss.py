@@ -205,9 +205,10 @@ class StorageAndCliTests(unittest.TestCase):
         self.addCleanup(self.temporary.cleanup)
         self.db = Path(self.temporary.name) / "nested" / "rss.db"
         # 웹페이지 수집 Source (D-078) 는 RSS fetch 를 바꿔도 실제 사이트에 접속하므로 테스트에서 막는다.
-        blocked = patch("saba.crawl.collect", side_effect=RssError("테스트: 실제 접속 없음"))
-        blocked.start()
-        self.addCleanup(blocked.stop)
+        for target in ("saba.crawl.collect", "saba.public_api.collect"):  # 공공 API Source 도 실제 접속·키 사용 금지
+            blocked = patch(target, side_effect=RssError("테스트: 실제 접속 없음"))
+            blocked.start()
+            self.addCleanup(blocked.stop)
 
     def cli(self, *args, payload=PAYLOAD, now=NOW):
         if "--collect-rss" in args:  # 기존 CLI 검증은 CERT-EU 단일 Source 기준이다.

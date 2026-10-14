@@ -403,6 +403,31 @@
     "kind": "공식 기관",
     "topic": "테스트",
     "method": "crawl:selenium",
+    "kst": false,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "g2b-service-bids",
+    "name": "나라장터 입찰공고 (용역)",
+    "url": "https://apis.data.go.kr/1230000/ad/BidPublicInfoService/getBidPblancListInfoServc",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "api:g2b",
+    "kst": true,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "kstartup-notice",
+    "name": "K-Startup 사업공고",
+    "url": "https://apis.data.go.kr/B552735/kisedKstartupService01/getAnnouncementInformation01",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "api:kstartup",
+    "kst": true,
     "date_only": true,
     "enabled": true
   }

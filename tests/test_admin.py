@@ -204,6 +204,42 @@ class LoginTests(AdminBase):
         self.assertNotIn("virtual-pass", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
 
 
+class LoginOffTests(AdminBase):
+    """config/admin.json "login": false (사용자 결정 2026-10-14): 로그인 없이 관리자, Secret·계정 변경은 막는다."""
+
+    def setUp(self):
+        super().setUp()
+        self.app.login_required = False
+
+    def test_no_login_needed_but_secret_and_accounts_blocked(self):
+        status, html, _ = self.request("GET", "/", cookie=None)
+        self.assertEqual(status, 200)
+        self.assertIn("로그인 꺼짐", html)
+        self.assertEqual(self.request("GET", "/login", cookie=None)[2], "/")
+        self.request("POST", "/action/secret_set", urlencode({"token": self.app.token, "confirm": "yes", "name": "OPENAI_API_KEY",
+                                                              "value": "sk-virtual"}), cookie=None)
+        self.assertEqual(self.env_writes, [])
+        settings = self.request("GET", "/settings", cookie=None)[1]
+        self.assertIn("로그인이 꺼져 있어", settings)
+        self.request("POST", "/action/rss_dryrun", urlencode({"token": self.app.token, "confirm": "yes", "back": "/"}), cookie=None)
+        self.assertEqual(len(self.commands), 1)  # 다른 실행은 그대로 된다
+
+    def test_login_setting_in_config(self):
+        path = self.root / "config" / "admin.json"
+        path.write_text('{"host": "127.0.0.1", "port": 8765, "login": false}', encoding="utf-8")
+        self.assertFalse(admin.login_enabled(path))
+        path.write_text('{"host": "127.0.0.1", "port": 8765}', encoding="utf-8")
+        self.assertTrue(admin.login_enabled(path))
+        path.write_text('{"host": "127.0.0.1", "port": 8765, "login": "no"}', encoding="utf-8")
+        with self.assertRaises(AdminError):
+            admin.login_enabled(path)
+
+    def test_api_keywords_saved_from_settings(self):
+        self.post("api_keywords_save", confirm=False, g2b="정보보호, 모의해킹", kstartup="AI", back="/settings")
+        from saba.public_api import load_keywords
+        self.assertEqual(load_keywords(self.root / "config" / "public_api.json"), {"g2b": ["정보보호", "모의해킹"], "kstartup": ["AI"]})
+
+
 class AdminTests(AdminBase):
     def test_config_allows_loopback_only(self):
         path = self.root / "config" / "admin.json"

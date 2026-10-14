@@ -73,6 +73,9 @@ def collect_source(source, path: Path, now: datetime, args, since: datetime | No
     if source.method.startswith("crawl:"):
         from saba.crawl import collect
         articles = collect(source, now)
+    elif source.method.startswith("api:"):  # 공공데이터 API (D-078)
+        from saba.public_api import collect as collect_api
+        articles = collect_api(source, now)
     else:
         articles = parse_feed(fetch_feed(source), now, source)
     candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since,

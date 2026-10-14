@@ -107,6 +107,14 @@ def load_admin_config(path: Path = CONFIG_PATH) -> tuple[str, int]:
     return host, port
 
 
+def login_enabled(path: Path = CONFIG_PATH) -> bool:
+    """config/admin.json 의 "login" (작업 5, 사용자 결정 2026-10-14: 지금은 끄고 사내망·부서 PC 이전 때 켬). 값이 없으면 켬."""
+    value = json.loads(path.read_text(encoding="utf-8")).get("login", True)
+    if not isinstance(value, bool):
+        raise AdminError('config/admin.json 의 "login" 은 true 또는 false 여야 합니다.')
+    return value
+
+
 def run_command(args: list[str], timeout: int = 120) -> tuple[int, str]:
     """명령 실행 (출력은 표시용으로 마지막 40줄만)."""
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}  # 하위 Python 출력을 UTF-8 로 받는다 (기본은 cp949)
@@ -147,6 +155,7 @@ class AdminApp:
     csv_rows: list = field(default_factory=list)  # 수신자 CSV 미리보기 (저장 전, 메모리에만)
     sessions: auth.Sessions = field(default_factory=auth.Sessions)  # 로그인 세션 (메모리, 작업 5)
     env_writer: Callable[[str, str], None] = auth.set_user_env  # Secret 저장 (테스트에서 바꿈)
+    login_required: bool = True  # False 면 로그인 없이 이 PC 사용자를 관리자로 보고, Secret·계정 변경은 막는다
 
     @cached_property
     def users(self) -> auth.Users:
@@ -370,7 +379,24 @@ class AdminApp:
             return self.save_schedule(form)
         if action in ("user_add", "user_password", "user_delete", "secret_set"):
             return self.account_action(action, form)
+        if action == "api_keywords_save":
+            return self.save_api_keywords(form)
         raise AdminError("알 수 없는 동작입니다.")
+
+    def save_api_keywords(self, form: dict) -> str:
+        from saba.history import append_change
+        from saba.public_api import load_keywords, save_keywords
+        from saba.rss import RssError
+        path = self.root / "config" / "public_api.json"
+        old = load_keywords(path)
+        new = {k: [w.strip() for w in _first(form, k).replace("\n", ",").split(",") if w.strip()] for k in old}
+        try:
+            save_keywords(new, path)
+        except RssError as error:
+            raise AdminError(str(error)) from None
+        append_change(self.changes_path, {f"공공 API 키워드 {k}": (", ".join(old[k]), ", ".join(new[k]))
+                                          for k in old if old[k] != new[k]}, False)
+        return "공공 API 키워드 저장 완료 (다음 수집부터 반영)"
 
     # ---- 계정·Secret (작업 5) ----
     def account_action(self, action: str, form: dict) -> str:
@@ -464,6 +490,9 @@ class AdminApp:
             if entry.source.method.startswith("crawl:") and not self.fetch:
                 from saba.crawl import collect
                 articles = collect(entry.source, now)  # 웹페이지 수집 Source (D-078)
+            elif entry.source.method.startswith("api:") and not self.fetch:
+                from saba.public_api import collect as collect_api
+                articles = collect_api(entry.source, now)  # 공공데이터 API (D-078)
             else:
                 articles = parse_feed((self.fetch or fetch_feed)(entry.source), now, entry.source)
         except RssError as error:
@@ -840,9 +869,9 @@ def page(title: str, body: str, message: str = "", refresh: bool = False, active
     user, role = getattr(CURRENT, "user", None), getattr(CURRENT, "role", None)
     account = ""
     if nav and user:  # 로그인한 사용자·역할과 로그아웃 (작업 5)
-        account = (f'<div class="account"><span>{escape(user)} · {auth.ROLES.get(role, "")}</span>'
-                   f'<form method="post" action="/logout" class="inline"><input type="hidden" name="token" value="{CURRENT.token}">'
-                   f'<button class="btn">로그아웃</button></form></div>')
+        logout = (f'<form method="post" action="/logout" class="inline"><input type="hidden" name="token" value="{CURRENT.token}">'
+                  f'<button class="btn">로그아웃</button></form>') if getattr(CURRENT, "login", True) else '<span>로그인 꺼짐</span>'
+        account = f'<div class="account"><span>{escape(user)} · {auth.ROLES.get(role, "")}</span>{logout}</div>'
         if role == "viewer":
             note = '<div class="info" style="margin-bottom:16px">조회 전용 계정입니다. 실행·설정 변경·수신자 관리는 관리자만 할 수 있습니다.</div>' + note
     return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">{meta}'
@@ -1455,17 +1484,17 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                            key=lambda e: (not e.enabled, e.source.source_name))
             if not group:
                 continue
-            rows += f'<tr class="group"><td colspan="7">{escape(region)} · {escape(kind)} ({len(group)})</td></tr>'
+            rows += f'<tr class="group"><td colspan="8">{escape(region)} · {escape(kind)} ({len(group)})</td></tr>'
             for e in group:
                 s = e.source
                 state = badge("사용", "b-ok") if e.enabled else badge("중지", "b-mute")
                 depts = TOPIC_DEPARTMENTS.get(s.topic, ())
-                method = "웹페이지" if s.method.startswith("crawl:") else "RSS"
+                method = "웹페이지" if s.method.startswith("crawl:") else ("공공 API" if s.method.startswith("api:") else "RSS")
                 rows += (f"<tr class='src' data-q='{escape((s.source_name + ' ' + s.source_id + ' ' + s.feed_url + ' ' + region + ' ' + kind + ' ' + s.topic).lower())}'"
                          f" data-topic='{escape(s.topic)}' data-region='{escape(region)}' data-kind='{escape(kind)}' data-state='{'사용' if e.enabled else '중지'}'"
                          f" data-dept='{escape('|'.join(depts))}' data-method='{method}' data-health='{_health_key(statuses.get(s.source_id))}'>"
                          f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td>"
-                         f"<td>{escape(s.topic)}<div class=muted>{escape(', '.join(depts))}</div></td>"
+                         f"<td>{escape(s.topic)}</td><td>{escape(', '.join(depts))}</td>"
                          f"<td class=url title='{escape(s.feed_url)}'>{escape(s.feed_url)}</td>"
                          f"<td>{method}<div class=muted>{'한국 시간' if s.local_offset else '표준'}{' · 날짜만' if s.date_only else ''}</div></td>"
                          f"<td>{_health_cell(statuses.get(s.source_id))}</td>"
@@ -1475,11 +1504,11 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                          + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id}) + "</td></tr>")
     dept_names = sorted({d for names in TOPIC_DEPARTMENTS.values() for d in names})
     search = filter_bar([("topic", "주제", list(TOPICS)), ("dept", "담당 부서", dept_names), ("region", "구분", list(REGIONS)),
-                         ("kind", "종류", list(KINDS)), ("method", "수집 방식", ["RSS", "웹페이지"]),
+                         ("kind", "종류", list(KINDS)), ("method", "수집 방식", ["RSS", "웹페이지", "공공 API"]),
                          ("health", "최근 수집", ["성공", "실패", "기록 없음"]), ("state", "상태", ["사용", "중지"])], "이름·ID·주소")
     table = (f'<div class="card"><h2>Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
              f'변경은 다음 실행부터 반영</span><span class="right">{search} <a class="btn primary" href="/sources?edit=new">추가</a></span></h2>'
-             '<div class="tw"><table><tr><th>이름</th><th>주제 · 담당 부서</th><th>주소</th><th>수집 방식</th><th>최근 수집</th><th>상태</th><th>관리</th></tr>'
+             '<div class="tw"><table><tr><th>이름</th><th>주제</th><th>담당 부서</th><th>주소</th><th>수집 방식</th><th>최근 수집</th><th>상태</th><th>관리</th></tr>'
              f'{rows}</table></div><p class="muted">중지·삭제해도 이미 수집한 기사와 AI 분석은 DB 에 남습니다. 삭제한 Source 의 기사는 메일에 나오지 않습니다.</p></div>')
     if not edit_id:
         return f'<div class="card">{SOURCE_GUIDE}</div>' + table
@@ -1639,11 +1668,31 @@ def settings_page(app: AdminApp) -> str:
             f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table>{secret_form(app)}</div>'
             f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
             f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
-            + accounts_card(app) + criteria_card(app))
+            + accounts_card(app) + criteria_card(app) + api_keywords_card(app))
+
+
+def api_keywords_card(app: AdminApp) -> str:
+    """공공데이터 API 공고 키워드 (D-078). 제목에 하나라도 있으면 수집한다. 쉼표로 구분."""
+    from saba.public_api import load_keywords
+    try:
+        words = load_keywords(app.root / "config" / "public_api.json")
+    except Exception as error:  # 설정 오류는 화면에 종류만
+        return f'<div class="card"><h2>공공 API 공고 키워드</h2><p class="info">설정을 읽지 못했습니다: {escape(str(error))}</p></div>'
+    labels = {"g2b": "나라장터 입찰공고 (용역)", "kstartup": "K-Startup 사업공고"}
+    rows = "".join(f'<tr><th style="width:200px">{labels[k]}</th><td><textarea name="{k}" aria-label="{labels[k]} 키워드" rows="2" '
+                   f'style="width:100%">{escape(", ".join(v))}</textarea></td></tr>' for k, v in words.items())
+    return (f'<div class="card"><h2>공공 API 공고 키워드<span class="muted">제목에 하나라도 들어 있는 공고만 가져옵니다. 쉼표로 구분, '
+            f'각 1~30자·최대 60개.</span></h2><form method="post" action="/action/api_keywords_save">'
+            f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
+            f'<table>{rows}</table><div class="row"><button class="btn primary">저장</button>'
+            f'<span class="muted">다음 수집부터 반영됩니다. 변경은 설정 변경 이력에 남습니다.</span></div></form></div>')
 
 
 def secret_form(app: AdminApp) -> str:
     """관리자만: 새 값을 Windows 사용자 환경 변수에 저장 (작업 5). 입력 칸은 비밀번호 형식이고 값은 다시 보여 주지 않는다."""
+    if not app.login_required:
+        return ('<p class="muted">로그인이 꺼져 있어 화면에서 Secret 을 바꿀 수 없습니다 (이 PC 를 쓰는 누구나 바꿀 수 있게 되므로). '
+                'Windows 환경 변수에서 직접 바꾸거나, config/admin.json 의 "login" 을 true 로 바꾸고 관리 페이지를 다시 켜면 이 화면이 열립니다.</p>')
     if getattr(CURRENT, "role", None) != "admin":
         return '<p class="muted">Secret 변경은 관리자만 할 수 있습니다.</p>'
     options = "".join(f"<option>{escape(n)}</option>" for n in SECRET_NAMES)
@@ -1660,6 +1709,10 @@ def secret_form(app: AdminApp) -> str:
 
 def accounts_card(app: AdminApp) -> str:
     """계정 관리 (작업 5): 관리자만 추가·비밀번호 변경·삭제. 조회자에게는 목록만."""
+    if not app.login_required:
+        return ('<div class="card"><h2>계정</h2><p class="muted">로그인이 꺼져 있습니다 (config/admin.json 의 "login": false). '
+                '지금은 이 PC (127.0.0.1) 사용자만 관리 페이지를 씁니다. 사내망·부서 PC 로 옮기거나 다른 사람이 함께 쓸 때 '
+                '"login": true 로 바꾸고 관리 페이지를 다시 켜면, 첫 관리자 계정 만들기부터 시작합니다.</p></div>')
     users = app.users.list()
     admin = getattr(CURRENT, "role", None) == "admin"
     rows = "".join(
@@ -1746,6 +1799,7 @@ def make_handler(app: AdminApp, port: int):
 
         def _bind(self, session) -> None:
             CURRENT.user, CURRENT.role, CURRENT.token = (session.user, session.role, app.token) if session else (None, None, app.token)
+            CURRENT.login = app.login_required
 
         def do_GET(self):
             try:
@@ -1759,6 +1813,11 @@ def make_handler(app: AdminApp, port: int):
             url = urlparse(self.path)
             query = parse_qs(url.query)
             self._bind(None)
+            if not app.login_required:  # 로그인 꺼짐: 이 PC 사용자 = 관리자 (127.0.0.1 전용)
+                if url.path in ("/login", "/setup"):
+                    return self._redirect("/")
+                self._bind(auth.Session("이 PC", "admin", 0.0))
+                return self._route(url, query)
             if not app.users.any():  # 첫 실행: 관리자 계정부터 만든다
                 if url.path != "/setup":
                     return self._redirect("/setup")
@@ -1773,6 +1832,9 @@ def make_handler(app: AdminApp, port: int):
             self._bind(session)
             if session.role != "admin" and url.path in VIEWER_BLOCKED:
                 return self._send(403, page("권한 없음", "<p>관리자만 볼 수 있는 화면입니다.</p>"))
+            return self._route(url, query)
+
+        def _route(self, url, query):
             message, app.message = app.message, ""
             if url.path == "/":
                 return self._send(200, page("대시보드", dashboard(app), message, refresh=app.running(), active="/"))
@@ -1812,9 +1874,17 @@ def make_handler(app: AdminApp, port: int):
             action = path.removeprefix("/action/")
             if not secrets.compare_digest(_first(form, "token"), app.token):
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
-            if path in ("/login", "/setup", "/logout"):
+            if not app.login_required:
+                if not path.startswith("/action/"):
+                    return self._redirect("/")
+                if action in ("user_add", "user_password", "user_delete", "secret_set"):  # 로그인 없이 Secret·계정은 못 바꾼다
+                    app.message = "실패: 로그인이 꺼져 있어 Secret·계정은 바꿀 수 없습니다 (config/admin.json 의 login 을 켠 뒤 사용)."
+                    return self._redirect("/settings")
+                session = auth.Session("이 PC", "admin", 0.0)
+            elif path in ("/login", "/setup", "/logout"):
                 return self._account_post(path, form)
-            session = app.sessions.get(self._sid())
+            else:
+                session = app.sessions.get(self._sid())
             if session is None or not path.startswith("/action/"):
                 return self._redirect("/login")
             self._bind(session)
@@ -1917,7 +1987,7 @@ def main() -> int:
     host, port = load_admin_config()
     url = f"http://127.0.0.1:{port}/"
     try:
-        server = serve(host, port)
+        server = serve(host, port, AdminApp(login_required=login_enabled()))
     except OSError:  # 이미 열려 있다 (bat 를 두 번 누른 경우 등): 새로 띄우지 않고 열려 있는 화면을 보여 준다
         print(f"관리 페이지가 이미 열려 있습니다: {url}")
         if not args.no_browser:

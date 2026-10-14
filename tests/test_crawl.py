@@ -30,7 +30,7 @@ class CrawlTests(unittest.TestCase):
         crawl._last_request.clear()
 
     def test_methods_match_parsers(self):
-        self.assertEqual(set(METHODS) - {"rss"}, set(crawl.PARSERS))
+        self.assertEqual({m for m in METHODS if m.startswith("crawl:")}, set(crawl.PARSERS))
 
     def test_site_parsers(self):
         cases = {"crawl:bizinfo": (BIZINFO, "[가상] AI 바우처 공고", "pblancId=PBLN_000000000000001", "신청기간 2026-10-07 ~ 2026-10-23"),
