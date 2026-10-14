@@ -68,8 +68,13 @@ def validate_file(path: Path) -> int:
     return 0
 
 
-def collect_source(source, path: Path, now: datetime, args, since: datetime | None) -> None:
-    articles = parse_feed(fetch_feed(source), now, source)
+def collect_source(source, path: Path, now: datetime, args, since: datetime | None) -> tuple[int, int]:
+    """(가져온 항목 수, 새로 저장한 건수). 웹페이지 수집 Source 는 saba.crawl 이 목록 페이지를 읽는다 (D-078)."""
+    if source.method.startswith("crawl:"):
+        from saba.crawl import collect
+        articles = collect(source, now)
+    else:
+        articles = parse_feed(fetch_feed(source), now, source)
     candidates, counts = select_articles(articles, now, bootstrap=args.bootstrap, since=since,
                                          date_only=source.date_only, wide=source.topic != "보안")
     logging.info(
@@ -80,11 +85,12 @@ def collect_source(source, path: Path, now: datetime, args, since: datetime | No
     if args.dry_run:
         logging.info("[%s] RSS dry-run: 예상 신규 %s건 · 동일 원문 %s건 생략 · 원문 갱신 예정 %s건 · 실제 저장 0건",
                      source.source_id, len(prepared) - skipped, skipped, len(changed))
-    else:
-        inserted, skipped = save_articles(path, prepared) if prepared else (0, 0)
-        updated = update_articles(path, changed)
-        logging.info("[%s] RSS 저장 완료: 신규 %s건 · 동일 원문 %s건 생략 · 원문 갱신 %s건 · 실제 저장 %s건",
-                     source.source_id, inserted, skipped, updated, inserted)
+        return len(articles), 0
+    inserted, skipped = save_articles(path, prepared) if prepared else (0, 0)
+    updated = update_articles(path, changed)
+    logging.info("[%s] RSS 저장 완료: 신규 %s건 · 동일 원문 %s건 생략 · 원문 갱신 %s건 · 실제 저장 %s건",
+                 source.source_id, inserted, skipped, updated, inserted)
+    return len(articles), inserted
 
 
 def main() -> int:
@@ -174,18 +180,27 @@ def main() -> int:
             elif args.collect_rss:
                 sources = [SOURCE_BY_ID[args.source]] if args.source else SOURCES
                 failed = []
+                from saba.history import record_source_status
+                status_path = path.parent / "source_status.json"  # 기사 DB 옆 (운영: data/source_status.json, F10)
                 for source in sources:
                     # Source 하나의 수집·충돌 실패는 해당 Source만 보류하고 나머지는 계속한다.
                     try:
-                        collect_source(source, path, now, args, since)
+                        fetched, new = collect_source(source, path, now, args, since)
+                        if not args.dry_run:
+                            record_source_status(source.source_id, now, ok=True, fetched=fetched, new=new, path=status_path)
                     except (StorageError, RssError) as exc:
                         logging.error("[%s] %s", source.source_id, exc)
                         failed.append(source.source_id)
+                        if not args.dry_run:
+                            record_source_status(source.source_id, now, ok=False, error=str(exc), path=status_path)
                 logging.info("RSS Source 요약: 대상 %s개 · 성공 %s개 · 실패 %s개%s", len(sources),
                              len(sources) - len(failed), len(failed), f" ({', '.join(failed)})" if failed else "")
                 logging.info("RSS 메타데이터만 처리했습니다. 본문 확보·AI 분석·분류·뉴스레터 생성·메일 발송은 수행하지 않았습니다.")
-                if failed:
+                # D-078: 일부 Source 실패는 건너뛰고 계속한다. 절반 이상 실패하면 수집 단계 실패로 본다.
+                if failed and len(failed) * 2 >= len(sources):
                     return 1
+                if failed:
+                    logging.warning("RSS 일부 수집 실패 %s개 (%s): 나머지 Source 로 계속합니다.", len(failed), ", ".join(failed))
             elif args.import_json is not None:
                 articles = read_articles(args.import_json)
                 if articles is None:

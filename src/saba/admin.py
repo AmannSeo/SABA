@@ -392,7 +392,8 @@ class AdminApp:
         from saba.rss import RssError, parse_sources
         row = {"id": _first(form, "id").strip().lower(), "name": _first(form, "name"), "url": _first(form, "url"),
                "region": _first(form, "region") or "해외", "kind": _first(form, "kind") or "보안 전문 매체",
-               "topic": _first(form, "topic") or "보안", "kst": _first(form, "kst") == "on", "date_only": _first(form, "date_only") == "on",
+               "topic": _first(form, "topic") or "보안", "method": _first(form, "method") or "rss",
+               "kst": _first(form, "kst") == "on", "date_only": _first(form, "date_only") == "on",
                "enabled": _first(form, "enabled") == "on"}
         self.draft = {**row, "mode": _first(form, "mode")}
         try:
@@ -406,7 +407,11 @@ class AdminApp:
         entry = self._source_form(form)
         now = datetime.now(timezone.utc)
         try:
-            articles = parse_feed((self.fetch or fetch_feed)(entry.source), now, entry.source)
+            if entry.source.method.startswith("crawl:") and not self.fetch:
+                from saba.crawl import collect
+                articles = collect(entry.source, now)  # 웹페이지 수집 Source (D-078)
+            else:
+                articles = parse_feed((self.fetch or fetch_feed)(entry.source), now, entry.source)
         except RssError as error:
             self.checked.pop(entry.source.feed_url, None)
             raise AdminError(f"주소 확인 실패 · {error}") from None
@@ -1341,10 +1346,33 @@ def filter_bar(selects: list[tuple[str, str, list[str]]], hint: str) -> str:
             f'aria-label="검색: {escape(hint)}" oninput="{js}"></span>')
 
 
+# Source 주제별 담당 부서 (F11). 보안 Source 는 보안 두 부서, 업무 주제는 해당 부서.
+TOPIC_DEPARTMENTS = {"보안": ("기술개발연구소", "보안사업팀"), "경영": ("경영전략팀 · 사업지원팀",),
+                     "사업": ("경영전략팀 · 사업지원팀",), "테스트": ("STE본부",)}
+
+
+def _health_key(status: dict | None) -> str:
+    return "기록 없음" if not status else ("성공" if status.get("ok") else "실패")
+
+
+def _health_cell(status: dict | None) -> str:
+    """마지막 수집 결과 (F10). 실패해도 마지막 성공 시각을 함께 보여 준다."""
+    if not status:
+        return badge("기록 없음", "b-mute") + '<div class="muted">다음 수집부터 기록</div>'
+    when = lambda value: escape(str(value)[5:16].replace("T", " ")) if value else "없음"
+    if status.get("ok"):
+        return (badge("성공", "b-ok") + f'<div class="muted">{when(status.get("last_attempt"))} · '
+                f'{status.get("fetched", 0)}건 확인 · 신규 {status.get("new", 0)}건</div>')
+    return (badge("실패", "b-bad") + f'<div class="muted">{when(status.get("last_attempt"))} · '
+            f'{escape(str(status.get("error", ""))[:80])}<br>마지막 성공 {when(status.get("last_success"))}</div>')
+
+
 def sources_page(app: AdminApp, edit_id: str | None) -> str:
     """RSS Source 목록 (국내·해외·종류별 묶음, 검색)·추가·수정·사용/중지·삭제 (D-073, D-074)."""
+    from saba.history import read_source_status
     from saba.rss import KINDS, MAX_SOURCES, REGIONS, TOPICS
     entries = app.source_entries()
+    statuses = read_source_status(app.root / "data" / "source_status.json")
     enabled = sum(1 for e in entries if e.enabled)
     rows = ""
     for region in REGIONS:
@@ -1353,24 +1381,31 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                            key=lambda e: (not e.enabled, e.source.source_name))
             if not group:
                 continue
-            rows += f'<tr class="group"><td colspan="6">{escape(region)} · {escape(kind)} ({len(group)})</td></tr>'  # 6열: 이름·주제·주소·날짜·상태·관리
+            rows += f'<tr class="group"><td colspan="7">{escape(region)} · {escape(kind)} ({len(group)})</td></tr>'
             for e in group:
                 s = e.source
                 state = badge("사용", "b-ok") if e.enabled else badge("중지", "b-mute")
+                depts = TOPIC_DEPARTMENTS.get(s.topic, ())
+                method = "웹페이지" if s.method.startswith("crawl:") else "RSS"
                 rows += (f"<tr class='src' data-q='{escape((s.source_name + ' ' + s.source_id + ' ' + s.feed_url + ' ' + region + ' ' + kind + ' ' + s.topic).lower())}'"
-                         f" data-topic='{escape(s.topic)}' data-region='{escape(region)}' data-kind='{escape(kind)}' data-state='{'사용' if e.enabled else '중지'}'>"
-                         f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td><td>{escape(s.topic)}</td>"
+                         f" data-topic='{escape(s.topic)}' data-region='{escape(region)}' data-kind='{escape(kind)}' data-state='{'사용' if e.enabled else '중지'}'"
+                         f" data-dept='{escape('|'.join(depts))}' data-method='{method}' data-health='{_health_key(statuses.get(s.source_id))}'>"
+                         f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td>"
+                         f"<td>{escape(s.topic)}<div class=muted>{escape(', '.join(depts))}</div></td>"
                          f"<td class=url title='{escape(s.feed_url)}'>{escape(s.feed_url)}</td>"
-                         f"<td>{'한국 시간' if s.local_offset else '표준'}{' · 날짜만' if s.date_only else ''}</td>"
+                         f"<td>{method}<div class=muted>{'한국 시간' if s.local_offset else '표준'}{' · 날짜만' if s.date_only else ''}</div></td>"
+                         f"<td>{_health_cell(statuses.get(s.source_id))}</td>"
                          f"<td>{state}</td><td style='white-space:nowrap'><a class=btn href='/sources?edit={quote(s.source_id)}'>수정</a> "
                          + button(app, "source_toggle", "중지" if e.enabled else "사용", "warn" if e.enabled else "success",
                                   back="/sources", fields={"id": s.source_id}) + " "
                          + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id}) + "</td></tr>")
-    search = filter_bar([("topic", "주제", list(TOPICS)), ("region", "구분", list(REGIONS)), ("kind", "종류", list(KINDS)),
-                         ("state", "상태", ["사용", "중지"])], "이름·ID·주소")
-    table = (f'<div class="card"><h2>RSS Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
+    dept_names = sorted({d for names in TOPIC_DEPARTMENTS.values() for d in names})
+    search = filter_bar([("topic", "주제", list(TOPICS)), ("dept", "담당 부서", dept_names), ("region", "구분", list(REGIONS)),
+                         ("kind", "종류", list(KINDS)), ("method", "수집 방식", ["RSS", "웹페이지"]),
+                         ("health", "최근 수집", ["성공", "실패", "기록 없음"]), ("state", "상태", ["사용", "중지"])], "이름·ID·주소")
+    table = (f'<div class="card"><h2>Source 목록<span class="muted">사용 {enabled}곳 / 전체 {len(entries)}곳 (최대 {MAX_SOURCES}곳) · '
              f'변경은 다음 실행부터 반영</span><span class="right">{search} <a class="btn primary" href="/sources?edit=new">추가</a></span></h2>'
-             '<div class="tw"><table><tr><th>이름</th><th>주제</th><th>RSS 주소</th><th>날짜 해석</th><th>상태</th><th>관리</th></tr>'
+             '<div class="tw"><table><tr><th>이름</th><th>주제 · 담당 부서</th><th>주소</th><th>수집 방식</th><th>최근 수집</th><th>상태</th><th>관리</th></tr>'
              f'{rows}</table></div><p class="muted">중지·삭제해도 이미 수집한 기사와 AI 분석은 DB 에 남습니다. 삭제한 Source 의 기사는 메일에 나오지 않습니다.</p></div>')
     if not edit_id:
         return f'<div class="card">{SOURCE_GUIDE}</div>' + table
@@ -1380,6 +1415,7 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
     elif current:
         values = {"id": current.source.source_id, "name": current.source.source_name, "url": current.source.feed_url,
                   "region": current.source.region, "kind": current.source.kind, "topic": current.source.topic,
+                  "method": current.source.method,
                   "kst": current.source.local_offset is not None, "date_only": current.source.date_only, "enabled": current.enabled}
     else:
         values = {"id": "", "name": "", "url": "https://", "region": "해외", "kind": "보안 전문 매체", "topic": "보안", "kst": False,
@@ -1394,6 +1430,7 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
 <form method="post" action="/action/source_save" style="margin-top:12px">
 <input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/sources">
 <input type="hidden" name="confirm" value="yes"><input type="hidden" name="mode" value="{"edit" if editing else "new"}">
+<input type="hidden" name="method" value="{escape(str(values.get("method", "rss")))}">
 <div class="grid" style="margin-bottom:0">
 <div>
 <div class="field"><label class="t">RSS 주소 (https)</label><input aria-label="RSS 주소 (https)" name="url" value="{escape(str(values.get("url", "")))}" required style="width:100%"></div>

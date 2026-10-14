@@ -204,6 +204,10 @@ class StorageAndCliTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory(prefix="saba-rss-", dir=ROOT / ".venv")
         self.addCleanup(self.temporary.cleanup)
         self.db = Path(self.temporary.name) / "nested" / "rss.db"
+        # 웹페이지 수집 Source (D-078) 는 RSS fetch 를 바꿔도 실제 사이트에 접속하므로 테스트에서 막는다.
+        blocked = patch("saba.crawl.collect", side_effect=RssError("테스트: 실제 접속 없음"))
+        blocked.start()
+        self.addCleanup(blocked.stop)
 
     def cli(self, *args, payload=PAYLOAD, now=NOW):
         if "--collect-rss" in args:  # 기존 CLI 검증은 CERT-EU 단일 Source 기준이다.
@@ -429,6 +433,14 @@ class MultiSourceTests(unittest.TestCase):
             self.assertEqual(fetch_feed(SOURCE_BY_ID["boho-security-notice"]), BOHO_PAYLOAD)
         self.assertEqual(factory.return_value.open.call_args.args[0].full_url, SOURCE_BY_ID["boho-security-notice"].feed_url)
 
+    def test_half_or_more_failures_fail_the_step(self):
+        bad = RssError("RSS HTTP 오류: 500.")
+        responses = {"cert-eu-security-advisories": PAYLOAD, "boho-security-notice": BOHO_PAYLOAD,
+                     "cisa-cybersecurity-advisories": EMPTY_FEED, "the-hacker-news": bad, "boannews": bad, "boho-report-guide": bad}
+        with self.assertLogs(level="INFO"):
+            code, _ = self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)
+        self.assertEqual(code, 1)  # 6곳 중 3곳 실패
+
     def test_one_source_failure_does_not_stop_others(self):
         responses = {"cert-eu-security-advisories": PAYLOAD, "boho-security-notice": BOHO_PAYLOAD,
                      "cisa-cybersecurity-advisories": RssError("RSS HTTP 오류: 302."),
@@ -437,7 +449,8 @@ class MultiSourceTests(unittest.TestCase):
         with self.assertLogs(level="INFO") as logs:
             code, called = self.run_cli("--collect-rss", "--bootstrap", "--db", self.db, responses=responses)
         output = "\n".join(logs.output)
-        self.assertEqual(code, 1)
+        self.assertEqual(code, 0)  # D-078: 절반 미만 실패는 계속 (6곳 중 2곳)
+        self.assertIn("RSS 일부 수집 실패 2개", output)
         self.assertEqual(called, [s.source_id for s in SOURCES])
         self.assertIn("성공 4개 · 실패 2개", output)
         self.assertIn("[cisa-cybersecurity-advisories]", output)

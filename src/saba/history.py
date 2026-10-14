@@ -15,6 +15,36 @@ MAIL = re.compile(r"메일 생성 완료: (\S+) · 표시 (\d+)건 · 분석 재
 SENT_BYTES = re.compile(r"메시지 ([\d,]+) bytes")
 LOG_NAME = re.compile(r"daily_(\d{8})\.log")
 MAIL_NAME = re.compile(r"daily_(\d{8})(?:_[\w-]+)?\.eml")
+SOURCE_STATUS_PATH = Path(__file__).resolve().parents[2] / "data" / "source_status.json"
+
+
+def read_source_status(path: Path = SOURCE_STATUS_PATH) -> dict:
+    """Source 별 마지막 수집 결과 (F10). 파일이 없거나 손상되면 빈 값 (화면은 "기록 없음")."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def record_source_status(source_id: str, now: datetime, *, ok: bool, fetched: int = 0, new: int = 0,
+                         error: str = "", path: Path = SOURCE_STATUS_PATH) -> None:
+    """수집 결과를 남긴다. 기록 실패는 경고만 하고 수집을 멈추지 않는다 (F10)."""
+    import logging
+    status = read_source_status(path)
+    old = status.get(source_id, {})
+    stamp = now.astimezone().isoformat(timespec="seconds")
+    status[source_id] = {"last_attempt": stamp, "ok": ok, "fetched": fetched if ok else old.get("fetched"),
+                         "new": new if ok else 0, "error": "" if ok else error[:200],
+                         "last_success": stamp if ok else old.get("last_success")}
+    if not path.parent.is_dir():  # 수집이 아직 data 폴더를 만들지 않았으면 현황 기록만을 위해 만들지 않는다
+        return
+    try:
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps(status, ensure_ascii=False, indent=1), encoding="utf-8")
+        temp.replace(path)
+    except OSError as exc:
+        logging.warning("Source 수집 현황 기록 실패: %s", type(exc).__name__)
 
 
 def mail_path(output: Path, name: str) -> Path:

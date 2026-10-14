@@ -131,9 +131,12 @@ def next_runs(config: DailyConfig, now: datetime, count: int = 5) -> list[dateti
 
 
 def collect_rss() -> None:
-    """기존 수집 명령을 그대로 쓴다. Source 하나라도 실패하면 단계 실패로 본다."""
+    """기존 수집 명령을 그대로 쓴다. 절반 이상 실패하면 단계 실패, 일부 실패는 로그에 남기고 계속 (D-078)."""
     result = subprocess.run([sys.executable, "-m", "saba", "--collect-rss"], cwd=ROOT,
                             capture_output=True, text=True, encoding="utf-8", errors="replace")
+    partial = re.search(r"RSS 일부 수집 실패 (\d+)개 \(([^)]*)\)", result.stdout + result.stderr)
+    if result.returncode == 0 and partial:
+        logging.warning("RSS 일부 수집 실패 %s개 (%s) · 나머지로 계속", partial.group(1), partial.group(2))
     if result.returncode != 0:
         # 실패한 Source 이름만 남긴다 (수집 요약 줄 "실패 n개 (id, ...)", 원문·응답 내용은 남기지 않음).
         failed = re.search(r"실패 \d+개 \(([^)]*)\)", result.stdout + result.stderr)

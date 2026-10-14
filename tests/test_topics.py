@@ -48,10 +48,25 @@ class TopicTests(unittest.TestCase):
     def test_topic_article_shown_only_on_first_collection(self):
         with patch.dict(issues.SOURCE_BY_ID, {TESTING.source_id: TESTING, SECURITY.source_id: SECURITY}):
             self.assertTrue(issues.in_window(article(TESTING, 24 * 5, 1), NOW))       # 5일 전 글, 방금 처음 수집
+            self.assertTrue(issues.in_window(article(TESTING, 24 * 5, -0.01), NOW))   # 실행 시작 (now) 뒤 같은 실행에서 수집
             self.assertFalse(issues.in_window(article(TESTING, 24 * 5, 30), NOW))     # 어제 이미 수집 → 반복하지 않음
             self.assertFalse(issues.in_window(article(TESTING, 24 * 8, 1), NOW))      # 7일 넘은 글
             self.assertFalse(issues.in_window(article(SECURITY, 30, 1), NOW))         # 보안 Source 는 발행 24시간 그대로
             self.assertEqual((issues.section_key(TESTING), issues.section_key(SECURITY)), ("테스트", "해외"))
+
+    def test_topic_hint_only_for_topic_sources(self):
+        from saba.analysis import InputSnapshot, input_payload
+        with patch.dict(issues.SOURCE_BY_ID, {TESTING.source_id: TESTING, SECURITY.source_id: SECURITY}):
+            topic, security = input_payload(article(TESTING, 2, 1)), input_payload(article(SECURITY, 2, 1, key="b"))
+        self.assertEqual(topic["source_topic"], "SW 테스트·품질")
+        self.assertNotIn("source_topic", security)  # 보안 Source 입력·해시는 이전과 같다
+        self.assertNotIn("source_topic", InputSnapshot.model_validate(security).model_dump())
+
+    def test_sections_interleaved_for_analysis_budget(self):
+        rows = [article(SECURITY, 1 + i, 1, key=f"s{i}") for i in range(3)] + [article(TESTING, 30 + i, 1, key=f"t{i}") for i in range(2)]
+        with patch.dict(issues.SOURCE_BY_ID, {TESTING.source_id: TESTING, SECURITY.source_id: SECURITY}):
+            order = [issues.section_key(issues.SOURCE_BY_ID[i.representative.source_id]) for i in issues.select_issues(rows, NOW).issues]
+        self.assertEqual(order[:4], ["해외", "테스트", "해외", "테스트"])
 
     def test_topic_source_goes_to_topic_section(self):
         with patch.dict(newsletter.SOURCE_BY_ID, {TESTING.source_id: TESTING}):

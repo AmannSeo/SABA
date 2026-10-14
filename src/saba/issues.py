@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import timedelta, timezone
-from itertools import combinations
+from itertools import combinations, zip_longest
 import re
 
 from saba.analysis import FeedTextParser, normalize_text
@@ -149,8 +149,9 @@ def in_window(article: Article, now) -> bool:
         hours += 48
     if source is not None and source.topic != "보안":
         # 게시가 드문 주제 Source (F13): 7일 안 게시물 중 이번 기간에 처음 수집된 것만. 같은 글이 매일 반복되지 않는다.
+        # 수집 시각은 위 한도만 본다: 매일 실행은 시작 시각 (now) 을 정한 뒤 수집하므로 수집 시각이 now 보다 조금 늦다.
         return (article.published_at is not None and now - timedelta(days=TOPIC_DAYS) <= article.published_at <= now
-                and now - timedelta(hours=hours) <= article.collected_at <= now)
+                and now - timedelta(hours=hours) <= article.collected_at)
     return article.published_at is not None and now - timedelta(hours=hours) <= article.published_at <= now
 
 
@@ -181,7 +182,12 @@ def select_issues(articles: list[Article], now) -> Selection:
         per_source[source.source_id] = per_source.get(source.source_id, 0) + 1
         per_section[section_key(source)] = per_section.get(section_key(source), 0) + 1
         selected.append(issue)
-    return Selection(selected, candidates, len(window), source_cut, section_cut)
+    # 섹션을 번갈아 놓는다: AI 하루 상한이 앞 섹션 (보안) 에서 다 쓰이지 않게 (D-078). 섹션 안 순서는 그대로.
+    buckets: dict[str, list[Issue]] = {}
+    for issue in selected:
+        buckets.setdefault(section_key(SOURCE_BY_ID[issue.representative.source_id]), []).append(issue)
+    interleaved = [issue for round_ in zip_longest(*buckets.values()) for issue in round_ if issue is not None]
+    return Selection(interleaved, candidates, len(window), source_cut, section_cut)
 
 
 def preview_article(issue: Issue) -> Article:

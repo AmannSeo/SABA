@@ -384,6 +384,27 @@ class SourceTests(AdminBase):
         from saba.rss import load_source_entries
         return load_source_entries(self.root / "config" / "sources.json")
 
+    def test_status_departments_and_method_shown_and_kept(self):
+        """F10 최근 수집·F11 담당 부서·웹페이지 수집 방식 표시, 수정 저장 때 수집 방식 유지 (D-078)."""
+        import json as js
+        (self.root / "data" / "source_status.json").write_text(js.dumps({
+            "cert-eu-security-advisories": {"last_attempt": "2026-10-13T08:03:00+09:00", "ok": False, "error": "목록 페이지 요청 실패",
+                                            "last_success": "2026-10-12T08:03:00+09:00", "fetched": 6, "new": 0},
+            "boannews": {"last_attempt": "2026-10-13T08:03:00+09:00", "ok": True, "fetched": 30, "new": 4,
+                         "last_success": "2026-10-13T08:03:00+09:00", "error": ""}}, ensure_ascii=False), encoding="utf-8")
+        rows = js.loads((self.root / "config" / "sources.json").read_text(encoding="utf-8"))
+        rows.append({"id": "virtual-moel", "name": "가상 보도자료", "url": "https://www.example.go.kr/list.do", "region": "국내",
+                     "kind": "공식 기관", "topic": "경영", "method": "crawl:moel", "kst": True, "date_only": True, "enabled": True})
+        (self.root / "config" / "sources.json").write_text(js.dumps(rows, ensure_ascii=False), encoding="utf-8")
+        html = self.get("/sources")
+        for text in ("목록 페이지 요청 실패", "마지막 성공 10-12 08:03", "신규 4건", "기록 없음", "보안사업팀",
+                     "경영전략팀 · 사업지원팀", "웹페이지", "data-health='실패'"):
+            self.assertIn(text, html)
+        self.post("source_save", mode="edit", id="virtual-moel", name="가상 보도자료 (수정)", url="https://www.example.go.kr/list.do",
+                  region="국내", kind="공식 기관", topic="경영", method="crawl:moel", kst="on", date_only="on", enabled="on", back="/sources")
+        edited = next(e for e in self.entries() if e.source.source_id == "virtual-moel")
+        self.assertEqual((edited.source.source_name, edited.source.method), ("가상 보도자료 (수정)", "crawl:moel"))
+
     def test_add_requires_check_then_saves_and_logs(self):
         self.post("source_save", **self.form)
         self.assertIn("주소 확인", self.app.message)

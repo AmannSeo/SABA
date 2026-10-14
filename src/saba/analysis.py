@@ -68,6 +68,11 @@ def input_payload(article: Article) -> dict:
         "published_at": article.published_at.isoformat() if article.published_at else None,
         "input_kind": kind, "texts": texts,
     }
+    # 부서 업무 주제 Source (D-078) 는 분야를 함께 준다. 보안 Source 는 넣지 않아 기존 입력 해시·저장 결과가 그대로다.
+    from saba.rss import SOURCE_BY_ID
+    topic = getattr(SOURCE_BY_ID.get(article.source_id), "topic", "보안")
+    if topic in TOPIC_FIELDS:
+        payload["source_topic"] = TOPIC_FIELDS[topic]
     return payload
 
 
@@ -77,6 +82,9 @@ def canonical_json(value: object) -> str:
 
 def json_hash(value: object) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
+
+
+TOPIC_FIELDS = {"경영": "경영·노무·세무", "사업": "사업 지원·마케팅", "테스트": "SW 테스트·품질"}
 
 
 def analysis_input(article: Article) -> tuple[dict[str, str], InputKind, str]:
@@ -96,6 +104,14 @@ class InputSnapshot(BaseModel):
     published_at: Text | None
     input_kind: InputKind
     texts: dict[Literal["original_title", "feed_excerpt", "extracted_text"], Text]
+    source_topic: Literal["경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질"] | None = None  # D-078
+
+    def model_dump(self, **kwargs):
+        # 주제가 없으면 (보안 Source) 키를 빼서 기존 입력 해시·저장 스냅샷과 같게 둔다.
+        data = super().model_dump(**kwargs)
+        if data.get("source_topic") is None:
+            data.pop("source_topic", None)
+        return data
 
     @model_validator(mode="after")
     def normalized_input(self):

@@ -40,6 +40,8 @@ class Source:
     kind: str = "보안 전문 매체"
     # 메일 섹션·선별 상한 묶음 (F13). "보안" 은 기존처럼 region 으로 나누고, 나머지는 주제 섹션으로 간다.
     topic: str = "보안"
+    # 수집 방식 (D-078): "rss" 는 RSS·Atom, "crawl:<사이트>" 는 saba.crawl 의 목록 페이지 수집기.
+    method: str = "rss"
 
 
 KST = timedelta(hours=9)  # 한국 표준시, 일광 절약 시간 없음
@@ -48,6 +50,7 @@ MAX_SOURCES = 60  # D-073 은 15곳, 부서별 신규 출처 추가로 늘림 (F
 REGIONS = ("국내", "해외")
 KINDS = ("공식 기관", "보안 전문 매체", "IT 언론", "기업·벤더")  # D-074
 TOPICS = ("보안", "경영", "사업", "테스트")  # F13: 보안·AI (기존) + 경영·노무·세무, 사업 지원·마케팅, SW 테스트·품질
+METHODS = ("rss", "crawl:bizinfo", "crawl:moel", "crawl:nts", "crawl:iris")  # saba.crawl.PARSERS 와 같아야 한다
 SOURCE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
 
 
@@ -70,6 +73,7 @@ def parse_sources(rows: list) -> list[SourceEntry]:
                                                bool(row.get("date_only", False)), bool(row.get("enabled", True)))
             kind = row.get("kind") or ("공식 기관" if row.get("official") else "보안 전문 매체")
             topic = row.get("topic") or "보안"
+            method = row.get("method") or "rss"
         except (KeyError, TypeError, AttributeError):
             raise RssError("Source 설정 오류: id·name·url 이 필요합니다.") from None
         if not SOURCE_ID_PATTERN.fullmatch(source_id) or source_id in seen:
@@ -84,16 +88,19 @@ def parse_sources(rows: list) -> list[SourceEntry]:
             raise RssError("Source 설정 오류: 종류는 공식 기관·보안 전문 매체·IT 언론·기업·벤더 중 하나여야 합니다.")
         if topic not in TOPICS:
             raise RssError("Source 설정 오류: 주제는 " + "·".join(TOPICS) + " 중 하나여야 합니다.")
+        if method not in METHODS:
+            raise RssError("Source 설정 오류: 수집 방식은 " + "·".join(METHODS) + " 중 하나여야 합니다.")
         seen.add(source_id)
         entries.append(SourceEntry(Source(source_id, name, url, KST if kst else None, date_only, kind == "공식 기관",
-                                          region, kind, topic), enabled))
+                                          region, kind, topic, method), enabled))
     return entries
 
 
 def source_row(entry: SourceEntry) -> dict:
     s = entry.source
     return {"id": s.source_id, "name": s.source_name, "url": s.feed_url, "region": s.region, "kind": s.kind,
-            "topic": s.topic, "kst": s.local_offset is not None, "date_only": s.date_only, "enabled": entry.enabled}
+            "topic": s.topic, "method": s.method, "kst": s.local_offset is not None, "date_only": s.date_only,
+            "enabled": entry.enabled}
 
 
 def load_source_entries(path: Path = SOURCES_PATH) -> list[SourceEntry]:

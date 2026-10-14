@@ -6,6 +6,7 @@
     "region": "해외",
     "kind": "공식 기관",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -17,6 +18,7 @@
     "region": "국내",
     "kind": "공식 기관",
     "topic": "보안",
+    "method": "rss",
     "kst": true,
     "date_only": true,
     "enabled": true
@@ -28,6 +30,7 @@
     "region": "해외",
     "kind": "공식 기관",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -39,6 +42,7 @@
     "region": "해외",
     "kind": "보안 전문 매체",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -50,6 +54,7 @@
     "region": "국내",
     "kind": "보안 전문 매체",
     "topic": "보안",
+    "method": "rss",
     "kst": true,
     "date_only": false,
     "enabled": true
@@ -61,6 +66,7 @@
     "region": "국내",
     "kind": "공식 기관",
     "topic": "보안",
+    "method": "rss",
     "kst": true,
     "date_only": true,
     "enabled": true
@@ -72,6 +78,7 @@
     "region": "해외",
     "kind": "보안 전문 매체",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -83,6 +90,7 @@
     "region": "해외",
     "kind": "보안 전문 매체",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -94,6 +102,7 @@
     "region": "국내",
     "kind": "IT 언론",
     "topic": "보안",
+    "method": "rss",
     "kst": true,
     "date_only": false,
     "enabled": true
@@ -105,6 +114,7 @@
     "region": "국내",
     "kind": "IT 언론",
     "topic": "보안",
+    "method": "rss",
     "kst": true,
     "date_only": false,
     "enabled": true
@@ -116,6 +126,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -127,6 +138,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -138,6 +150,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -149,6 +162,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "보안",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -160,6 +174,7 @@
     "region": "국내",
     "kind": "공식 기관",
     "topic": "보안",
+    "method": "rss",
     "kst": true,
     "date_only": true,
     "enabled": true
@@ -171,6 +186,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "사업",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -182,6 +198,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "사업",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -193,6 +210,7 @@
     "region": "해외",
     "kind": "공식 기관",
     "topic": "테스트",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -204,6 +222,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "테스트",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -215,6 +234,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "테스트",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -226,6 +246,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "테스트",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -237,6 +258,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "테스트",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -248,6 +270,7 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "테스트",
+    "method": "rss",
     "kst": false,
     "date_only": false,
     "enabled": true
@@ -259,8 +282,57 @@
     "region": "해외",
     "kind": "기업·벤더",
     "topic": "테스트",
+    "method": "rss",
     "kst": false,
     "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "bizinfo-support",
+    "name": "기업마당 지원사업 공고",
+    "url": "https://www.bizinfo.go.kr/sii/siia/selectSIIA200View.do",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "crawl:bizinfo",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "iris-rnd-notice",
+    "name": "IRIS 범부처 R&D 사업공고",
+    "url": "https://www.iris.go.kr/contents/retrieveBsnsAncmBtinSituListView.do",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "crawl:iris",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "moel-press",
+    "name": "고용노동부 보도자료",
+    "url": "https://www.moel.go.kr/news/enews/report/enewsList.do",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "경영",
+    "method": "crawl:moel",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "nts-press",
+    "name": "국세청 보도자료",
+    "url": "https://www.nts.go.kr/nts/na/ntt/selectNttList.do?mi=2201&bbsId=1028",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "경영",
+    "method": "crawl:nts",
+    "kst": true,
+    "date_only": true,
     "enabled": true
   }
 ]
