@@ -15,7 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-from saba.rss import KST, TIMEOUT, RssError, Source
+from saba.rss import KST, TIMEOUT, NoRedirect, RssError, Source, check_api_url
 from saba.schema import Article, validate_articles
 
 KEY_NAME = "SABA_DATA_GO_KR_KEY"
@@ -40,6 +40,10 @@ def load_keywords(path: Path = KEYWORDS_PATH) -> dict[str, list[str]]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {k: list(v) for k, v in DEFAULT_KEYWORDS.items()}
+    except json.JSONDecodeError:
+        raise RssError("공공 API 키워드 설정이 JSON 형식이 아닙니다 (config/public_api.json).") from None
+    if not isinstance(data, dict):
+        raise RssError("공공 API 키워드 설정 형식이 올바르지 않습니다 (config/public_api.json).")
     data = {k: data.get(k, DEFAULT_KEYWORDS[k]) for k in DEFAULT_KEYWORDS}  # 나중에 생긴 항목은 기본값으로
     if not all(isinstance(data[k], list) and all(isinstance(w, str) and w.strip() for w in data[k]) for k in DEFAULT_KEYWORDS):
         raise RssError("공공 API 키워드 설정 형식이 올바르지 않습니다 (config/public_api.json).")
@@ -67,11 +71,12 @@ def service_key(name: str = KEY_NAME) -> str | None:
 
 
 def _get_json(base: str, params: dict, key: str) -> dict:
+    check_api_url(base)
     key_param = "OC" if urllib.parse.urlsplit(base).hostname == "www.law.go.kr" else "serviceKey"  # 법령 API 는 OC
     url = base + "?" + urllib.parse.urlencode({key_param: key, **params})
     request = urllib.request.Request(url, headers={"User-Agent": "SABA/0.1 company newsletter collector"})
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT * 2) as response:
+        with urllib.request.build_opener(NoRedirect()).open(request, timeout=TIMEOUT * 2) as response:
             body = response.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as exc:
         raise RssError(f"공공 API HTTP 오류: {exc.code}. 자동 재시도는 하지 않습니다.") from None
@@ -196,7 +201,7 @@ def collect(source: Source, now: datetime, *, fetch=_get_json, keywords: dict | 
             items += parse_law(laws if isinstance(laws, list) else [laws], words, now - timedelta(days=7))
         else:
             raise RssError(f"알 수 없는 수집 방식입니다 ({source.method}).")
-    except (KeyError, TypeError, ValueError) as exc:
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError) as exc:
         if isinstance(exc, RssError):
             raise
         raise RssError("공공 API 응답 형식이 예상과 다릅니다.") from None

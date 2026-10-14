@@ -113,6 +113,34 @@ class LoginTests(AdminBase):
                                            cookie=None)
         return status, location
 
+    def test_viewer_cannot_read_admin_csv_preview(self):
+        self.post('csv_preview', csv='이름,메일,부서,그룹\n가상,private@example.com,STE본부,TEST', back='/recipients')
+        self.assertTrue(self.app.csv_rows)
+        self.app.users.add('viewer1', 'viewer', 'virtual-pass-1')
+        cookie = 'saba_session=' + self.app.sessions.create('viewer1', 'viewer')
+        html = self.request('GET', '/recipients', cookie=cookie)[1]
+        self.assertNotIn('private@example.com', html)
+        self.assertNotIn('CSV 미리보기 (아직 저장 안 됨)', html)
+
+    def test_unicode_csrf_and_invalid_request_lengths_are_rejected(self):
+        status, _, _ = self.request('POST', '/action/rss_dryrun', urlencode({'token': '잘못된 토큰', 'confirm': 'yes'}))
+        self.assertEqual(status, 403)
+        for length, expected in (('-1', 400), ('invalid', 400), ('262145', 413)):
+            conn = http.client.HTTPConnection('127.0.0.1', self.port, timeout=10)
+            conn.request('POST', '/action/rss_dryrun', body=b'', headers={'Host': f'127.0.0.1:{self.port}', 'Content-Length': length})
+            response = conn.getresponse()
+            self.assertEqual(response.status, expected)
+            response.read()
+            conn.close()
+        self.assertEqual(self.commands, [])
+
+    def test_account_post_storage_error_is_sanitized(self):
+        with patch.object(self.app.users, 'verify', side_effect=OSError('virtual-secret-in-error')):
+            status, html, _ = self.request('POST', '/login', urlencode({'token': self.app.token, 'user': 'tester', 'password': 'virtual-pass-1'}), cookie=None)
+        self.assertEqual(status, 500)
+        self.assertIn('OSError', html)
+        self.assertNotIn('virtual-secret-in-error', html)
+
     def test_pages_require_login_and_login_flow(self):
         status, _, location = self.request("GET", "/", cookie=None)
         self.assertEqual((status, location), (303, "/login"))

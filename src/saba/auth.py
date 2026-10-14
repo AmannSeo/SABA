@@ -37,7 +37,7 @@ def _hash(password: str, salt: bytes, iterations: int) -> str:
 def check_password_rule(password: str) -> None:
     if len(password) < MIN_PASSWORD or len(password) > 128:
         raise AuthError(f"비밀번호는 {MIN_PASSWORD}~128자여야 합니다.")
-    if password.isdigit() or password.isalpha():
+    if not any(c.isalpha() for c in password) or not any(not c.isalpha() for c in password):
         raise AuthError("비밀번호는 글자와 숫자·기호를 섞어야 합니다.")
 
 
@@ -51,6 +51,8 @@ class Users:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return {}
+        except json.JSONDecodeError:
+            raise AuthError("계정 파일이 JSON 형식이 아닙니다. data/admin_users.json 을 확인하세요.") from None
         if not isinstance(data, dict) or not isinstance(data.get("users"), dict):
             raise AuthError("계정 파일 형식이 올바르지 않습니다. data/admin_users.json 을 확인하세요.")
         return data["users"]
@@ -67,7 +69,7 @@ class Users:
     def list(self) -> list[tuple[str, str]]:
         return sorted((uid, u["role"]) for uid, u in self.load().items())
 
-    def add(self, user_id: str, role: str, password: str) -> None:
+    def add(self, user_id: str, role: str, password: str, *, first_admin: bool = False) -> None:
         if not USER_ID.fullmatch(user_id):
             raise AuthError("아이디는 영문 소문자·숫자로 시작하는 3~30자 (소문자·숫자·.-_) 여야 합니다.")
         if role not in ROLES:
@@ -75,6 +77,8 @@ class Users:
         check_password_rule(password)
         with self._lock:
             users = self.load()
+            if first_admin and (users or role != "admin"):
+                raise AuthError("첫 관리자 계정 설정이 이미 끝났거나 역할이 올바르지 않습니다.")
             if user_id in users:
                 raise AuthError("이미 있는 아이디입니다.")
             salt = secrets.token_bytes(16)
@@ -140,7 +144,7 @@ class Sessions:
             session = self._sessions.get(sid)
             if session is None:
                 return None
-            if self.clock() - session.last_seen > SESSION_IDLE:
+            if self.clock() - session.last_seen >= SESSION_IDLE:
                 del self._sessions[sid]
                 return None
             session.last_seen = self.clock()

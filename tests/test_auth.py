@@ -47,8 +47,36 @@ class UsersTests(unittest.TestCase):
         self.assertIsNone(self.users.verify("admin1", "virtual-pass-1"))
         self.assertEqual(self.users.verify("admin1", "virtual-pass-2"), "admin")
 
+    def test_first_admin_is_atomic_under_concurrent_setup(self):
+        from concurrent.futures import ThreadPoolExecutor
+        def create(uid):
+            try:
+                self.users.add(uid, 'admin', 'virtual-pass-1', first_admin=True)
+                return True
+            except auth.AuthError:
+                return False
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(create, ('admin1', 'admin2')))
+        self.assertEqual(results.count(True), 1)
+        self.assertEqual(len(self.users.load()), 1)
+
+    def test_symbols_only_password_and_corrupt_account_json(self):
+        with self.assertRaises(auth.AuthError):
+            self.users.add('admin1', 'admin', '!' * 12)
+        self.users.path.write_text('{broken', encoding='utf-8')
+        with self.assertRaises(auth.AuthError) as caught:
+            self.users.load()
+        self.assertNotIn('{broken', str(caught.exception))
+
 
 class SessionTests(unittest.TestCase):
+    def test_exact_idle_limit_expires_session(self):
+        now = [0.0]
+        sessions = auth.Sessions(clock=lambda: now[0])
+        sid = sessions.create('admin1', 'admin')
+        now[0] = auth.SESSION_IDLE
+        self.assertIsNone(sessions.get(sid))
+
     def test_idle_expiry_and_drop(self):
         now = [0.0]
         sessions = auth.Sessions(clock=lambda: now[0])

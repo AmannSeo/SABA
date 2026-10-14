@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -63,6 +64,18 @@ class SourceEntry:
     enabled: bool = True
 
 
+def check_api_url(url: str) -> None:
+    """환경 변수 인증키를 붙일 주소는 승인된 공공 API 호스트로 제한한다."""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        valid = (parts.scheme == "https" and parts.hostname in {"apis.data.go.kr", "www.law.go.kr"}
+                 and parts.port in (None, 443) and not (parts.username or parts.password or parts.query or parts.fragment))
+    except ValueError:
+        valid = False
+    if not valid:
+        raise RssError("공공 API 주소는 승인된 HTTPS 호스트이며 인증정보·쿼리·조각이 없어야 합니다.")
+
+
 def parse_sources(rows: list) -> list[SourceEntry]:
     """설정 값 검증. 잘못된 줄이 있으면 전체를 거부한다 (수집 대상이 조용히 바뀌지 않게)."""
     if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_SOURCES:
@@ -92,6 +105,8 @@ def parse_sources(rows: list) -> list[SourceEntry]:
             raise RssError("Source 설정 오류: 주제는 " + "·".join(TOPICS) + " 중 하나여야 합니다.")
         if method not in METHODS:
             raise RssError("Source 설정 오류: 수집 방식은 " + "·".join(METHODS) + " 중 하나여야 합니다.")
+        if method.startswith("api:"):
+            check_api_url(url)
         seen.add(source_id)
         entries.append(SourceEntry(Source(source_id, name, url, KST if kst else None, date_only, kind == "공식 기관",
                                           region, kind, topic, method), enabled))
@@ -145,7 +160,7 @@ SOURCE_FIELDS = (
 
 
 ATOM = "{http://www.w3.org/2005/Atom}"
-PRERELEASE = re.compile(r"(alpha|beta|nightly|preview|canary|[-.]rc\.?\d*\b|\brc\b)", re.IGNORECASE)
+PRERELEASE = re.compile(r"(?<![a-z])(alpha|beta|nightly|preview|canary)(?![a-z])|(?:[-.]|\d)rc[.-]?\d*\b|\brc\b|\d[ab]\d+\b", re.IGNORECASE)
 
 
 def _atom_item(entry) -> dict:

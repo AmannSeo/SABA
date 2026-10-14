@@ -1625,7 +1625,7 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
                 '<textarea name="csv" id="csvtext" aria-label="CSV 내용" rows="7" style="width:100%" placeholder="이름,메일,부서,그룹"></textarea>'
                 '<div class="row"><button class="btn primary">미리보기</button><span class="muted">미리보기는 저장하지 않습니다.</span></div></form></div>')
     preview = ""
-    if app.csv_rows:
+    if app.csv_rows and getattr(CURRENT, "role", None) == "admin":
         status_badge = {"신규": "b-ok", "갱신": "b-info", "오류": "b-bad"}
         prow = "".join(f"<tr><td>{r['line']}</td><td>{badge(r['status'], status_badge[r['status']])}</td><td>{escape(r['name'])}</td>"
                        f"<td>{escape(r['email'])}</td><td>{escape(r['department'])}</td><td>{escape(';'.join(r['groups']))}</td>"
@@ -1866,13 +1866,24 @@ def make_handler(app: AdminApp, port: int):
             return self._send(404, page("없는 페이지", "<p>없는 페이지입니다.</p>"))
 
         def do_POST(self):
+            try:
+                self._post()
+            except Exception as error:
+                self._send(500, page("오류", f"<p>요청을 처리하지 못했습니다: {escape(type(error).__name__)}</p>"))
+
+        def _post(self):
             if not self._host_ok():
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
-            length = min(int(self.headers.get("Content-Length") or 0), 262144)  # 수신자 CSV 붙여 넣기 (약 수천 명)
+            raw_length = self.headers.get("Content-Length", "0")
+            if not re.fullmatch(r"[0-9]{1,9}", raw_length):
+                return self._send(400, "invalid content length", "text/plain; charset=utf-8")
+            length = int(raw_length)
+            if length > 262144:
+                return self._send(413, "request too large", "text/plain; charset=utf-8")
             form = parse_qs(self.rfile.read(length).decode("utf-8", errors="replace"), keep_blank_values=True)
             path = urlparse(self.path).path
             action = path.removeprefix("/action/")
-            if not secrets.compare_digest(_first(form, "token"), app.token):
+            if not secrets.compare_digest(_first(form, "token").encode("utf-8"), app.token.encode("utf-8")):
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
             if not app.login_required:
                 if not path.startswith("/action/"):
@@ -1917,7 +1928,7 @@ def make_handler(app: AdminApp, port: int):
                 try:
                     if _first(form, "password") != _first(form, "password2"):
                         raise auth.AuthError("두 비밀번호가 다릅니다.")
-                    app.users.add(user_id, "admin", _first(form, "password"))
+                    app.users.add(user_id, "admin", _first(form, "password"), first_admin=True)
                 except auth.AuthError as error:
                     app.message = f"실패: {error}"
                     return self._redirect("/setup")

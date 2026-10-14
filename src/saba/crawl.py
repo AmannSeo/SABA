@@ -23,6 +23,12 @@ _last_request: dict[str, float] = {}
 _robots: dict[str, urllib.robotparser.RobotFileParser] = {}
 
 
+def _interval(url: str) -> float:
+    parts = urllib.parse.urlsplit(url)
+    robots = _robots.get(f"{parts.scheme}://{parts.netloc}")
+    return max(MIN_INTERVAL, (robots.crawl_delay(USER_AGENT) or 0) if robots else 0)
+
+
 class SameHostRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
@@ -32,7 +38,8 @@ class SameHostRedirect(urllib.request.HTTPRedirectHandler):
         if parts.scheme != "https" or (robots is not None and not robots.can_fetch(USER_AGENT, newurl)):
             raise RssError("리다이렉트 대상이 HTTPS 또는 robots.txt 규칙을 충족하지 않습니다.")
         host = urllib.parse.urlsplit(newurl).hostname or ""
-        wait = MIN_INTERVAL - (time.monotonic() - _last_request.get(host, -MIN_INTERVAL))
+        interval = _interval(newurl)
+        wait = interval - (time.monotonic() - _last_request.get(host, -interval))
         if wait > 0:
             time.sleep(wait)
         _last_request[host] = time.monotonic()
@@ -41,7 +48,8 @@ class SameHostRedirect(urllib.request.HTTPRedirectHandler):
 
 def _get(url: str, *, sleep=time.sleep, clock=time.monotonic) -> tuple[int, str, bytes]:
     host = urllib.parse.urlsplit(url).hostname or ""
-    wait = MIN_INTERVAL - (clock() - _last_request.get(host, -MIN_INTERVAL))
+    interval = _interval(url)
+    wait = interval - (clock() - _last_request.get(host, -interval))
     if wait > 0:
         sleep(wait)
     _last_request[host] = clock()

@@ -1,6 +1,8 @@
 """D-078 공공데이터 API: 나라장터·K-Startup 파서, 키워드 필터, 인증키 없음, 키 미노출, 미래 접수 시작일. 실제 접속 없음."""
 from datetime import datetime, timezone
 import unittest
+import urllib.error
+import urllib.request
 from unittest.mock import patch
 
 from saba import public_api
@@ -20,6 +22,39 @@ def g2b_body(names, total=None):
 
 
 class PublicApiTests(unittest.TestCase):
+    def test_api_key_cannot_be_sent_to_unapproved_url_or_redirect(self):
+        from saba.rss import NoRedirect, parse_sources
+        for url in ('https://evil.example/api', 'http://apis.data.go.kr/api', 'https://apis.data.go.kr@evil.example/api',
+                    'https://apis.data.go.kr/api?serviceKey=VIRTUAL', 'https://www.law.go.kr:8443/api'):
+            with self.subTest(url=url), patch.object(urllib.request, 'build_opener') as opener, self.assertRaises(RssError):
+                public_api._get_json(url, {}, 'VIRTUAL-KEY-123')
+            opener.assert_not_called()
+            with self.assertRaises(RssError):
+                parse_sources([{'id': 'virtual-api', 'name': '가상 API', 'url': url, 'method': 'api:g2b'}])
+        with patch.object(urllib.request, 'build_opener') as opener:
+            opener.return_value.open.side_effect = urllib.error.HTTPError('https://apis.data.go.kr/api?serviceKey=VIRTUAL-KEY-123', 302,
+                                                                         'VIRTUAL-KEY-123', {}, None)
+            with self.assertRaises(RssError) as caught:
+                public_api._get_json('https://apis.data.go.kr/api', {}, 'VIRTUAL-KEY-123')
+            self.assertIsInstance(opener.call_args.args[0], NoRedirect)
+            self.assertNotIn('VIRTUAL-KEY-123', str(caught.exception))
+
+    def test_malformed_keyword_file_and_response_are_fixed_errors(self):
+        from pathlib import Path
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'keywords.json'
+            for text in ('[]', 'null', '{broken'):
+                path.write_text(text, encoding='utf-8')
+                with self.assertRaises(RssError):
+                    public_api.load_keywords(path)
+        malformed = g2b_body(['[가상] AI 용역'])
+        malformed['response']['body']['items'][0]['presmptPrce'] = 'Infinity'
+        for source, body in ((KS, []), (G2B, malformed)):
+            with self.subTest(source=source.source_id), self.assertRaises(RssError) as caught:
+                self.collect(source, [body])
+            self.assertNotIn('VIRTUAL-KEY-123', str(caught.exception))
+
     def collect(self, source, pages, key="VIRTUAL-KEY-123"):
         calls = []
         def fetch(url, params, k):

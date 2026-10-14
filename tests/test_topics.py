@@ -68,6 +68,14 @@ class TopicTests(unittest.TestCase):
             order = [issues.section_key(issues.SOURCE_BY_ID[i.representative.source_id]) for i in issues.select_issues(rows, NOW).issues]
         self.assertEqual(order[:4], ["해외", "테스트", "해외", "테스트"])
 
+    def test_github_compact_prerelease_versions_and_stable_word(self):
+        tags = ('v1.0.0rc1', 'v1.0.0a1', 'v1.0.0b2', 'alphabet-v1.0.0', 'v1.0.0')
+        payload = b'<feed xmlns="http://www.w3.org/2005/Atom">' + b''.join(
+            f'<entry><id>{tag}</id><title>{tag}</title><link href="https://github.com/o/r/releases/tag/{tag}"/><updated>2026-10-13T00:00:00Z</updated></entry>'.encode()
+            for tag in tags) + b'</feed>'
+        source = Source('virtual-rel', '가상 릴리스', 'https://github.com/o/r/releases.atom', topic='테스트')
+        self.assertEqual([a.original_title for a in parse_feed(payload, NOW, source)], ['alphabet-v1.0.0', 'v1.0.0'])
+
     def test_github_releases_keep_stable_only(self):
         feed = b"""<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">""" + b"".join(
             f'<entry><id>{t}</id><title>{t}</title><link href="https://github.com/o/r/releases/{t}"/><updated>2026-10-13T00:00:00Z</updated></entry>'.encode()

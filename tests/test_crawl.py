@@ -162,6 +162,23 @@ class CrawlTests(unittest.TestCase):
         self.assertEqual(len(waits), 1)
         self.assertAlmostEqual(waits[0], 0.8)
 
+    def test_robots_crawl_delay_overrides_one_second_minimum(self):
+        robot = crawl.urllib.robotparser.RobotFileParser()
+        robot.parse(['User-agent: *', 'Crawl-delay: 5'])
+        crawl._robots['https://a.example'] = robot
+        crawl._last_request['a.example'] = 10
+        clock, waits = iter([10.2, 15]), []
+        class Response:
+            status = 200
+            headers = type('H', (), {'get_content_type': lambda self: 'text/html'})()
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, n): return b'x'
+        with patch.object(urllib.request.OpenerDirector, 'open', return_value=Response()):
+            crawl._get('https://a.example/list', sleep=waits.append, clock=lambda: next(clock))
+        self.assertAlmostEqual(waits[0], 4.8)
+        self.assertEqual(crawl._interval('https://a.example/next'), 5)
+
     def test_redirect_to_other_host_refused(self):
         handler = crawl.SameHostRedirect()
         request = urllib.request.Request("https://www.example.go.kr/a")
