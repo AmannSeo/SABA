@@ -1451,7 +1451,7 @@ def filter_bar(selects: list[tuple[str, str, list[str]]], hint: str) -> str:
 
 # Source 주제별 담당 부서 (F11). 보안 Source 는 보안 두 부서, 업무 주제는 해당 부서.
 TOPIC_DEPARTMENTS = {"보안": ("기술개발연구소", "보안사업팀"), "경영": ("경영전략팀 · 사업지원팀",),
-                     "사업": ("경영전략팀 · 사업지원팀",), "테스트": ("STE본부",)}
+                     "사업": ("경영전략팀 · 사업지원팀",), "테스트": ("STE본부",), "AI": ("기술개발연구소",)}
 
 
 def _health_key(status: dict | None) -> str:
@@ -1678,7 +1678,7 @@ def api_keywords_card(app: AdminApp) -> str:
         words = load_keywords(app.root / "config" / "public_api.json")
     except Exception as error:  # 설정 오류는 화면에 종류만
         return f'<div class="card"><h2>공공 API 공고 키워드</h2><p class="info">설정을 읽지 못했습니다: {escape(str(error))}</p></div>'
-    labels = {"g2b": "나라장터 입찰공고 (용역)", "kstartup": "K-Startup 사업공고"}
+    labels = {"g2b": "나라장터 입찰공고 (용역)", "kstartup": "K-Startup 사업공고", "law": "법령 (법령명·소관부처)"}
     rows = "".join(f'<tr><th style="width:200px">{labels[k]}</th><td><textarea name="{k}" aria-label="{labels[k]} 키워드" rows="2" '
                    f'style="width:100%">{escape(", ".join(v))}</textarea></td></tr>' for k, v in words.items())
     return (f'<div class="card"><h2>공공 API 공고 키워드<span class="muted">제목에 하나라도 들어 있는 공고만 가져옵니다. 쉼표로 구분, '

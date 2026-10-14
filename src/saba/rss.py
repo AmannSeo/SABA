@@ -49,10 +49,10 @@ SOURCES_PATH = Path(__file__).resolve().parents[2] / "config" / "sources.json"
 MAX_SOURCES = 60  # D-073 은 15곳, 부서별 신규 출처 추가로 늘림 (F13, 2026-10-13)
 REGIONS = ("국내", "해외")
 KINDS = ("공식 기관", "보안 전문 매체", "IT 언론", "기업·벤더")  # D-074
-TOPICS = ("보안", "경영", "사업", "테스트")  # F13: 보안·AI (기존) + 경영·노무·세무, 사업 지원·마케팅, SW 테스트·품질
+TOPICS = ("보안", "경영", "사업", "테스트", "AI")  # AI: AI 개발·도입 (기술개발연구소 관심사, 2026-10-14)  # F13: 보안·AI (기존) + 경영·노무·세무, 사업 지원·마케팅, SW 테스트·품질
 METHODS = ("rss", "crawl:bizinfo", "crawl:moel", "crawl:nts", "crawl:iris", "crawl:nipa", "crawl:smtech",
            "crawl:kocca", "crawl:searchadvisor", "crawl:kiat", "crawl:selenium",  # saba.crawl.PARSERS 와 같아야 한다
-           "api:g2b", "api:kstartup")  # 공공데이터 API (saba.public_api, D-078)
+           "api:g2b", "api:kstartup", "api:law")  # 공공데이터 API (saba.public_api, D-078)
 SOURCE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
 
 
@@ -145,6 +145,7 @@ SOURCE_FIELDS = (
 
 
 ATOM = "{http://www.w3.org/2005/Atom}"
+PRERELEASE = re.compile(r"(alpha|beta|nightly|preview|canary|[-.]rc\.?\d*\b|\brc\b)", re.IGNORECASE)
 
 
 def _atom_item(entry) -> dict:
@@ -235,6 +236,9 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
         raise RssError("RSS XML을 파싱할 수 없습니다.") from None
     if root.tag == ATOM + "feed":
         items = [_atom_item(entry) for entry in root.findall(ATOM + "entry")]
+        if re.fullmatch(r"https://github\.com/[^/]+/[^/]+/releases\.atom", source.feed_url):
+            # GitHub 릴리스는 정식판만 (alpha·beta·rc·nightly·preview 제외). 시험판이 매일 올라와 메일을 채우지 않게 한다.
+            items = [i for i in items if not PRERELEASE.search(i["title"] or "")]
         offset = None
     else:
         channels = root.findall("channel")

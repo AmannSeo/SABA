@@ -68,6 +68,24 @@ class TopicTests(unittest.TestCase):
             order = [issues.section_key(issues.SOURCE_BY_ID[i.representative.source_id]) for i in issues.select_issues(rows, NOW).issues]
         self.assertEqual(order[:4], ["해외", "테스트", "해외", "테스트"])
 
+    def test_github_releases_keep_stable_only(self):
+        feed = b"""<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom">""" + b"".join(
+            f'<entry><id>{t}</id><title>{t}</title><link href="https://github.com/o/r/releases/{t}"/><updated>2026-10-13T00:00:00Z</updated></entry>'.encode()
+            for t in ("v1.2.0", "v1.3.0-alpha.1", "0.65.0-nightly.20261014", "2026-07-28 RC", "v2.0.0-beta.4", "rust-v0.163.0")) + b"</feed>"
+        releases = Source("virtual-rel", "가상 릴리스", "https://github.com/o/r/releases.atom", topic="AI")
+        self.assertEqual([a.original_title for a in parse_feed(feed, NOW, releases)], ["v1.2.0", "rust-v0.163.0"])
+        other = Source("virtual-atom", "가상 Atom", "https://example.com/feed.atom")
+        self.assertEqual(len(parse_feed(feed, NOW, other)), 6)  # GitHub 릴리스가 아니면 거르지 않는다
+
+    def test_ai_topic_goes_to_ai_section(self):
+        ai = Source("virtual-ai", "가상 AI 도구", "https://example.com/ai", region="해외", kind="기업·벤더", topic="AI")
+        with patch.dict(newsletter.SOURCE_BY_ID, {ai.source_id: ai}):
+            view = newsletter.build_article_view(article(ai, 2, 1))
+        self.assertEqual(newsletter.article_section(view), "ai_tech")
+        from saba.analysis import input_payload
+        with patch.dict(issues.SOURCE_BY_ID, {ai.source_id: ai}):
+            self.assertEqual(input_payload(article(ai, 2, 1))["source_topic"], "AI 개발·도입")
+
     def test_topic_source_goes_to_topic_section(self):
         with patch.dict(newsletter.SOURCE_BY_ID, {TESTING.source_id: TESTING}):
             view = newsletter.build_article_view(article(TESTING, 2, 1))

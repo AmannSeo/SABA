@@ -32,7 +32,7 @@ _DEEP_SECTION_META = {
 # 심층 뉴스 순서. 기존 보안·AI 섹션 뒤에 부서 업무 주제 섹션을 둔다 (F13).
 _DEEP_ORDER = ("domestic", "overseas", "ai_tech", "management", "business", "testing", "other")
 _OPTIONAL_SECTIONS = {"management", "business", "testing", "other"}  # 기사가 없으면 섹션을 숨긴다
-_TOPIC_SECTION = {"경영": "management", "사업": "business", "테스트": "testing"}  # Source 주제 → 섹션
+_TOPIC_SECTION = {"경영": "management", "사업": "business", "테스트": "testing", "AI": "ai_tech"}  # Source 주제 → 섹션
 _CATEGORY_SECTION = {"경영·노무·세무": "management", "사업 지원·마케팅": "business", "SW 테스트·품질": "testing"}
 _BRIEF_GROUP_META = {
     "schedule": ("일정", "🗓️", "schedule"),

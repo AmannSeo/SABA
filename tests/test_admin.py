@@ -235,9 +235,10 @@ class LoginOffTests(AdminBase):
             admin.login_enabled(path)
 
     def test_api_keywords_saved_from_settings(self):
-        self.post("api_keywords_save", confirm=False, g2b="정보보호, 모의해킹", kstartup="AI", back="/settings")
+        self.post("api_keywords_save", confirm=False, g2b="정보보호, 모의해킹", kstartup="AI", law="근로, 소득세", back="/settings")
         from saba.public_api import load_keywords
-        self.assertEqual(load_keywords(self.root / "config" / "public_api.json"), {"g2b": ["정보보호", "모의해킹"], "kstartup": ["AI"]})
+        self.assertEqual(load_keywords(self.root / "config" / "public_api.json"),
+                         {"g2b": ["정보보호", "모의해킹"], "kstartup": ["AI"], "law": ["근로", "소득세"]})
 
 
 class AdminTests(AdminBase):

@@ -283,7 +283,10 @@ Reddit / X 수집
 | 사업지원 | KISA | 기존 Source (보호나라) | 중복 등록하지 않음 |
 | 경영전략 | 고용노동부 보도자료 | 웹페이지 수집 (목록) | 연결·수집 성공 (공식 RSS 는 빈 응답) |
 | 경영전략 | 국세청 보도자료 | 웹페이지 수집 (목록) | 연결·수집 성공 |
-| 경영전략 | 국가법령정보센터 | 공식 Open API (OC 인증, SABA_LAW_OC) | 보류: OC 값 입력 대기 |
+| 경영전략 | 국가법령정보센터 | 공식 Open API (OC 인증, SABA_LAW_OC) | 연결·조회 성공 (2026-10-14, 최근 공포 법령 중 노동·세무·4대보험·개인정보 키워드, 링크는 OC 없는 공개 화면) |
+| 기술개발연구소 | Claude Code·OpenAI Codex·Gemini CLI 릴리스, GitHub Copilot 변경 사항, Cursor 변경 사항, GitHub 블로그 AI, MCP 블로그·MCP 스펙 릴리스, A2A 릴리스, OWASP GenAI | RSS·Atom (주제 AI, GitHub 릴리스는 정식판만) | 연결 (2026-10-14, 기술개발연구소 관심사: AI 코딩 에이전트·에이전틱 개발·AI 개발 생태계·AI 보안 규제) |
+| 기술개발연구소 | Anthropic 뉴스 | RSS 없음 (404) | 보류: 공식 피드 확인 후 재검토 |
+| 기술개발연구소 | AI 산업·기업 동향, 산업별 AI 도입 사례 | 기존 OpenAI·Google·Microsoft·NVIDIA 블로그와 국내 IT 언론 | 기존 Source 로 유지 |
 | 경영전략 | 중앙노동위원회 | 확인 필요 | 보류: 목록을 자바스크립트로 그리고 robots.txt 를 읽지 못함 |
 | 경영전략 | 근로복지공단·국민연금공단·국민건강보험공단·기획재정부·한국노동연구원·노사발전재단 | 조사 후 보류 | robots 차단·동적 목록·대기 페이지·다른 호스트 이동·게시일 검증 부족. 아래 조사표 참고 |
 | STE | ISTQB, Cypress, GitHub Actions 변경, Playwright·Appium·pytest 릴리스, Google Testing Blog | RSS·Atom | 연결·수집 성공 |
