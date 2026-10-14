@@ -334,5 +334,53 @@
     "kst": true,
     "date_only": true,
     "enabled": true
+  },
+  {
+    "id": "nipa-business",
+    "name": "NIPA 사업공고",
+    "url": "https://www.nipa.kr/home/2-2",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "crawl:nipa",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "smtech-notice",
+    "name": "SMTECH R&D 관련 공지사항",
+    "url": "https://www.smtech.go.kr/front/ifg/no/notice01_list.do",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "crawl:smtech",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "kocca-notice",
+    "name": "KOCCA 공지사항",
+    "url": "https://www.kocca.kr/kocca/bbs/list/B0000137.do?menuNo=204802",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "crawl:kocca",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "naver-searchadvisor",
+    "name": "네이버 서치어드바이저 웹마스터 공지",
+    "url": "https://searchadvisor.naver.com/",
+    "region": "국내",
+    "kind": "기업·벤더",
+    "topic": "사업",
+    "method": "crawl:searchadvisor",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
   }
 ]

@@ -49,6 +49,48 @@ class CrawlTests(unittest.TestCase):
                 self.assertEqual(article.collection_method, "crawl")
                 self.assertEqual((kst_date.strftime("%Y%m%d"), kst_date.hour), (item["date"].replace("-", "").replace(".", ""), 0))
 
+    def test_additional_sites_use_publication_dates_not_periods(self):
+        cases = {
+            "crawl:nipa": ('<tr><td>1</td><td><a href="/home/2-2/7"><!-- hidden -->[가상] 사업 공고</a> 신청기간 2026-10-01 ~ 2026-10-30</td><td>담당</td><td><span>2026-10-12</span></td></tr>', 'https://www.nipa.kr/home/2-2/7'),
+            "crawl:smtech": ('<tr><td>1</td><td><a href="/front/ifg/no/notice01_detail.do;jsessionid=VIRTUAL?bitmSeq=8&amp;pageIndex=1">[가상] R&amp;D 공지</a></td><td>2026-10-12</td><td>2026-10-14</td></tr>', 'https://www.smtech.go.kr/front/ifg/no/notice01_detail.do?bitmSeq=8'),
+            "crawl:kocca": ('<tr><td><a href="/kocca/bbs/view/B0000137/9.do?menuNo=204802">[가상] 콘텐츠 지원 안내</a></td><td data-label="등록일">2026-10-12</td><td>2026-10-20</td></tr>', 'https://www.kocca.kr/kocca/bbs/view/B0000137/9.do?menuNo=204802'),
+            "crawl:searchadvisor": ('<a href="https://blog.naver.com/naver_search/6">일반 검색 뉴스 26.10.12</a><a href="https://blog.naver.com/naver_webmaster/10"><b>웹마스터</b> [가상] SEO 정책 공지 <span>26.10.12</span></a>', 'https://blog.naver.com/naver_webmaster/10')}
+        bases = {'crawl:nipa': 'https://www.nipa.kr/home/2-2', 'crawl:smtech': 'https://www.smtech.go.kr/front/ifg/no/notice01_list.do',
+                 'crawl:kocca': 'https://www.kocca.kr/kocca/bbs/list/B0000137.do?menuNo=204802', 'crawl:searchadvisor': 'https://searchadvisor.naver.com/'}
+        for method, (page, expected) in cases.items():
+            with self.subTest(method=method):
+                [item] = crawl.PARSERS[method](page, bases[method])
+                self.assertEqual((item['date'], item['url'], item['excerpt']), ('2026-10-12', expected, None))
+                self.assertIn('[가상]', item['title'])
+                self.assertNotIn('hidden', item['title'])
+                self.assertNotIn('jsessionid', item['url'])
+                [article] = crawl.articles_from_items([item], NOW, source(method, bases[method]))
+                self.assertEqual(article.collection_method, 'crawl')
+                self.assertEqual(crawl.PARSERS[method]('<html>changed</html>', bases[method]), [])
+                with patch.object(crawl, 'allowed', return_value=True), patch.object(crawl, '_get', return_value=(200, 'text/html', page.encode())):
+                    self.assertEqual(len(crawl.collect(source(method, bases[method]), NOW)), 1)
+                with patch.object(crawl, 'allowed', return_value=True), patch.object(crawl, '_get', return_value=(200, 'text/html', b'<html>changed</html>')), self.assertRaises(RssError):
+                    crawl.collect(source(method, bases[method]), NOW)
+
+    def test_same_host_redirect_also_observes_interval(self):
+        crawl._last_request['www.example.go.kr'] = 10
+        request = urllib.request.Request('https://www.example.go.kr/a')
+        with patch.object(crawl.time, 'monotonic', side_effect=[10.2, 11.0]), patch.object(crawl.time, 'sleep') as sleep:
+            redirected = crawl.SameHostRedirect().redirect_request(request, None, 302, 'Found', {}, 'https://www.example.go.kr/b')
+        self.assertEqual(redirected.full_url, 'https://www.example.go.kr/b')
+        sleep.assert_called_once()
+        self.assertAlmostEqual(sleep.call_args.args[0], .8)
+
+    def test_redirect_checks_target_robots_and_https(self):
+        robot = crawl.urllib.robotparser.RobotFileParser()
+        robot.parse(['User-agent: *', 'Disallow: /blocked'])
+        crawl._robots['https://www.example.go.kr'] = robot
+        request = urllib.request.Request('https://www.example.go.kr/allowed')
+        for target in ('https://www.example.go.kr/blocked', 'http://www.example.go.kr/allowed'):
+            with self.subTest(target=target), self.assertRaises(RssError), patch.object(crawl.time, 'sleep') as sleep:
+                crawl.SameHostRedirect().redirect_request(request, None, 302, 'Found', {}, target)
+            sleep.assert_not_called()
+
     def collect(self, pages: dict, method="crawl:moel"):
         calls = []
         def fake_get(url, **options):

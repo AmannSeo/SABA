@@ -27,6 +27,15 @@ class SameHostRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if urllib.parse.urlsplit(newurl).hostname != urllib.parse.urlsplit(req.full_url).hostname:
             raise RssError("다른 사이트로의 리다이렉트는 따라가지 않습니다.")
+        parts = urllib.parse.urlsplit(newurl)
+        robots = _robots.get(f"{parts.scheme}://{parts.netloc}")
+        if parts.scheme != "https" or (robots is not None and not robots.can_fetch(USER_AGENT, newurl)):
+            raise RssError("리다이렉트 대상이 HTTPS 또는 robots.txt 규칙을 충족하지 않습니다.")
+        host = urllib.parse.urlsplit(newurl).hostname or ""
+        wait = MIN_INTERVAL - (time.monotonic() - _last_request.get(host, -MIN_INTERVAL))
+        if wait > 0:
+            time.sleep(wait)
+        _last_request[host] = time.monotonic()
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
@@ -140,7 +149,60 @@ def parse_iris(page: str, base: str) -> list[dict]:
     return items
 
 
-PARSERS = {"crawl:bizinfo": parse_bizinfo, "crawl:moel": parse_moel, "crawl:nts": parse_nts, "crawl:iris": parse_iris}
+def parse_nipa(page: str, base: str) -> list[dict]:
+    """NIPA 사업공고: 마지막 날짜 칸의 등록일, 신청기간은 게시일로 쓰지 않는다."""
+    items = []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S | re.I):
+        cells = _cells(row)
+        link = re.search(r'href="(/home/2-2/(\d+))"[^>]*>(.*?)</a>', row, re.S)
+        date = _text(cells[-1]) if cells else ""
+        if link and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+            items.append({"guid": link.group(2), "title": _text(re.sub(r'<!--.*?-->', '', link.group(3), flags=re.S)),
+                          "date": date, "url": urllib.parse.urljoin(base, link.group(1)), "excerpt": None})
+    return items
+
+
+def parse_smtech(page: str, base: str) -> list[dict]:
+    """SMTECH R&D 관련 공지: 등록일·수정일 중 첫 날짜 칸을 사용, 세션 URL은 저장하지 않는다."""
+    items = []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S | re.I):
+        link = re.search(r'href="([^"]*notice01_detail\.do[^"]*)"[^>]*>(.*?)</a>', row, re.S)
+        dates = [_text(c) for c in _cells(row) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", _text(c))]
+        query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(html.unescape(link.group(1))).query)) if link else {}
+        guid = query.get("bitmSeq", "")
+        if link and guid.isdigit() and dates:
+            items.append({"guid": guid, "title": _text(link.group(2)), "date": dates[0],
+                          "url": urllib.parse.urljoin(base, "notice01_detail.do") + "?bitmSeq=" + guid, "excerpt": None})
+    return items
+
+
+def parse_kocca(page: str, base: str) -> list[dict]:
+    """KOCCA 공지사항: 등록일 칸만 사용한다. 지원공고의 동적 목록과 구분한다."""
+    items = []
+    for row in re.findall(r"<tr[^>]*>(.*?)</tr>", page, re.S | re.I):
+        link = re.search(r'href="(/kocca/bbs/view/B0000137/(\d+)\.do)[^"]*"[^>]*>(.*?)</a>', row, re.S)
+        date = re.search(r'<td[^>]*data-label="등록일"[^>]*>\s*(\d{4}-\d{2}-\d{2})\s*</td>', row)
+        if link and date:
+            items.append({"guid": link.group(2), "title": _text(link.group(3)), "date": date.group(1),
+                          "url": urllib.parse.urljoin(base, link.group(1)) + "?menuNo=204802", "excerpt": None})
+    return items
+
+
+def parse_searchadvisor(page: str, base: str) -> list[dict]:
+    """공개 홈페이지에 게시된 웹마스터 공지 링크·날짜만 읽는다. 일반 검색 블로그는 제외."""
+    items = []
+    for link in re.finditer(r'href="(https://blog\.naver\.com/naver_webmaster/(\d+))"[^>]*>(.*?)</a>', page, re.S):
+        text = _text(link.group(3))
+        date = re.search(r'(\d{2})\.(\d{2})\.(\d{2})\s*$', text)
+        if date:
+            items.append({"guid": link.group(2), "title": text[:date.start()].removeprefix("웹마스터").strip(),
+                          "date": "20" + '-'.join(date.groups()), "url": link.group(1), "excerpt": None})
+    return items
+
+
+PARSERS = {"crawl:bizinfo": parse_bizinfo, "crawl:moel": parse_moel, "crawl:nts": parse_nts, "crawl:iris": parse_iris,
+           "crawl:nipa": parse_nipa, "crawl:smtech": parse_smtech, "crawl:kocca": parse_kocca,
+           "crawl:searchadvisor": parse_searchadvisor}
 
 
 def articles_from_items(items: list[dict], now: datetime, source: Source) -> list[Article]:
@@ -172,5 +234,5 @@ def collect(source: Source, now: datetime, **options) -> list[Article]:
         raise RssError("목록에서 항목을 찾지 못했습니다. 사이트 화면 구조가 바뀌었을 수 있습니다.")
     try:
         return articles_from_items(items, now, source)
-    except AttributeError:  # 날짜 형식이 달라진 경우
+    except (AttributeError, ValueError):  # 날짜 형식이나 달력 날짜가 달라진 경우
         raise RssError("목록 항목의 날짜 형식이 예상과 다릅니다.") from None
