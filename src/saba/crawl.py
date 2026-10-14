@@ -200,9 +200,37 @@ def parse_searchadvisor(page: str, base: str) -> list[dict]:
     return items
 
 
+def parse_kiat(page: str, base: str) -> list[dict]:
+    """공개 홈페이지 사업공고의 작성일 속성만 사용한다. 신청기간으로 대체하지 않는다."""
+    items = []
+    for link in re.finditer(r'href="javascript:mainContentsGo\(\x2790\x27,\x27([a-f0-9]+)\x27\)"[^>]*>(.*?)</a>', page, re.S):
+        date = re.search(r'data-written_date="(\d{4}-\d{2}-\d{2})"', link.group(2))
+        title = re.search(r'<p[^>]*class="tit"[^>]*>(.*?)</p>', link.group(2), re.S)
+        if date and title:
+            items.append({"guid": link.group(1), "title": _text(title.group(1)), "date": date.group(1),
+                          "url": urllib.parse.urljoin(base, '/front/board/boardContentsView.do') + '?board_id=90&contents_id=' + link.group(1),
+                          "excerpt": None})
+    return items
+
+
+def parse_selenium(page: str, base: str) -> list[dict]:
+    """블로그 목록 제목·게시일만 추출한다. 사이드바·본문·RSS는 읽지 않는다."""
+    months = {name: number for number, name in enumerate(('January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December'), 1)}
+    items = []
+    pattern = r'''<h5\b[^>]*>\s*<a[^>]*href=["']?(/blog/\d{4}/[\w-]+/)["']?[^>]*>(.*?)</a>\s*</h5>\s*<p[^>]*>\s*<small[^>]*>(.*?)</small>'''
+    for link in re.finditer(pattern, page, re.S | re.I):
+        date = re.fullmatch(r'\w+,\s+([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})', _text(link.group(3)))
+        if date and date.group(1) in months:
+            month, day, year = months[date.group(1)], int(date.group(2)), int(date.group(3))
+            items.append({"guid": link.group(1), "title": _text(link.group(2)), "date": f'{year:04}-{month:02}-{day:02}',
+                          "url": urllib.parse.urljoin(base, link.group(1)), "excerpt": None})
+    return items
+
+
 PARSERS = {"crawl:bizinfo": parse_bizinfo, "crawl:moel": parse_moel, "crawl:nts": parse_nts, "crawl:iris": parse_iris,
            "crawl:nipa": parse_nipa, "crawl:smtech": parse_smtech, "crawl:kocca": parse_kocca,
-           "crawl:searchadvisor": parse_searchadvisor}
+           "crawl:searchadvisor": parse_searchadvisor, "crawl:kiat": parse_kiat, "crawl:selenium": parse_selenium}
 
 
 def articles_from_items(items: list[dict], now: datetime, source: Source) -> list[Article]:

@@ -382,5 +382,28 @@
     "kst": true,
     "date_only": true,
     "enabled": true
+  },
+  {
+    "id": "kiat-business",
+    "name": "KIAT 홈페이지 사업공고",
+    "url": "https://www.kiat.or.kr/front/user/main.do",
+    "region": "국내",
+    "kind": "공식 기관",
+    "topic": "사업",
+    "method": "crawl:kiat",
+    "kst": true,
+    "date_only": true,
+    "enabled": true
+  },
+  {
+    "id": "selenium-blog",
+    "name": "Selenium 공식 블로그",
+    "url": "https://www.selenium.dev/blog/",
+    "region": "해외",
+    "kind": "공식 기관",
+    "topic": "테스트",
+    "method": "crawl:selenium",
+    "date_only": true,
+    "enabled": true
   }
 ]

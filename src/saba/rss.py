@@ -51,7 +51,7 @@ REGIONS = ("국내", "해외")
 KINDS = ("공식 기관", "보안 전문 매체", "IT 언론", "기업·벤더")  # D-074
 TOPICS = ("보안", "경영", "사업", "테스트")  # F13: 보안·AI (기존) + 경영·노무·세무, 사업 지원·마케팅, SW 테스트·품질
 METHODS = ("rss", "crawl:bizinfo", "crawl:moel", "crawl:nts", "crawl:iris", "crawl:nipa", "crawl:smtech",
-           "crawl:kocca", "crawl:searchadvisor")  # saba.crawl.PARSERS 와 같아야 한다
+           "crawl:kocca", "crawl:searchadvisor", "crawl:kiat", "crawl:selenium")  # saba.crawl.PARSERS 와 같아야 한다
 SOURCE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{2,39}")
 
 

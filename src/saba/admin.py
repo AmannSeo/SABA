@@ -24,8 +24,12 @@ import secrets
 import signal
 import subprocess
 import sys
+import threading
 import time
+from functools import cached_property
 from typing import Callable
+
+from saba import auth
 from urllib.parse import parse_qs, quote, urlencode, urlparse
 import webbrowser
 
@@ -33,7 +37,9 @@ ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "admin.json"
 PID_PATH = ROOT / "data" / "admin.pid"
 LOOPBACK = {"127.0.0.1", "localhost"}
-SECRET_NAMES = ("OPENAI_API_KEY", "SABA_SMTP_HOST", "SABA_SMTP_USER", "SABA_SMTP_PASSWORD")
+SECRET_NAMES = ("OPENAI_API_KEY", "SABA_SMTP_HOST", "SABA_SMTP_USER", "SABA_SMTP_PASSWORD",
+                "SABA_DATA_GO_KR_KEY", "SABA_LAW_OC")  # 뒤 2개: 공공데이터 API (D-078, 발급 대기)
+CURRENT = threading.local()  # 요청을 처리하는 스레드의 로그인 사용자 (user·role). 화면 권한 표시에 쓴다.
 COST_PER_CALL = 0.0004  # 실제 사용량 기록 평균 (분석·시사점 1건 약 $0.0003~0.0005), 예상 비용 표시용
 # 확인 창과 confirm=yes 가 필요한 동작 (외부 접속·AI 호출·발송·설정 변경)
 CONFIRM_TEXT = {
@@ -55,7 +61,10 @@ CONFIRM_TEXT = {
     "criteria_save": "부서별 분류 기준을 저장합니다. 다음 실행부터 새 기준으로 시사점을 만듭니다 (이미 만든 시사점도 다시 만듦, 하루 상한 안). 진행할까요?",
     "smtp_check": "메일 서버 로그인 점검: 회사 메일 서버에 접속해 로그인만 확인합니다 (발송 없음). 진행할까요?",
     "save_schedule": "예약 발송 설정을 저장합니다. 일정이 바뀌면 작업 스케줄러에 다시 등록합니다. 진행할까요?",
+    "user_delete": "이 계정을 삭제할까요? 그 계정은 바로 로그아웃됩니다.",
+    "secret_set": "이 Secret 을 새 값으로 바꿉니다 (Windows 사용자 환경 변수). 이전 값은 되돌릴 수 없습니다. 진행할까요?",
 }
+VIEWER_BLOCKED = {"/recipients/export.csv"}  # 조회자에게 막는 화면 (수신자 명단 내려받기)
 MODE_LABEL = {"daily": "매일", "weekly": "매주", "monthly": "매월", "dates": "특정 날짜"}
 DAY_LABEL = dict(zip(("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"), "월화수목금토일"))
 FIELD_LABEL = {"mode": "주기", "time": "시각", "random_delay_minutes": "무작위 지연(분)", "weekdays": "요일",
@@ -136,6 +145,12 @@ class AdminApp:
     checked: dict[str, float] = field(default_factory=dict)  # 주소 확인을 통과한 RSS 주소와 시각 (30분 유효)
     draft: dict = field(default_factory=dict)  # 주소 확인 뒤 저장할 때까지 입력 값을 유지
     csv_rows: list = field(default_factory=list)  # 수신자 CSV 미리보기 (저장 전, 메모리에만)
+    sessions: auth.Sessions = field(default_factory=auth.Sessions)  # 로그인 세션 (메모리, 작업 5)
+    env_writer: Callable[[str, str], None] = auth.set_user_env  # Secret 저장 (테스트에서 바꿈)
+
+    @cached_property
+    def users(self) -> auth.Users:
+        return auth.Users(self.root / "data" / "admin_users.json")
 
     # ---- 경로 ----
     @property
@@ -353,7 +368,46 @@ class AdminApp:
             return self.set_task_state(_first(form, "state") == "on")
         if action == "save_schedule":
             return self.save_schedule(form)
+        if action in ("user_add", "user_password", "user_delete", "secret_set"):
+            return self.account_action(action, form)
         raise AdminError("알 수 없는 동작입니다.")
+
+    # ---- 계정·Secret (작업 5) ----
+    def account_action(self, action: str, form: dict) -> str:
+        from saba.history import append_change
+        actor = getattr(CURRENT, "user", "")
+        try:
+            if action == "secret_set":
+                name, value = _first(form, "name"), _first(form, "value")
+                if name not in SECRET_NAMES:
+                    raise AdminError("바꿀 수 없는 이름입니다.")
+                if not auth.SECRET_VALUE.fullmatch(value):
+                    raise AdminError("값은 공백·줄바꿈 없이 1~500자여야 합니다. 저장하지 않았습니다.")
+                self.env_writer(name, value)
+                append_change(self.changes_path, {f"Secret {name}": ("(값 숨김)", f"변경 ({actor})")}, False)
+                return (f"{name} 저장 완료 (값은 표시하지 않음). 관리 페이지에서 시작하는 실행에는 바로, 작업 스케줄러는 다음 실행부터 "
+                        f"적용됩니다. 이미 열려 있는 다른 프로그램 (VS Code 등) 은 다시 켜야 읽습니다.")
+            user_id = _first(form, "user").strip().lower()
+            if action == "user_add":
+                role = _first(form, "role")
+                if _first(form, "password") != _first(form, "password2"):
+                    raise AdminError("두 비밀번호가 다릅니다.")
+                self.users.add(user_id, role, _first(form, "password"))
+                append_change(self.changes_path, {f"계정 {user_id}": ("", f"{auth.ROLES[role]} 추가 ({actor})")}, False)
+                return f"계정 추가 완료: {user_id} ({auth.ROLES[role]})"
+            if action == "user_password":
+                if _first(form, "password") != _first(form, "password2"):
+                    raise AdminError("두 비밀번호가 다릅니다.")
+                self.users.set_password(user_id, _first(form, "password"))
+                self.sessions.drop(user=user_id)  # 바뀐 비밀번호로 다시 로그인
+                append_change(self.changes_path, {f"계정 {user_id}": ("", f"비밀번호 변경 ({actor})")}, False)
+                return f"비밀번호 변경 완료: {user_id} (그 계정은 다시 로그인해야 합니다)"
+            self.users.delete(user_id)
+            self.sessions.drop(user=user_id)
+            append_change(self.changes_path, {f"계정 {user_id}": ("있음", f"삭제 ({actor})")}, False)
+            return f"계정 삭제 완료: {user_id}"
+        except auth.AuthError as error:
+            raise AdminError(str(error)) from None
 
     def run_now(self) -> str:
         """지금 발송 (D-071, D-073): 오늘 뉴스레터가 실패·미발송일 때 대시보드에 나온다. 같은 daily --run 경로."""
@@ -680,6 +734,8 @@ header .logo{font-weight:800;font-size:16px;letter-spacing:-.2px}
 header nav{display:flex;gap:4px;overflow-x:auto}
 header nav a{color:var(--muted);text-decoration:none;padding:8px 12px;border-radius:var(--r-ctl);white-space:nowrap;font-weight:500}
 header nav a:hover{background:var(--subtle);color:var(--text)}
+header .account{margin-left:auto;display:flex;gap:10px;align-items:center;color:var(--muted);font-size:13px;white-space:nowrap}
+.login{max-width:420px;margin:40px auto}.login .field input{width:100%}
 header nav a.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
 main{max-width:1920px;margin:28px auto 48px;padding:0 32px}  /* header 좌우 여백은 main 내용 폭(1920px)에 맞춘다 */
 h1{font-size:22px;letter-spacing:-.3px;margin:0 0 20px}
@@ -765,22 +821,40 @@ RESULT_BADGE = {"성공": "b-ok", "성공 (발송 안 함)": "b-info", "부분 �
 SEND_STATUS_BADGE = {"성공": "b-ok", "실패": "b-bad", "미시도": "b-warn", "불명확": "b-warn", "전송 중": "b-mute"}
 
 
+def shown_email(email: str) -> str:
+    """조회자에게는 메일 주소를 가린다 (작업 5). 예: ab***@tbell.co.kr"""
+    if getattr(CURRENT, "role", None) == "admin" or "@" not in email:
+        return email
+    local, domain = email.split("@", 1)
+    return local[:2] + "***@" + domain
+
+
 def badge(text: str, cls: str) -> str:
     return f'<span class="badge {cls}">{escape(text)}</span>'
 
 
-def page(title: str, body: str, message: str = "", refresh: bool = False, active: str = "/") -> str:
-    links = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in MENU)
+def page(title: str, body: str, message: str = "", refresh: bool = False, active: str = "/", nav: bool = True) -> str:
+    links = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in MENU) if nav else ""
     note = f'<div class="msg">{escape(message)}</div>' if message else ""
     meta = '<meta http-equiv="refresh" content="10">' if refresh else ""
+    user, role = getattr(CURRENT, "user", None), getattr(CURRENT, "role", None)
+    account = ""
+    if nav and user:  # 로그인한 사용자·역할과 로그아웃 (작업 5)
+        account = (f'<div class="account"><span>{escape(user)} · {auth.ROLES.get(role, "")}</span>'
+                   f'<form method="post" action="/logout" class="inline"><input type="hidden" name="token" value="{CURRENT.token}">'
+                   f'<button class="btn">로그아웃</button></form></div>')
+        if role == "viewer":
+            note = '<div class="info" style="margin-bottom:16px">조회 전용 계정입니다. 실행·설정 변경·수신자 관리는 관리자만 할 수 있습니다.</div>' + note
     return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">{meta}'
             f'<meta name="viewport" content="width=device-width, initial-scale=1"><title>{escape(title)} · SABA 관리</title>'
-            f'<style>{CSS}</style></head><body><header><div class="logo">SABA 관리</div><nav>{links}</nav></header>'
+            f'<style>{CSS}</style></head><body><header><div class="logo">SABA 관리</div><nav>{links}</nav>{account}</header>'
             f'<main><h1>{escape(title)}</h1>{note}{body.replace("<table", "<div class=tw><table").replace("</table>", "</table></div>")}</main></body></html>')
 
 
 def button(app: AdminApp, action: str, label: str, style: str = "", back: str = "/", fields: dict | None = None) -> str:
     """style: primary(실행) · success(사용) · warn(외부 접속·중지) · danger(삭제) · 빈 값(보조)."""
+    if getattr(CURRENT, "role", None) == "viewer":  # 조회자는 버튼만 보이고 누를 수 없다 (서버도 거부)
+        return f'<button class="btn {style}" disabled title="관리자만 할 수 있습니다">{escape(label)}</button>'
     text = CONFIRM_TEXT.get(action)
     confirm = f' onsubmit="return confirm(\'{escape(text)}\')"' if text else ""  # 작은따옴표 없는 고정 문구만
     hidden = '<input type="hidden" name="confirm" value="yes">' if text else ""
@@ -1262,7 +1336,7 @@ def sends_body(app: AdminApp, selected: str | None) -> str:
             f'{rows or "<tr><td colspan=7>아직 발송 이력이 없습니다. 다음 발송부터 쌓입니다.</td></tr>"}</table>')
     if selected and selected.isdigit():
         send_id = int(selected)
-        detail = "".join(f"<tr><td>{escape(r.email)}</td><td>{badge(r.status, SEND_STATUS_BADGE.get(r.status, 'b-mute'))}</td>"
+        detail = "".join(f"<tr><td>{escape(shown_email(r.email))}</td><td>{badge(r.status, SEND_STATUS_BADGE.get(r.status, 'b-mute'))}</td>"
                          f"<td>{escape(r.detail)}</td></tr>" for r in sendlog.results(send_id, path))
         targets = sendlog.resend_targets(send_id, path)
         if any(r.id == send_id and r.target == "TEST 주소" for r in rounds):
@@ -1481,9 +1555,9 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
     rows = ""
     for p in shown:
         tags = " ".join(badge(g, "b-info") for g in p.groups) or '<span class="muted">-</span>'
-        rows += (f"<tr class='src' data-q='{escape((p.name + ' ' + p.email + ' ' + p.department + ' ' + ' '.join(p.groups)).lower())}'"
+        rows += (f"<tr class='src' data-q='{escape((p.name + ' ' + shown_email(p.email) + ' ' + p.department + ' ' + ' '.join(p.groups)).lower())}'"
                  f" data-dept='{escape(p.department)}' data-group='{escape('|'.join(p.groups))}' data-state='{'사용' if p.enabled else '중지'}'>"
-                 f"<td><b>{escape(p.name)}</b></td><td>{escape(p.email)}</td><td>{escape(p.department)}</td><td>{tags}</td>"
+                 f"<td><b>{escape(p.name)}</b></td><td>{escape(shown_email(p.email))}</td><td>{escape(p.department)}</td><td>{tags}</td>"
                  f"<td>{badge('사용', 'b-ok') if p.enabled else badge('중지', 'b-mute')}</td>"
                  f"<td style='white-space:nowrap'><a class=btn href='/recipients?edit={p.id}'>수정</a> "
                  + button(app, "recipient_toggle", "중지" if p.enabled else "사용", "warn" if p.enabled else "success", back="/recipients", fields={"id": str(p.id)}) + " "
@@ -1495,6 +1569,8 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
                '<table><tr><th>이름</th><th>메일</th><th>부서</th><th>그룹</th><th>상태</th><th>관리</th></tr>'
                f'{rows or "<tr><td colspan=6>등록된 수신자가 없습니다. 오른쪽 위 \"추가\" 또는 아래 CSV 일괄 등록을 쓰세요.</td></tr>"}</table></div>')
 
+    if getattr(CURRENT, "role", None) != "admin":
+        edit = None  # 조회자는 수정 화면 (전체 메일 주소) 을 열지 않는다
     current = next((p for p in people if edit and str(p.id) == edit), None)
     values = current or rc.Recipient(0, "", "", dept_list[0][0] if dept_list else "", True, ["TEST"] if not current else [])
     dept_options = "".join(f'<option{" selected" if d == values.department else ""}>{escape(d)}</option>' for d, _ in dept_list)
@@ -1559,11 +1635,52 @@ def settings_page(app: AdminApp) -> str:
             f'<tr><th>설정 파일 점검</th><td>{escape(valid)}</td></tr></table></div>'
             f'<div class="card"><h2>RSS Source<a class="btn right" href="/sources">관리</a></h2><table>'
             f'<tr><th style="width:160px">사용 중</th><td>{sum(1 for e in entries if e.enabled)}곳</td></tr><tr><th>전체</th><td>{len(entries)}곳</td></tr></table></div></div>'
-            f'<div class="grid"><div class="card"><h2>Secret (값은 표시하지 않음)<span class="muted">변경 기능은 로그인·권한 작업과 함께 예정</span></h2>'
-            f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table></div>'
+            f'<div class="grid"><div class="card"><h2>Secret (값은 표시하지 않음)</h2>'
+            f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table>{secret_form(app)}</div>'
             f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
             f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
-            + criteria_card(app))
+            + accounts_card(app) + criteria_card(app))
+
+
+def secret_form(app: AdminApp) -> str:
+    """관리자만: 새 값을 Windows 사용자 환경 변수에 저장 (작업 5). 입력 칸은 비밀번호 형식이고 값은 다시 보여 주지 않는다."""
+    if getattr(CURRENT, "role", None) != "admin":
+        return '<p class="muted">Secret 변경은 관리자만 할 수 있습니다.</p>'
+    options = "".join(f"<option>{escape(n)}</option>" for n in SECRET_NAMES)
+    return (f'<form method="post" action="/action/secret_set" class="row" autocomplete="off" '
+            f'onsubmit="return confirm(\'{escape(CONFIRM_TEXT["secret_set"])}\')">'
+            f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
+            f'<input type="hidden" name="confirm" value="yes">'
+            f'<label>이름 <select name="name">{options}</select></label>'
+            f'<label>새 값 <input name="value" type="password" autocomplete="new-password" required maxlength="500"></label>'
+            f'<button class="btn warn">저장</button></form>'
+            '<p class="muted">Windows 사용자 환경 변수에 저장합니다. 값은 화면·로그·변경 이력에 남기지 않고, 이력에는 바꾼 이름과 사람만 남습니다. '
+            '관리 페이지에서 시작하는 실행에는 바로, 작업 스케줄러는 다음 실행부터 적용되며, 이미 열려 있는 다른 프로그램은 다시 켜야 읽습니다.</p>')
+
+
+def accounts_card(app: AdminApp) -> str:
+    """계정 관리 (작업 5): 관리자만 추가·비밀번호 변경·삭제. 조회자에게는 목록만."""
+    users = app.users.list()
+    admin = getattr(CURRENT, "role", None) == "admin"
+    rows = "".join(
+        f"<tr><td>{escape(uid)}</td><td>{badge(auth.ROLES[role], 'b-info' if role == 'admin' else 'b-mute')}</td><td style='white-space:nowrap'>"
+        + (button(app, "user_delete", "삭제", "danger", back="/settings", fields={"user": uid}) if admin else "-") + "</td></tr>"
+        for uid, role in users)
+    body = f'<table><tr><th>아이디</th><th>역할</th><th>관리</th></tr>{rows}</table>'
+    if admin:
+        user_options = "".join(f"<option>{escape(uid)}</option>" for uid, _ in users)
+        pw = (f'<label>비밀번호 <input name="password" type="password" autocomplete="new-password" required minlength="{auth.MIN_PASSWORD}"></label>'
+              f'<label>확인 <input name="password2" type="password" autocomplete="new-password" required minlength="{auth.MIN_PASSWORD}"></label>')
+        hidden = f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
+        body += (f'<h3 style="margin:16px 0 6px;font-size:14px">계정 추가</h3><form method="post" action="/action/user_add" class="row">{hidden}'
+                 '<label>아이디 <input name="user" required pattern="[a-z0-9][a-z0-9._-]{2,29}"></label>'
+                 '<label>역할 <select name="role"><option value="viewer">조회자</option><option value="admin">관리자</option></select></label>'
+                 f'{pw}<button class="btn primary">추가</button></form>'
+                 f'<h3 style="margin:16px 0 6px;font-size:14px">비밀번호 변경</h3><form method="post" action="/action/user_password" class="row">{hidden}'
+                 f'<label>아이디 <select name="user">{user_options}</select></label>{pw}<button class="btn">변경</button></form>'
+                 f'<p class="muted">비밀번호는 {auth.MIN_PASSWORD}자 이상, 글자와 숫자·기호를 섞어야 합니다. 소금 포함 해시로만 저장합니다 (data/admin_users.json, Git 제외). '
+                 '관리자는 모든 실행·설정·수신자 관리를, 조회자는 화면 보기만 할 수 있습니다 (수신자 메일 가림, 명단 내려받기 불가).</p>')
+    return f'<div class="card"><h2>계정</h2>{body}</div>'
 
 
 def criteria_card(app: AdminApp) -> str:
@@ -1607,6 +1724,29 @@ def make_handler(app: AdminApp, port: int):
         def _host_ok(self) -> bool:  # DNS rebinding 방지: 로컬 주소로 들어온 요청만
             return self.headers.get("Host", "") in allowed_hosts
 
+        # ---- 로그인 (작업 5) ----
+        def _sid(self) -> str | None:
+            from http.cookies import SimpleCookie
+            cookie = SimpleCookie()
+            try:
+                cookie.load(self.headers.get("Cookie", ""))
+            except Exception:  # 깨진 쿠키는 로그인 안 한 것으로 본다
+                return None
+            return cookie["saba_session"].value if "saba_session" in cookie else None
+
+        def _redirect(self, location: str, sid: str | None = None, clear: bool = False):
+            self.send_response(303)
+            self.send_header("Location", location)
+            if sid:
+                self.send_header("Set-Cookie", f"saba_session={sid}; HttpOnly; SameSite=Strict; Path=/")
+            if clear:
+                self.send_header("Set-Cookie", "saba_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+
+        def _bind(self, session) -> None:
+            CURRENT.user, CURRENT.role, CURRENT.token = (session.user, session.role, app.token) if session else (None, None, app.token)
+
         def do_GET(self):
             try:
                 self._get()
@@ -1618,6 +1758,21 @@ def make_handler(app: AdminApp, port: int):
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
             url = urlparse(self.path)
             query = parse_qs(url.query)
+            self._bind(None)
+            if not app.users.any():  # 첫 실행: 관리자 계정부터 만든다
+                if url.path != "/setup":
+                    return self._redirect("/setup")
+                message, app.message = app.message, ""
+                return self._send(200, page("첫 관리자 계정 만들기", setup_page(app), message, nav=False))
+            if url.path == "/login":
+                message, app.message = app.message, ""
+                return self._send(200, page("로그인", login_page(app), message, nav=False))
+            session = app.sessions.get(self._sid())
+            if session is None:
+                return self._redirect("/login")
+            self._bind(session)
+            if session.role != "admin" and url.path in VIEWER_BLOCKED:
+                return self._send(403, page("권한 없음", "<p>관리자만 볼 수 있는 화면입니다.</p>"))
             message, app.message = app.message, ""
             if url.path == "/":
                 return self._send(200, page("대시보드", dashboard(app), message, refresh=app.running(), active="/"))
@@ -1653,9 +1808,19 @@ def make_handler(app: AdminApp, port: int):
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
             length = min(int(self.headers.get("Content-Length") or 0), 262144)  # 수신자 CSV 붙여 넣기 (약 수천 명)
             form = parse_qs(self.rfile.read(length).decode("utf-8", errors="replace"), keep_blank_values=True)
-            action = urlparse(self.path).path.removeprefix("/action/")
+            path = urlparse(self.path).path
+            action = path.removeprefix("/action/")
             if not secrets.compare_digest(_first(form, "token"), app.token):
                 return self._send(403, "forbidden", "text/plain; charset=utf-8")
+            if path in ("/login", "/setup", "/logout"):
+                return self._account_post(path, form)
+            session = app.sessions.get(self._sid())
+            if session is None or not path.startswith("/action/"):
+                return self._redirect("/login")
+            self._bind(session)
+            if session.role != "admin":  # 조회자는 실행·변경 불가 (버튼도 비활성)
+                app.message = "실패: 조회자 계정은 실행·변경을 할 수 없습니다."
+                return self._redirect(_first(form, "back") if _first(form, "back") in {href for href, _ in MENU} else "/")
             if action in CONFIRM_TEXT and _first(form, "confirm") != "yes":
                 return self._send(400, "confirm required", "text/plain; charset=utf-8")
             try:
@@ -1667,7 +1832,58 @@ def make_handler(app: AdminApp, port: int):
             self.send_header("Location", back if back in {href for href, _ in MENU} else "/")  # 내부 화면으로만
             self.end_headers()
 
+        def _account_post(self, path: str, form: dict):
+            from saba.history import append_change
+            user_id = _first(form, "user").strip().lower()
+            if path == "/logout":
+                session = app.sessions.get(self._sid())
+                app.sessions.drop(self._sid())
+                if session:
+                    append_change(app.changes_path, {"로그아웃": ("", session.user)}, False)
+                return self._redirect("/login", clear=True)
+            if path == "/setup":  # 계정이 하나도 없을 때만 (이 PC 에서만 열림)
+                if app.users.any():
+                    return self._redirect("/login")
+                try:
+                    if _first(form, "password") != _first(form, "password2"):
+                        raise auth.AuthError("두 비밀번호가 다릅니다.")
+                    app.users.add(user_id, "admin", _first(form, "password"))
+                except auth.AuthError as error:
+                    app.message = f"실패: {error}"
+                    return self._redirect("/setup")
+                append_change(app.changes_path, {f"계정 {user_id}": ("", "첫 관리자 만들기")}, False)
+                return self._redirect("/", sid=app.sessions.create(user_id, "admin"))
+            if app.sessions.locked(user_id):
+                app.message = f"로그인 실패가 {auth.MAX_FAILURES}회 이어져 {auth.LOCK_SECONDS}초 동안 막았습니다. 잠시 뒤 다시 시도하세요."
+                return self._redirect("/login")
+            role = app.users.verify(user_id, _first(form, "password"))
+            if role is None:
+                app.sessions.failed(user_id)
+                app.message = "아이디 또는 비밀번호가 맞지 않습니다."
+                return self._redirect("/login")
+            app.sessions.succeeded(user_id)
+            append_change(app.changes_path, {"로그인": ("", f"{user_id} ({auth.ROLES[role]})")}, False)
+            return self._redirect("/", sid=app.sessions.create(user_id, role))
+
     return Handler
+
+
+def login_page(app: AdminApp) -> str:
+    return (f'<div class="card login"><form method="post" action="/login"><input type="hidden" name="token" value="{app.token}">'
+            '<div class="field"><label class="t" for="u">아이디</label><input id="u" name="user" autocomplete="username" required autofocus></div>'
+            '<div class="field"><label class="t" for="p">비밀번호</label><input id="p" name="password" type="password" autocomplete="current-password" required></div>'
+            f'<button class="btn primary">로그인</button></form><p class="muted">30분 동안 사용하지 않으면 자동으로 로그아웃됩니다. '
+            f'{auth.MAX_FAILURES}회 연속 틀리면 {auth.LOCK_SECONDS}초 동안 막습니다.</p></div>')
+
+
+def setup_page(app: AdminApp) -> str:
+    return (f'<div class="card login"><p>아직 계정이 없습니다. 첫 관리자 계정을 만드세요. 이후 계정은 설정 화면에서 관리자가 추가합니다.</p>'
+            f'<form method="post" action="/setup"><input type="hidden" name="token" value="{app.token}">'
+            '<div class="field"><label class="t" for="u">아이디 (영문 소문자·숫자 3~30자)</label><input id="u" name="user" autocomplete="username" required autofocus></div>'
+            f'<div class="field"><label class="t" for="p">비밀번호 ({auth.MIN_PASSWORD}자 이상, 글자와 숫자·기호 섞기)</label>'
+            '<input id="p" name="password" type="password" autocomplete="new-password" required></div>'
+            '<div class="field"><label class="t" for="p2">비밀번호 확인</label><input id="p2" name="password2" type="password" autocomplete="new-password" required></div>'
+            '<button class="btn primary">관리자 계정 만들기</button></form></div>')
 
 
 class Server(ThreadingHTTPServer):

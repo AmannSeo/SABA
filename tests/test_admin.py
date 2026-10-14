@@ -60,9 +60,17 @@ class AdminBase(unittest.TestCase):
         six = [row for row in rows if row["id"] in ORIGINAL_IDS]
         (self.root / "config" / "sources.json").write_text(json.dumps(six, ensure_ascii=False), encoding="utf-8")
         self.shell, self.commands, self.launched, self.fetched = FakeShell(), [], [], []
+        self.env_writes = []  # 실제 레지스트리에 쓰지 않는다 (작업 5)
         self.app = AdminApp(root=self.root, shell=self.shell, launch=self.launched.append,
                             command=lambda args: (self.commands.append(args) or (0, "ok")),
-                            fetch=lambda source: (self.fetched.append(source.feed_url) or RSS))
+                            fetch=lambda source: (self.fetched.append(source.feed_url) or RSS),
+                            env_writer=lambda name, value: self.env_writes.append((name, value)))
+        # 로그인 (작업 5): 테스트는 기본으로 관리자 세션을 쓴다. 해시 반복은 줄인다.
+        iterations = patch.object(admin.auth, "ITERATIONS", 1000)
+        iterations.start()
+        self.addCleanup(iterations.stop)
+        self.app.users.add("tester", "admin", "virtual-pass-1")
+        self.cookie = "saba_session=" + self.app.sessions.create("tester", "admin")
         self.server = serve("127.0.0.1", 0, self.app)
         self.port = self.server.server_address[1]
         self.server.RequestHandlerClass = admin.make_handler(self.app, self.port)
@@ -73,9 +81,12 @@ class AdminBase(unittest.TestCase):
         self.server.server_close()
         self.tmp.cleanup()
 
-    def request(self, method, path, body=None, host=None):
+    def request(self, method, path, body=None, host=None, cookie=...):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         headers = {"Host": host or f"127.0.0.1:{self.port}"}
+        cookie = self.cookie if cookie is ... else cookie
+        if cookie:
+            headers["Cookie"] = cookie
         if body is not None:
             headers["Content-Type"] = "application/x-www-form-urlencoded"
         conn.request(method, path, body=body, headers=headers)
@@ -92,6 +103,105 @@ class AdminBase(unittest.TestCase):
         status, html, _ = self.request("GET", path)
         self.assertEqual(status, 200, path)
         return html
+
+
+class LoginTests(AdminBase):
+    """작업 5: 로그인·세션·조회자 권한·Secret 변경. 실제 레지스트리 대신 env_writer 를 기록만 한다."""
+
+    def login(self, user, password):
+        status, _, location = self.request("POST", "/login", urlencode({"token": self.app.token, "user": user, "password": password}),
+                                           cookie=None)
+        return status, location
+
+    def test_pages_require_login_and_login_flow(self):
+        status, _, location = self.request("GET", "/", cookie=None)
+        self.assertEqual((status, location), (303, "/login"))
+        self.assertIn("비밀번호", self.request("GET", "/login", cookie=None)[1])
+        self.assertEqual(self.login("tester", "wrong-pass-12"), (303, "/login"))
+        self.assertIn("맞지 않습니다", self.request("GET", "/login", cookie=None)[1])
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("POST", "/login", body=urlencode({"token": self.app.token, "user": "tester", "password": "virtual-pass-1"}),
+                     headers={"Host": f"127.0.0.1:{self.port}", "Content-Type": "application/x-www-form-urlencoded"})
+        response = conn.getresponse()
+        cookie = response.getheader("Set-Cookie")
+        self.assertIn("HttpOnly", cookie)
+        self.assertIn("SameSite=Strict", cookie)
+        status, html, _ = self.request("GET", "/", cookie=cookie.split(";")[0])
+        self.assertEqual(status, 200)
+        self.assertIn("tester · 관리자", html)
+        self.assertIn("로그인", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
+
+    def test_lockout_after_repeated_failures(self):
+        for _ in range(admin.auth.MAX_FAILURES):
+            self.login("tester", "wrong-pass-12")
+        self.login("tester", "virtual-pass-1")  # 맞아도 잠금 중에는 거부
+        self.assertIn("막았습니다", self.request("GET", "/login", cookie=None)[1])
+
+    def test_expired_session_and_logout(self):
+        now = [0.0]
+        self.app.sessions.clock = lambda: now[0]
+        cookie = "saba_session=" + self.app.sessions.create("tester", "admin")
+        self.assertEqual(self.request("GET", "/", cookie=cookie)[0], 200)
+        now[0] += admin.auth.SESSION_IDLE + 1
+        self.assertEqual(self.request("GET", "/", cookie=cookie)[2], "/login")
+        cookie = "saba_session=" + self.app.sessions.create("tester", "admin")
+        status, _, location = self.request("POST", "/logout", urlencode({"token": self.app.token}), cookie=cookie)
+        self.assertEqual((status, location), (303, "/login"))
+        self.assertEqual(self.request("GET", "/", cookie=cookie)[2], "/login")
+
+    def test_first_admin_setup_when_no_accounts(self):
+        (self.root / "data" / "admin_users.json").unlink()
+        self.assertEqual(self.request("GET", "/", cookie=None)[2], "/setup")
+        status, _, location = self.request("POST", "/setup", urlencode({"token": self.app.token, "user": "boss", "password": "virtual-pass-9",
+                                                                        "password2": "virtual-pass-9"}), cookie=None)
+        self.assertEqual((status, location), (303, "/"))
+        self.assertEqual(self.app.users.verify("boss", "virtual-pass-9"), "admin")
+        # 계정이 생긴 뒤에는 /setup 으로 계정을 더 만들 수 없다
+        self.request("POST", "/setup", urlencode({"token": self.app.token, "user": "intruder", "password": "virtual-pass-9",
+                                                  "password2": "virtual-pass-9"}), cookie=None)
+        self.assertIsNone(self.app.users.verify("intruder", "virtual-pass-9"))
+
+    def test_viewer_sees_masked_data_and_cannot_act(self):
+        from saba import recipients as rc
+        rc.save("가상 사람", "someone.virtual@tbell.co.kr", rc.departments(self.app.recipients_path)[0][0], ["TEST"],
+                path=self.app.recipients_path)
+        self.app.users.add("viewer1", "viewer", "virtual-pass-1")
+        viewer = "saba_session=" + self.app.sessions.create("viewer1", "viewer")
+        html = self.request("GET", "/recipients", cookie=viewer)[1]
+        self.assertIn("조회 전용 계정", html)
+        self.assertNotIn("someone.virtual@", html)
+        self.assertEqual(self.request("GET", "/recipients/export.csv", cookie=viewer)[0], 403)
+        self.assertIn("disabled", self.request("GET", "/sources", cookie=viewer)[1])
+        status, _, _ = self.request("POST", "/action/rss_dryrun", urlencode({"token": self.app.token, "confirm": "yes", "back": "/"}), cookie=viewer)
+        self.assertEqual(status, 303)
+        self.assertEqual(self.commands, [])  # 실행되지 않음
+        self.request("POST", "/action/secret_set", urlencode({"token": self.app.token, "confirm": "yes", "name": "OPENAI_API_KEY",
+                                                              "value": "sk-virtual-viewer"}), cookie=viewer)
+        self.assertEqual(self.env_writes, [])
+
+    def test_admin_changes_secret_without_exposing_value(self):
+        self.post("secret_set", name="SABA_SMTP_PASSWORD", value="virtual-secret-VALUE-123", back="/settings")
+        self.assertEqual(self.env_writes, [("SABA_SMTP_PASSWORD", "virtual-secret-VALUE-123")])
+        html = self.get("/settings")
+        self.assertIn("저장 완료", html)
+        self.assertNotIn("virtual-secret-VALUE-123", html)
+        self.assertNotIn("virtual-secret-VALUE-123", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
+        self.post("secret_set", name="PATH", value="x", back="/settings")
+        self.post("secret_set", name="OPENAI_API_KEY", value="has space", back="/settings")
+        self.assertEqual(len(self.env_writes), 1)
+        self.assertIn("SABA_DATA_GO_KR_KEY", self.get("/settings"))
+
+    def test_admin_manages_accounts(self):
+        self.post("user_add", confirm=False, user="viewer2", role="viewer", password="virtual-pass-3", password2="virtual-pass-3", back="/settings")
+        self.assertEqual(self.app.users.verify("viewer2", "virtual-pass-3"), "viewer")
+        viewer = self.app.sessions.create("viewer2", "viewer")
+        self.post("user_password", confirm=False, user="viewer2", password="virtual-pass-4", password2="virtual-pass-4", back="/settings")
+        self.assertIsNone(self.app.sessions.get(viewer))  # 비밀번호가 바뀌면 다시 로그인
+        self.post("user_delete", user="viewer2", back="/settings")
+        self.assertIsNone(self.app.users.verify("viewer2", "virtual-pass-4"))
+        self.post("user_delete", user="tester", back="/settings")
+        self.assertEqual(self.app.users.verify("tester", "virtual-pass-1"), "admin")  # 마지막 관리자는 남는다
+        self.assertNotIn("virtual-pass", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
 
 
 class AdminTests(AdminBase):
@@ -893,10 +1003,10 @@ class ListManagementTests(AdminBase):
             for value in ("자동 실행", "수집 오류", "부분 발송", "불명확 1명", "진행 단계", filename):
                 self.assertIn(value, html)
             # 실행 주체 선택 목록 (F14) 에는 모든 주체가 나오므로, 목록 본문 (필터 form 뒤) 에서만 확인한다
-            self.assertNotIn("예전 실행", html.split("</form>", 1)[1])
+            self.assertNotIn("예전 실행", html.split('action="/logs"', 1)[1].split("</form>", 1)[1])
             self.assertIn(f"tab=detail&day={TODAY:%Y%m%d}", html)
             only_auto = self.get("/logs?" + urlencode({"year": "all", "origin": "자동 실행"}))
-            self.assertNotIn("예전 실행", only_auto.split("</form>", 1)[1])  # 항목별 필터
+            self.assertNotIn("예전 실행", only_auto.split('action="/logs"', 1)[1].split("</form>", 1)[1])  # 항목별 필터
             sends = self.get("/logs?tab=sends")
             self.assertIn(f"회차 {first} 재발송", sends)
             self.assertIn("수신자별 결과", sends)

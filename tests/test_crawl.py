@@ -81,6 +81,35 @@ class CrawlTests(unittest.TestCase):
         sleep.assert_called_once()
         self.assertAlmostEqual(sleep.call_args.args[0], .8)
 
+    def test_kiat_summary_keeps_written_date_and_excludes_other_boards(self):
+        page = '''<a href="javascript:mainContentsGo('90','abc123')"><p class="tit"><span data-start="2026-10-20"></span>[가상] R&amp;D 공고</p>
+                  <img data-written_date="2026-10-12"><span class="data">2026-10-20 ~ 2026-11-30</span></a>
+                  <a href="javascript:mainContentsGo('67','def456')"><p class="tit">채용</p><img data-written_date="2026-10-13"></a>'''
+        [item] = crawl.parse_kiat(page, 'https://www.kiat.or.kr/front/user/main.do')
+        self.assertEqual((item['title'], item['date'], item['excerpt']), ('[가상] R&D 공고', '2026-10-12', None))
+        self.assertEqual(item['url'], 'https://www.kiat.or.kr/front/board/boardContentsView.do?board_id=90&contents_id=abc123')
+        self.assertEqual(crawl.parse_kiat(page.replace('data-written_date', 'data-unknown'), 'https://www.kiat.or.kr/'), [])
+        self.assertEqual(len(crawl.articles_from_items([item], NOW, source('crawl:kiat'))), 1)
+
+    def test_selenium_list_accepts_minified_html_and_ignores_body_sidebar(self):
+        page = '''<nav><a href=/blog/2026/menu/>menu</a></nav><h5 class="mt-0 mb-1"><a href=/blog/2026/release/ class=selenium-link>[가상] Selenium release</a></h5>
+                  <p class="mb-2"><small class=text-muted>Friday, October 09, 2026</small></p><div>DO_NOT_COLLECT_BODY</div>'''
+        for content in (page, page.replace('href=/blog/2026/release/', 'href="/blog/2026/release/"')):
+            [item] = crawl.parse_selenium(content, 'https://www.selenium.dev/blog/')
+            self.assertEqual((item['date'], item['url'], item['excerpt']), ('2026-10-09', 'https://www.selenium.dev/blog/2026/release/', None))
+            self.assertNotIn('DO_NOT_COLLECT_BODY', str(item))
+            self.assertEqual(len(crawl.articles_from_items([item], NOW, source('crawl:selenium'))), 1)
+        self.assertEqual(crawl.parse_selenium(page.replace('Friday, October 09, 2026', 'unknown'), 'https://www.selenium.dev/blog/'), [])
+
+    def test_new_channels_collect_with_mock_and_report_zero_items(self):
+        pages = {'crawl:kiat': '<a href="javascript:mainContentsGo(\x2790\x27,\x27abc\x27)"><p class="tit">[가상] 공고</p><img data-written_date="2026-10-12"></a>',
+                 'crawl:selenium': '<h5><a href=/blog/2026/release/>[가상] 릴리스</a></h5><p><small>Friday, October 09, 2026</small></p>'}
+        for method, page in pages.items():
+            with self.subTest(method=method), patch.object(crawl, 'allowed', return_value=True), patch.object(crawl, '_get', return_value=(200, 'text/html', page.encode())):
+                self.assertEqual(len(crawl.collect(source(method), NOW)), 1)
+            with patch.object(crawl, 'allowed', return_value=True), patch.object(crawl, '_get', return_value=(200, 'text/html', b'<html>changed</html>')), self.assertRaises(RssError):
+                crawl.collect(source(method), NOW)
+
     def test_redirect_checks_target_robots_and_https(self):
         robot = crawl.urllib.robotparser.RobotFileParser()
         robot.parse(['User-agent: *', 'Disallow: /blocked'])
