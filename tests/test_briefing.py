@@ -127,6 +127,17 @@ class BriefingTests(unittest.TestCase):
         _, _, plain = self.views(FakeRun(self.plan), max_new_calls=2)
         self.assertEqual(plain.dropped_unanalyzed, 0)  # 기본값은 이전 동작 그대로
 
+    def test_authentication_failure_stops_further_calls(self):
+        calls = []
+        def run(article, *, ledger_path, max_calls):
+            calls.append(article.article_id)
+            return LiveOutcome("authentication")
+        views, _, stats = self.views(run, max_new_calls=10)
+        self.assertEqual(len(calls), 1)  # 첫 인증 실패 뒤에는 호출하지 않는다
+        self.assertTrue(stats.auth_failed)
+        self.assertEqual(stats.called, 1)
+        self.assertTrue(views)  # 메일 표시는 이전처럼 원문 발췌
+
     def test_no_ai_path_makes_no_calls(self):
         run = FakeRun(self.plan)
         views, _, stats = self.views(run, use_ai=False)

@@ -61,8 +61,10 @@ class BackupRestoreTests(unittest.TestCase):
 class RegisterTests(unittest.TestCase):
     def test_default_registration_unchanged(self):
         command = register_command(CONFIG)
-        self.assertNotIn("StartWhenAvailable", command)
+        self.assertNotIn("StartWhenAvailable", command)  # 꺼져 있던 날은 건너뜀 (D-080)
         self.assertNotIn("-Password", command)
+        self.assertIn("New-ScheduledTaskSettingsSet -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries", command)  # D-081
+        self.assertIn("-Settings $s", command)
 
     def test_unattended_prompts_password_without_storing(self):
         command = register_command(CONFIG, unattended=True)

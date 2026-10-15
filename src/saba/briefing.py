@@ -33,6 +33,7 @@ class AnalysisStats:
     insights_called: int = 0
     insights_failed: int = 0
     dropped_unanalyzed: int = 0
+    auth_failed: bool = False
 
 
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
@@ -72,6 +73,9 @@ def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
         if cached is not None:
             stats.reused += 1
             result = cached
+        elif stats.auth_failed:  # 인증 실패 뒤에는 더 호출하지 않는다 (같은 키로 다시 실패하고 하루 상한만 쓴다)
+            stats.failed.append(f"{article.article_id}: authentication (호출 안 함)")
+            continue
         elif stats.called >= max_new_calls:
             stats.skipped_by_cap += 1
             stats.capped_ids.add(article.article_id)
@@ -88,6 +92,7 @@ def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
             stats.called += 1
             if outcome.result is None:
                 stats.failed.append(f"{article.article_id}: {outcome.status}")
+                stats.auth_failed = stats.auth_failed or outcome.status == "authentication"
                 continue
             result = outcome.result
             save_analysis(article_db, analysis_db, [result.model_dump(mode="json")], excerpts=excerpts)

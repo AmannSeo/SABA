@@ -158,6 +158,8 @@ def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:
     views, _selection, stats = build_views(DEFAULT_DB, DEFAULT_ANALYSIS_DB, now,
                                            max_new_calls=config.max_analysis_calls,
                                            insight_calls=config.max_insight_calls, daily_caps=True, analyzed_only=True)
+    if stats is not None and stats.auth_failed:
+        logging.warning("AI 분석 인증 실패: OPENAI_API_KEY 확인 필요 · 이후 분석 호출 중단, 분석 없는 기사는 원문 발췌로 표시")
     if not views:
         raise DailyError("메일 생성 실패 (표시할 기사 0건)")
     local = now.astimezone()
@@ -379,9 +381,12 @@ def register_command(config: DailyConfig, python: Path = PYTHON, *,
     command = (f"$t = New-ScheduledTaskTrigger -Daily -At {config.time}"
                f" -RandomDelay (New-TimeSpan -Minutes {config.random_delay_minutes}); "
                f"$a = New-ScheduledTaskAction -Execute '{python}' -Argument '-m saba.daily --run' -WorkingDirectory '{ROOT}'; ")
+    # 절전 중이면 깨워서 실행, 배터리 사용 중에도 실행 (2026-10-15 사용자 결정, D-081). 완전히 꺼져 있던 날은 건너뜀 (D-080).
+    wake = "-WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries"
     if not unattended:
-        return command + f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Trigger $t -Action $a -Force | Out-Null"
-    return command + ("$s = New-ScheduledTaskSettingsSet -StartWhenAvailable; "
+        return command + (f"$s = New-ScheduledTaskSettingsSet {wake}; "
+                          f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Trigger $t -Action $a -Settings $s -Force | Out-Null")
+    return command + (f"$s = New-ScheduledTaskSettingsSet -StartWhenAvailable {wake}; "
                       r'$c = Get-Credential -UserName "$env:USERDOMAIN\$env:USERNAME" '
                       "-Message 'SABA 자동 실행용 Windows 계정 비밀번호 (저장하지 않음)'; "
                       f"Register-ScheduledTask -TaskName '{TASK_NAME}' -Trigger $t -Action $a -Settings $s "
