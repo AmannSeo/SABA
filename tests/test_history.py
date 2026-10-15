@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from saba.history import append_change, cleanup, load_runs, mail_path, mail_paths, parse_runs, read_changes, read_log, storage_status
+from saba.history import append_change, cleanup, load_runs, mail_name, mail_path, mail_paths, parse_runs, read_changes, read_log, storage_status
 
 LOG = """2026-10-12 09:17:15,224 INFO RSS 수집 완료
 2026-10-12 09:17:35,444 INFO 메일 생성 완료: daily_20261012.eml · 표시 3건 · 분석 재사용 0 · 신규 4 · 실패 0 · 시사점 재사용 0 · 신규 3 · 실패 0 · 1,346,272 bytes
@@ -47,6 +47,18 @@ class HistoryTests(unittest.TestCase):
                             " · 실패 0 · 분석 없음 제외 4 · 시사점 재사용 0 · 신규 1 · 실패 0 · 99,000 bytes\n", encoding="utf-8")
         [run] = parse_runs(read_log(self.log))
         self.assertEqual((run.mail_file, run.articles, run.ai_calls), ("daily_20261012_1600.eml", 5, 4))
+
+    def test_legacy_top_level_name_finds_moved_monthly_file(self):
+        output = self.root / "output"
+        (output / "26" / "10").mkdir(parents=True)
+        moved = output / "26" / "10" / "daily_20261013_0845.eml"
+        moved.write_bytes(b"x")
+        self.assertEqual(mail_path(output, "daily_20261013_0845.eml"), moved)  # 로그의 예전 이름 (F7 정리)
+        self.assertEqual(mail_name(output, "daily_20261013_0845.eml"), "26/10/daily_20261013_0845.eml")
+        (output / "daily_20261013_0845.eml").write_bytes(b"y")
+        self.assertEqual(mail_path(output, "daily_20261013_0845.eml"), output / "daily_20261013_0845.eml")  # 최상위가 있으면 최상위
+        self.assertEqual(mail_path(output, "daily_20261014_0900.eml"), output / "daily_20261014_0900.eml")  # 어디에도 없으면 그대로
+        self.assertEqual(mail_name(output, "../x.eml"), "../x.eml")  # 허용되지 않는 이름은 바꾸지 않는다
 
     def test_load_runs_newest_first(self):
         starts = [r.start for r in load_runs(self.root / "logs")]

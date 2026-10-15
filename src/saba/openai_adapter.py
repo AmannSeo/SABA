@@ -27,7 +27,7 @@ MONTHLY_LIMIT_USD = 3.0  # D-015. 계정 대시보드 한도와 별개인 로컬
 MAX_OUTPUT_TOKENS = 1200
 TIMEOUT = 60  # D-034. 긴 발췌 입력의 응답 대기 시간.
 MAX_BYTES = 1024 * 1024
-DEFAULT_LEDGER = Path("data/openai_usage.json")
+DEFAULT_LEDGER = Path(__file__).resolve().parents[2] / "data" / "openai_usage.json"  # 실행 폴더와 관계없이 프로젝트 기준 (PC 이전 대비)
 SENT_FIELDS = {"original_title", "feed_excerpt"}  # D-016
 
 NULLABLE_TEXT = {"type": ["string", "null"]}

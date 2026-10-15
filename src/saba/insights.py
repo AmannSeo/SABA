@@ -16,7 +16,7 @@ from saba.openai_adapter import (DEFAULT_LEDGER, IDS, MAX_OUTPUT_TOKENS, MODEL, 
 from saba.schema import Article, Text
 
 INSIGHT_VERSION = "saba-insight-v1"
-DEFAULT_INSIGHT_DB = Path("data/insights.db")
+DEFAULT_INSIGHT_DB = Path(__file__).resolve().parents[2] / "data" / "insights.db"  # 실행 폴더와 관계없이 프로젝트 기준 (PC 이전 대비)
 DEPARTMENTS_PATH = Path(__file__).resolve().parents[2] / "config" / "departments.json"
 DEPARTMENT_NAMES = ("경영전략팀 · 사업지원팀", "기술개발연구소", "보안사업팀", "STE본부")  # 메일 부서 카드와 같다 (이름 고정)
 Department = Literal["경영전략팀 · 사업지원팀", "기술개발연구소", "보안사업팀", "STE본부"]

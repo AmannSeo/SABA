@@ -285,12 +285,12 @@ class AdminApp:
 
     def mail_files(self) -> list[dict]:
         """뉴스레터 파일 목록과 종류 (발송본·생성만·미리보기)."""
-        from saba.history import mail_paths
+        from saba.history import mail_name, mail_paths
         output = self.root / "output"
         by_file = {}
         for run in reversed(self.runs()):  # 같은 이름이면 최근 실행이 이긴다 (D-072 이전에는 같은 날 덮어씀)
             if run.mail_file:
-                by_file[run.mail_file] = run
+                by_file[mail_name(output, run.mail_file)] = run
         files = []
         for path in sorted(mail_paths(output), key=lambda p: (p.stat().st_mtime, p.relative_to(output).as_posix()), reverse=True):
             name = path.relative_to(output).as_posix()
@@ -844,7 +844,7 @@ input[type=checkbox],input[type=radio]{width:18px;height:18px;vertical-align:-3p
 """
 
 MENU = [("/", "대시보드"), ("/test", "테스트"), ("/schedule", "예약 발송 설정"), ("/sources", "RSS Source"),
-        ("/recipients", "수신자·그룹"), ("/logs", "실행 이력·뉴스레터"), ("/settings", "설정")]
+        ("/articles", "기사·분석"), ("/recipients", "수신자·그룹"), ("/logs", "실행 이력·뉴스레터"), ("/settings", "설정")]
 RESULT_BADGE = {"성공": "b-ok", "성공 (발송 안 함)": "b-info", "부분 발송": "b-bad", "실패": "b-bad", "건너뜀": "b-warn",
                 "진행 중": "b-mute"}
 SEND_STATUS_BADGE = {"성공": "b-ok", "실패": "b-bad", "미시도": "b-warn", "불명확": "b-warn", "전송 중": "b-mute"}
@@ -1268,7 +1268,7 @@ def list_filters(query: dict, years: set[str], *, mail: bool = False,
     return state, ''.join(f'<p class="info">{escape(e)}</p>' for e in errors) + form
 
 
-def list_page(items: list, query: dict, state: dict, *, unit: str) -> tuple[list, str, dict]:
+def list_page(items: list, query: dict, state: dict, *, unit: str, base: str = "/logs") -> tuple[list, str, dict]:
     pages = max(1, (len(items) + 24) // 25)
     raw = _first(query, "page") or "1"
     valid = bool(re.fullmatch(r"[0-9]{1,8}", raw)) and int(raw) >= 1
@@ -1278,7 +1278,7 @@ def list_page(items: list, query: dict, state: dict, *, unit: str) -> tuple[list
     links = ''
     for label, target in (("이전", number - 1), ("다음", number + 1)):
         if 1 <= target <= pages:
-            links += f'<a class="btn" href="/logs?{escape(urlencode({**state, "page": target}), quote=True)}">{label}</a> '
+            links += f'<a class="btn" href="{base}?{escape(urlencode({**state, "page": target}), quote=True)}">{label}</a> '
         else:
             links += f'<button class="btn" disabled>{label}</button> '
     nav = warning + f'<nav class="row" aria-label="목록 페이지"><span>총 {len(items)}{unit} · {number} / {pages} 페이지</span>{links}</nav>'
@@ -1403,7 +1403,9 @@ def _show(value) -> str:
 
 
 def newsletter_body(app: AdminApp, name: str | None, query: dict | None = None) -> str:
+    from saba.history import mail_name
     files = app.mail_files()
+    name = mail_name(app.root / "output", name) if name else name  # 실행 이력의 예전 최상위 이름도 연다
     state, picker = list_filters(query or {}, {f["made"][:4] for f in files}, mail=True, choices={
         "kind": ("종류", sorted({f["kind"] for f in files})), "origin": ("실행 주체", sorted({f["origin"] for f in files if f["origin"]}))})
     needle = state["q"].casefold()
@@ -1445,6 +1447,94 @@ SOURCE_GUIDE = """
 </ol>
 <p class="muted">수집할 수 없는 주소: Atom 형식, 다른 주소로 이동 (Redirect) 하는 주소 (이동한 최종 주소를 넣으세요), 응답이 2MB 를 넘는 주소, http 주소.</p>
 </details>"""
+
+
+ARTICLE_DAYS = {"1": "최근 1일", "7": "최근 7일", "30": "최근 30일", "all": "전체"}
+ANALYSIS_STATE_BADGE = {"분석됨": "b-ok", "대상 밖": "b-mute", "분석 없음": "b-warn"}
+
+
+def _article_rows(app: AdminApp) -> list[dict]:
+    """수집 기사와 최근 분석·시사점을 묶는다. 읽기만 하며 DB 를 만들거나 바꾸지 않는다."""
+    from saba.analysis_storage import list_analyses
+    from saba.insights import load_insights
+    from saba.storage import list_articles
+    data = app.root / "data"
+    articles = list_articles(data / "saba.db") if (data / "saba.db").exists() else []
+    analyses = {}
+    if (data / "analysis.db").exists():
+        for record in list_analyses(data / "analysis.db"):  # 저장 시각 순: 같은 기사는 마지막 결과
+            analyses[record["result"]["article_id"]] = record["result"]
+    insights = {i.article_id: i for i in load_insights(data / "insights.db").values()}
+    rows = []
+    for article in articles:
+        result, insight = analyses.get(article.article_id), insights.get(article.article_id)
+        state = "분석 없음" if result is None else ("대상 밖" if result.get("status") == "대상 밖" else "분석됨")
+        rows.append({"article": article, "result": result or {}, "insight": insight, "state": state,
+                     "departments": [c.department for c in insight.connections] if insight else []})
+    rows.sort(key=lambda r: r["article"].collected_at, reverse=True)
+    return rows
+
+
+def articles_page(app: AdminApp, query: dict | None = None) -> str:
+    """수집 기사·AI 분석 조회 (읽기 전용, 2026-10-15 사용자 요청, D-081). 분석 결과·중요도·관련 부서·시사점."""
+    query = query or {}
+    try:
+        rows = _article_rows(app)
+    except Exception as error:  # DB 손상·형식 오류에도 화면은 열린다
+        return f'<div class="card"><p class="info">기사·분석 기록을 읽지 못했습니다: {escape(type(error).__name__)}</p></div>'
+    sources = sorted({(r["article"].source_id, r["article"].source_name) for r in rows}, key=lambda s: s[1])
+    departments = sorted({d for r in rows for d in r["departments"]})
+
+    def pick(key, allowed, default=""):
+        value = _first(query, key)
+        return value if value in allowed else default
+
+    state = {"days": pick("days", ARTICLE_DAYS, "7"), "source": pick("source", {s[0] for s in sources}),
+             "status": pick("status", ANALYSIS_STATE_BADGE), "dept": pick("dept", departments), "q": _first(query, "q")[:200]}
+    since = None if state["days"] == "all" else datetime.now(timezone.utc) - timedelta(days=int(state["days"]))
+    needle = state["q"].casefold()
+    filtered = [r for r in rows if (since is None or r["article"].collected_at >= since)
+                and state["source"] in ("", r["article"].source_id) and state["status"] in ("", r["state"])
+                and (not state["dept"] or state["dept"] in r["departments"])
+                and needle in " ".join((r["article"].original_title, r["article"].source_name,
+                                        r["result"].get("newsletter_title") or "", r["result"].get("summary") or "")).casefold()]
+    shown, nav, _ = list_page(filtered, query, state, unit="건", base="/articles")
+
+    def select(key, label, options):
+        return (f'<label>{label} <select name="{key}">' + "".join(
+            f'<option value="{escape(v, quote=True)}"{" selected" if state[key] == v else ""}>{escape(t)}</option>'
+            for v, t in options) + "</select></label>")
+
+    form = ('<form method="get" action="/articles" class="row">'
+            + select("days", "기간", ARTICLE_DAYS.items())
+            + select("source", "출처", [("", "전체")] + sources)
+            + select("status", "분석", [("", "전체")] + [(s, s) for s in ANALYSIS_STATE_BADGE])
+            + select("dept", "관련 부서", [("", "전체")] + [(d, d) for d in departments])
+            + f'<label>검색 <input type="search" name="q" maxlength="200" value="{escape(state["q"], quote=True)}" placeholder="제목·요약·출처"></label>'
+            + '<button class="btn">적용</button></form>')
+    counts = " · ".join(f"{s} {sum(r['state'] == s for r in filtered)}건" for s in ANALYSIS_STATE_BADGE)
+    body = ""
+    for r in shown:
+        a, res, insight = r["article"], r["result"], r["insight"]
+        title = res.get("newsletter_title") or a.original_title
+        original = f'<div class="muted">{escape(a.original_title)}</div>' if res.get("newsletter_title") else ""
+        detail = "".join((
+            f'<p>{escape(res["summary"])}</p>' if res.get("summary") else "",
+            "<ul>" + "".join(f"<li>{escape(p)}</li>" for p in res["key_points"]) + "</ul>" if res.get("key_points") else "",
+            f'<p class="muted">대상 밖 사유: {escape(res["reason"])}</p>' if r["state"] == "대상 밖" and res.get("reason") else "",
+            f'<p><b>시사점</b> {escape(insight.implication)}</p>' if insight else "",
+            "".join(f'<p class="muted">{escape(c.department)}: {escape(c.text)}</p>' for c in insight.connections) if insight else ""))
+        importance = " " + badge(res["importance"], "b-info") if res.get("importance") else ""
+        body += (f'<tr><td style="white-space:nowrap">{a.collected_at.astimezone():%m-%d %H:%M}</td><td>{escape(a.source_name)}</td>'
+                 f'<td><a href="{escape(str(a.url), quote=True)}" target="_blank" rel="noopener noreferrer">{escape(title)}</a>{original}'
+                 + (f'<details><summary>분석 내용</summary>{detail}</details>' if detail else "") + "</td>"
+                 f'<td style="white-space:nowrap">{badge(r["state"], ANALYSIS_STATE_BADGE[r["state"]])}{importance}</td>'
+                 f'<td>{escape(res.get("category") or "-")}</td><td>{escape(", ".join(r["departments"]) or "-")}</td></tr>')
+    guide = ('<div class="muted" style="margin-bottom:10px">수집한 기사와 AI 분석 결과를 봅니다 (읽기 전용). '
+             '분석 없음: 하루 상한·인증 실패·본문 없음 등으로 아직 분석하지 않은 기사. '
+             '대상 밖: AI 가 회사 업무와 관련 없다고 판단해 메일에서 뺀 기사.</div>')
+    return (f'<div class="card">{guide}{form}<p class="muted">{counts}</p>{nav}<table><tr><th>수집</th><th>출처</th><th>제목</th>'
+            f'<th>분석</th><th>분류</th><th>관련 부서</th></tr>{body or "<tr><td colspan=6>조건에 맞는 기사 없음</td></tr>"}</table></div>')
 
 
 def filter_bar(selects: list[tuple[str, str, list[str]]], hint: str) -> str:
@@ -1872,6 +1962,8 @@ def make_handler(app: AdminApp, port: int):
             if url.path == "/newsletter/view":
                 html = app.newsletter_html(_first(query, "name") or None)
                 return self._send(200, html or "<p>생성된 메일이 없습니다.</p>")
+            if url.path == "/articles":
+                return self._send(200, page("기사·분석", articles_page(app, query), message, active="/articles"))
             if url.path == "/settings":
                 return self._send(200, page("설정", settings_page(app), message, active="/settings"))
             return self._send(404, page("없는 페이지", "<p>없는 페이지입니다.</p>"))

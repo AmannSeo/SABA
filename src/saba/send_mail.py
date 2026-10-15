@@ -15,7 +15,6 @@ import time
 from typing import Callable, Mapping
 
 ROOT = Path(__file__).resolve().parents[2]
-EML_PATH = ROOT / "output" / "newsletter_mail_preview.eml"
 TEST_ADDRESS = "ch.seo@tbell.co.kr"  # 서명 원본의 본인 주소. 보낸 사람·받는 사람 모두 이 주소만 허용한다.
 PORT = 465  # SSL/TLS (연결 시작부터 암호화, STARTTLS 아님)
 TIMEOUT = 30
@@ -228,8 +227,15 @@ def send_group(message: EmailMessage, emails: list[str], *, log: Callable[[str, 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--send", action="store_true", help="실제로 TEST 주소에 1회 발송 (승인 후에만 사용)")
-    parser.add_argument("--eml", type=Path, default=EML_PATH, help="보낼 .eml (기본: output/newsletter_mail_preview.eml)")
+    parser.add_argument("--eml", type=Path, help="보낼 .eml (기본: output 의 가장 최근 일일 메일)")
     args = parser.parse_args()
+    if args.eml is None:
+        from saba.history import mail_paths
+        mails = [p for p in mail_paths(ROOT / "output") if "preview" not in p.name]
+        if not mails:
+            print("발송하지 않음: output 에 일일 메일이 없습니다.")
+            return 1
+        args.eml = max(mails, key=lambda p: p.stat().st_mtime)
     message = message_from_bytes(args.eml.read_bytes(), _class=EmailMessage, policy=SMTP)
     try:
         print(send_test(message, send=args.send))

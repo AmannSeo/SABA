@@ -47,6 +47,9 @@ def record_source_status(source_id: str, now: datetime, *, ok: bool, fetched: in
         logging.warning("Source 수집 현황 기록 실패: %s", type(exc).__name__)
 
 
+LEGACY_DATE = re.compile(r"daily_20([0-9]{2})(0[1-9]|1[0-2])[0-9]{2}")
+
+
 def mail_path(output: Path, name: str) -> Path:
     """최상위 또는 YY/MM/ 메일 상대 경로만 허용하며 링크를 따라가지 않는다."""
     if not re.fullmatch(r"(?:[0-9]{2}/(?:0[1-9]|1[0-2])/)?daily_[\w-]+\.eml", name):
@@ -59,7 +62,20 @@ def mail_path(output: Path, name: str) -> Path:
     # Windows 는 아직 없는 경로를 다른 표기로 resolve 해 동시 생성 중 오탐이 났다.
     if path.exists() and not path.resolve().is_relative_to(output.resolve()):
         raise ValueError("메일 경로가 output 밖입니다")
+    # 예전 최상위 이름 (10월 12~13일 로그): 최상위에 없으면 YY/MM/ 으로 옮긴 파일을 쓴다 (F7 정리, D-081)
+    if "/" not in name and not path.exists() and (dated := LEGACY_DATE.match(name)):
+        moved = mail_path(output, f"{dated[1]}/{dated[2]}/{name}")
+        if moved.exists():
+            return moved
     return path
+
+
+def mail_name(output: Path, name: str) -> str:
+    """로그·이력의 메일 이름을 지금 파일 위치 기준 이름으로 바꾼다 (예전 최상위 이름 → YY/MM/이름)."""
+    try:
+        return mail_path(output, name).relative_to(output).as_posix()
+    except ValueError:
+        return name
 
 
 def mail_paths(output: Path) -> list[Path]:

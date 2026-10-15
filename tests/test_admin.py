@@ -11,7 +11,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 from saba import admin
 from saba.admin import TOOLS, AdminApp, AdminError, load_admin_config, serve
@@ -1108,6 +1108,45 @@ class ListManagementTests(AdminBase):
         self.assertEqual(before, {p: p.read_bytes() for p in files})
         self.assertEqual(set(files), {p for p in self.root.rglob("*") if p.is_file()})
         self.assertEqual((self.commands, self.launched, self.fetched, self.shell.calls), ([], [], [], []))
+
+
+class ArticlesPageTests(AdminBase):
+    """기사·분석 조회 화면 (읽기 전용, D-081)."""
+
+    def save(self):
+        from saba.storage import save_articles
+        from test_issues import article, build
+        (self.root / "data").mkdir(exist_ok=True)
+        rows = [article("a1", "the-hacker-news", "[가상] <script>x</script> 원문 제목"), article("a2", "boannews", "[가상] 두 번째 기사")]
+        save_articles(self.root / "data" / "saba.db", build(*rows))
+
+    def test_empty_and_unanalyzed_articles(self):
+        self.assertIn("조건에 맞는 기사 없음", self.get("/articles"))
+        self.save()
+        html = self.get("/articles?days=all")
+        self.assertIn("&lt;script&gt;", html)  # 제목은 이스케이프
+        self.assertNotIn("<script>x", html)
+        self.assertIn("분석 없음 2건", html)
+        self.assertIn("조건에 맞는 기사 없음", self.get("/articles?days=all&status=" + quote("대상 밖")))
+        self.assertNotIn("두 번째", self.get("/articles?days=all&q=" + quote("원문")))
+
+    def test_analysis_join_and_department_filter(self):
+        from types import SimpleNamespace
+        self.save()
+        (self.root / "data" / "analysis.db").write_bytes(b"")
+        result = {"article_id": "a1", "status": "검토 필요", "newsletter_title": "가상 분석 제목", "summary": "가상 요약",
+                  "importance": "높음", "category": "AI 보안", "key_points": ["가상 요점"]}
+        insight = SimpleNamespace(article_id="a1", implication="가상 시사점",
+                                  connections=[SimpleNamespace(department="보안사업팀", text="가상 연결")])
+        with patch("saba.analysis_storage.list_analyses", return_value=[{"result": result}]),                 patch("saba.insights.load_insights", return_value={("a1", "h"): insight}):
+            html = self.get("/articles?days=all")
+            self.assertIn("가상 분석 제목", html)
+            self.assertIn("가상 시사점", html)
+            self.assertIn("분석됨 1건", html)
+            only = self.get("/articles?days=all&dept=" + quote("보안사업팀"))
+            self.assertIn("가상 분석 제목", only)
+            self.assertNotIn("두 번째", only)
+        self.assertIn('href="/articles"', self.get("/"))  # 메뉴
 
 
 class RssEvidenceTests(unittest.TestCase):
