@@ -1,5 +1,8 @@
 from datetime import datetime
 from pathlib import Path
+import json
+import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -8,6 +11,8 @@ import zipfile
 
 from saba.daily import DailyConfig, register_command
 from saba.deploy import DeployError, backup, restore
+from saba.admin import SECRET_NAMES
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "saba.ps1"
@@ -45,6 +50,25 @@ class BackupRestoreTests(unittest.TestCase):
         self.assertEqual(kept, ["data_before_restore_20261012_110000", "config_before_restore_20261012_110000"])
         self.assertEqual((self.root / "data" / "saba.db").read_bytes(), b"db")
         self.assertEqual((self.root / "data_before_restore_20261012_110000" / "saba.db").read_bytes(), b"newer")
+
+    def test_trial_backup_includes_private_settings_but_not_environment(self):
+        required = {"config/sources.json": [{"id": "virtual-source"}],
+                    "config/admin.json": {"login": True},
+                    "config/public_api.json": {"law": ["virtual-keyword"]},
+                    "data/admin_users.json": {"virtual-admin": {"hash": "virtual-hash"}}}
+        for name, value in required.items():
+            (self.root / name).write_text(json.dumps(value), encoding="utf-8")
+        values = {name: f"virtual-environment-only-{i}" for i, name in enumerate(SECRET_NAMES)}
+        with patch.dict(os.environ, values):
+            archive_path = backup(self.root, NOW)
+        with zipfile.ZipFile(archive_path) as archive:
+            self.assertTrue(required.keys() <= set(archive.namelist()))
+            contents = b"".join(archive.read(name) for name in archive.namelist())
+            for value in values.values():
+                self.assertNotIn(value.encode(), contents)
+        restore(archive_path, self.root, NOW)
+        for name, value in required.items():
+            self.assertEqual(json.loads((self.root / name).read_text(encoding="utf-8")), value)
 
     def test_restore_rejects_paths_outside_data_and_config(self):
         for bad in ("../evil.txt", "src/code.py", "data/../../evil.txt", "C:/evil.txt"):
@@ -126,6 +150,19 @@ class ScriptTests(unittest.TestCase):
             code, out = self.run_script(command)
             self.assertEqual(code, 0)
             self.assertIn("확인만 합니다", out)
+
+
+class TrialScriptTests(unittest.TestCase):
+    def test_secret_names_and_presence_only_guidance(self):
+        script = SCRIPT.read_text(encoding="utf-8-sig")
+        names = re.search(r'^\$SecretNames = (.*)$', script, re.M).group(1)
+        self.assertEqual(tuple(re.findall(r'"([A-Z_]+)"', names)), SECRET_NAMES)
+        function = script.split("function Show-Secrets {", 1)[1].split("function Find-Python", 1)[0]
+        self.assertIn('if ($value) { "있음" } else { "없음" }', function)
+        self.assertIn('Write-Output "  $name : $state"', function)
+        self.assertNotIn('Write-Output "$value', function)
+        self.assertIn("설정 화면에서 Secret 6개", function)
+        self.assertNotIn("직접 입력 필요", script)
 
 
 if __name__ == "__main__":

@@ -219,6 +219,24 @@ class LoginTests(AdminBase):
         self.assertEqual(len(self.env_writes), 1)
         self.assertIn("SABA_DATA_GO_KR_KEY", self.get("/settings"))
 
+    def test_login_required_for_all_six_secret_inputs(self):
+        path = self.root / "config" / "admin.json"
+        path.write_text('{"host":"127.0.0.1","port":8765,"login":true}', encoding="utf-8")
+        self.app.login_required = admin.login_enabled(path)
+        self.app.users.add("virtual-viewer", "viewer", "virtual-pass-1")
+        viewer = "saba_session=" + self.app.sessions.create("virtual-viewer", "viewer")
+        for index, name in enumerate(admin.SECRET_NAMES):
+            value = f"virtual-input-{index}"
+            body = urlencode({"token": self.app.token, "confirm": "yes", "name": name, "value": value})
+            count = len(self.env_writes)
+            self.assertEqual(self.request("POST", "/action/secret_set", body, cookie=None)[2], "/login")
+            self.request("POST", "/action/secret_set", body, cookie=viewer)
+            self.assertEqual(len(self.env_writes), count)
+            self.post("secret_set", name=name, value=value, back="/settings")
+            self.assertEqual(self.env_writes[-1], (name, value))
+            self.assertNotIn(value, self.get("/settings"))
+            self.assertNotIn(value, (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
+
     def test_admin_manages_accounts(self):
         self.post("user_add", confirm=False, user="viewer2", role="viewer", password="virtual-pass-3", password2="virtual-pass-3", back="/settings")
         self.assertEqual(self.app.users.verify("viewer2", "virtual-pass-3"), "viewer")

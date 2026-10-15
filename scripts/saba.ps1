@@ -29,7 +29,7 @@ $Exe = Join-Path $Root "SABA.exe"  # 실행 파일 묶음 (D-069) 이면 Python 
 $Packaged = Test-Path $Exe
 $Python = if ($Packaged) { $Exe } else { Join-Path $Root ".venv\Scripts\python.exe" }
 $TaskName = "SABA_Daily_Briefing"
-$SecretNames = "OPENAI_API_KEY", "SABA_SMTP_HOST", "SABA_SMTP_USER", "SABA_SMTP_PASSWORD"
+$SecretNames = "OPENAI_API_KEY", "SABA_SMTP_HOST", "SABA_SMTP_USER", "SABA_SMTP_PASSWORD", "SABA_DATA_GO_KR_KEY", "SABA_LAW_OC"
 $Desktop = [Environment]::GetFolderPath("Desktop")
 $Shortcuts = @{ "SABA 관리 페이지 시작.lnk" = "start"; "SABA 관리 페이지 종료.lnk" = "stop" }
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -46,9 +46,10 @@ function Show-Secrets {
     foreach ($name in $SecretNames) {
         $value = [Environment]::GetEnvironmentVariable($name, "User")
         if (-not $value) { $value = [Environment]::GetEnvironmentVariable($name, "Process") }
-        $state = if ($value) { "있음" } else { "없음 (Windows 사용자 환경 변수에 직접 입력 필요)" }
+        $state = if ($value) { "있음" } else { "없음" }
         Write-Output "  $name : $state"
     }
+    Write-Output "관리 페이지에 관리자 계정으로 로그인한 뒤 설정 화면에서 Secret 6개를 입력·수정하세요 (값은 다시 표시하지 않음)."
 }
 
 function Find-Python {
@@ -91,7 +92,7 @@ switch ($Command) {
         Write-Output "설치 완료. 바탕화면에 관리 페이지 시작·종료 바로가기를 만들었습니다."
         Write-Output "환경 변수:"
         Show-Secrets
-        Write-Output "자동 실행 등록: scripts\saba.ps1 register -Unattended (확인 후 -Apply)"
+        Write-Output "다른 PC 시험 실행에서는 예약 발송을 등록하지 마세요. 설치·이전 절차는 docs\DEPLOY.md 를 확인하세요."
     }
     "start" { Invoke-Saba @("-m", "saba.admin") }
     "stop" { Invoke-Saba @("-m", "saba.admin", "--stop") }
