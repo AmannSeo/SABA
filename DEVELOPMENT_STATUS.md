@@ -15,6 +15,9 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 검증: 직접 배포 테스트 17개 통과. 최종 전체 unittest discover 1회 548개 중 547개 통과·1개 Skip, 실패·오류 0개 (103.406초). 실제 OpenAI 조건 비활성화, 레지스트리·외부 DNS/접속 차단, Mock·임시 데이터·상속 ACL tempfile 런타임 어댑터 사용. 시작 기준 보호·운영·설정 78개 SHA-256 동일·추가/삭제 없음. GROUP_SEND_APPROVED=False, diff --check 통과, 변경분 키 패턴 발견 0건·언어 위반 0건·U+3002 없음. 커밋·브랜치·외부 호출·실제 발송·이 PC 관리 페이지/스케줄러 변경은 하지 않았다.
 - 종료 A: 이번 오프라인 빌드·이전 준비 범위 완료. 로드맵 3단계 전체와 파일럿 완료가 아니다. 새 PC 설치·회사 실행 정책·실제 브라우저·로그아웃 무인 실행·HKCU 인증·다음 평일 자동 실행·메일 도착은 미검증이다. Claude Code는 현재 diff·보호 해시·테스트와 묶음·오프라인 근거를 교차 검증하고 후속 프롬프트를 작성한다. 사용자 승인 없이 새 PC 작업이나 기존 PC 예약 해제를 실행하지 않는다.
 
+- 사용자 결정 (12:20): Codex 검증 전이라도 Claude Code 검증만으로 패치. 바탕화면 SABA_패치_20261016.zip (0.2MB, src·scripts·templates·docs·pyproject.toml·SABA 업데이트.cmd·SABA 비밀번호 초기화.cmd, config·data 없음) 생성. 보호 파일 (sign·SAMPLE) 변경 0, GROUP_SEND_APPROVED False. 기준 HEAD 6825cfe 에서 전체 unittest 561개 중 560개 통과·1개 Skip. Codex 교차 검증은 13:51 이후 진행하고 문제가 나오면 두 번째 패치. DEPLOY.md 0-1 절 패치 적용 추가.
+- Codex 교차 검증 재시도 (2026-10-16 12:18, HEAD 6825cfe): 사용량 한도 계속 (13:51 해제 안내). COLLABORATION.md 3절에 따라 검증 대기로 기록하고, Claude Code 검증만으로 패치를 만들지 사용자에게 확인.
+
 ### 메일 작성자 설정 (2026-10-16, 사용자 요청, Claude Code 구현, Codex 검증 대기)
 - src/saba/author.py (config/author.json, 이름·직급·영문 이름·본부·부서·인사말 부서·휴대폰·이메일, 검증·기본값), 관리 화면 설정 "메일 작성자" 카드와 author_save (변경 이력), 템플릿 작성자 자리 placeholder 화 (newsletter.html·newsletter_mail.html·email_signature.html, sign/ 원본은 그대로), 서명 값 HTML 이스케이프, build_exe.ps1 에 author.json 복사. 원본은 머리말 SW보안사업팀·인사말 보안사업팀이 달라 인사말 부서를 따로 둠 (기본값 결과가 원본과 같음, 기존 원본 비교 테스트 유지). tests/test_author.py, AuthorSettingsTests 추가. 전체 unittest 561개 중 560개 통과·1개 Skip (99초, 한 번은 화면 확인과 겹쳐 40분 걸리며 관리 화면 테스트 1개가 시간 초과, 단독·재실행 통과).
 
