@@ -29,7 +29,7 @@ foreach ($folder in "templates", "sign") {
     Copy-Item -Recurse -Force (Join-Path $Root $folder) (Join-Path $Dist $folder)
 }
 New-Item -ItemType Directory -Force (Join-Path $Dist "config"), (Join-Path $Dist "scripts"), (Join-Path $Dist "docs") | Out-Null
-foreach ($name in "admin.json", "daily.json", "departments.json", "public_api.json", "sources.json") {
+foreach ($name in "admin.json", "author.json", "daily.json", "departments.json", "public_api.json", "sources.json") {
     Copy-Item -Force (Join-Path $Root "config\$name") (Join-Path $Dist "config\$name")
 }
 Copy-Item -Force (Join-Path $PSScriptRoot "saba.ps1") (Join-Path $Dist "scripts\saba.ps1")

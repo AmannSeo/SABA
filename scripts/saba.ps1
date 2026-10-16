@@ -11,12 +11,13 @@
 #   backup                      data\ 와 config\ 를 backups\ 에 zip 으로 저장
 #   restore -Path <zip>         백업 zip 복원 (기존 폴더는 이름을 바꿔 보관)
 #   uninstall [-Apply]          자동 실행 해제, 관리 페이지 종료, .venv·바로가기 삭제 (data\ 는 남김)
+#   reset-password              계정 비밀번호 초기화 (비밀번호를 잊었을 때, 이 PC 에서만)
 #
 # Secret(API Key, SMTP 비밀번호) 은 이 스크립트가 받거나 저장하지 않는다. 있음·없음만 확인한다.
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("install", "start", "stop", "status", "register", "unregister", "backup", "restore", "uninstall", "help")]
+    [ValidateSet("install", "start", "stop", "status", "register", "unregister", "backup", "restore", "uninstall", "reset-password", "help")]
     [string]$Command = "help",
     [switch]$Apply,
     [switch]$Unattended,
@@ -96,6 +97,7 @@ switch ($Command) {
         Write-Output "install: 예약을 등록하지 않습니다. 새 PC 무인 등록은 docs\DEPLOY.md 의 확인 절차를 마친 뒤 register -Unattended -Apply 로 수행하세요."
     }
     "start" { Invoke-Saba @("-m", "saba.admin") }
+    "reset-password" { Invoke-Saba @("-m", "saba.auth", "--reset-password") }  # 비밀번호를 잊었을 때 이 PC 에서 초기화
     "stop" { Invoke-Saba @("-m", "saba.admin", "--stop") }
     "status" {
         $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue

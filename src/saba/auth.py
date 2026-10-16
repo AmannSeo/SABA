@@ -183,3 +183,45 @@ def set_user_env(name: str, value: str) -> None:
         ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 2000, None)
     except (AttributeError, OSError):
         pass
+
+
+def reset_password(users: Users, *, ask=input, secret=None, log_path: Path | None = None, out=print) -> int:
+    """이 PC 에서 계정 비밀번호를 다시 정한다 (2026-10-16 사용자 결정: 잊었을 때 PC 에서 초기화).
+
+    관리 페이지가 127.0.0.1 전용이라 이 PC 의 Windows 로그인을 본인 확인으로 본다. 비밀번호는 화면에 보이지 않게 받고
+    어디에도 기록하지 않는다. 변경 사실만 설정 변경 이력에 남긴다.
+    """
+    import getpass
+    from saba.history import append_change
+    secret = secret or getpass.getpass
+    accounts = users.list()
+    if not accounts:
+        out("계정이 없습니다. 관리 페이지를 열면 첫 관리자 계정 만들기 화면이 나옵니다.")
+        return 1
+    for user_id, role in accounts:
+        out(f"  {user_id} ({ROLES[role]})")
+    user_id = ask("비밀번호를 다시 정할 아이디: ").strip()
+    if user_id not in dict(accounts):
+        out("없는 아이디입니다. 바뀐 것은 없습니다.")
+        return 1
+    password = secret(f"새 비밀번호 ({MIN_PASSWORD}자 이상, 글자와 숫자·기호 함께, 화면에 보이지 않음): ")
+    if password != secret("한 번 더 입력: "):
+        out("두 비밀번호가 다릅니다. 바뀐 것은 없습니다.")
+        return 1
+    try:
+        users.set_password(user_id, password)
+    except AuthError as error:
+        out(f"바뀐 것은 없습니다: {error}")
+        return 1
+    append_change(log_path or users.path.parents[1] / "logs" / "settings_changes.log",
+                  {f"계정 {user_id}": ("", "비밀번호 초기화 (이 PC 명령)")}, False)
+    out(f"완료: {user_id} 의 비밀번호를 바꿨습니다. 관리 페이지가 켜져 있으면 다시 시작한 뒤 새 비밀번호로 로그인하세요.")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    if sys.argv[1:] != ["--reset-password"]:
+        print("사용법: python -m saba.auth --reset-password  (이 PC 에서 계정 비밀번호 초기화)")
+        raise SystemExit(2)
+    raise SystemExit(reset_password(Users()))

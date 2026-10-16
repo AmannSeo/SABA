@@ -139,7 +139,8 @@ class MailTests(unittest.TestCase):
 
     def test_signature_text_matches_original(self):
         original = visible_text((ROOT / "sign/sign.html").read_text(encoding="utf-8"))
-        template = visible_text((ROOT / "templates/email_signature.html").read_text(encoding="utf-8"))
+        from saba.mail import signature_body
+        template = visible_text(signature_body())  # 작성자 자리를 기본값으로 채운 결과가 원본과 같다
         self.assertEqual(template, original)
         self.assertIn(original, visible_text(self.html))
         for value in ("서창현 선임", "010-3927-4628", "ch.seo@tbell.co.kr", "www.tbell.co.kr"):

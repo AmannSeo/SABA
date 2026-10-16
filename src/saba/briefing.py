@@ -8,7 +8,8 @@ from typing import Callable
 from saba.analysis import AnalysisResult, analysis_input
 from saba.ai_adapter import prepare_request
 from saba.analysis_storage import list_analyses, save_analysis
-from saba.insights import DEFAULT_INSIGHT_DB, InsightResult, insight_hash, load_insights, run_insight, save_insight
+from saba.insights import (DEFAULT_INSIGHT_DB, InsightResult, allowed_departments, insight_hash, load_insights, run_insight,
+                            save_insight)
 from saba.issues import Issue, Selection, preview_article, select_issues
 from saba.newsletter import ArticleView, build_article_view
 from saba.notice_body import DEFAULT_CACHE, notice_excerpts, with_excerpt
@@ -38,12 +39,24 @@ class AnalysisStats:
     excluded: dict[str, str] = field(default_factory=dict)
 
 
+# 관련성 기준 강화 (2026-10-16) 전에 저장된 부서 업무 분류의 "검토 필요" 판단은 재사용하지 않고 다시 분석한다.
+# 행사·협약·통계, 내용 없는 릴리스 노트가 예전 기준으로 통과해 있었다. 보안·AI 분석은 그대로 재사용한다.
+RECHECK_BEFORE = "2026-10-16T03:00:00"  # UTC, 저장 시각 비교
+RECHECK_CATEGORIES = {"경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질"}  # 테스트: 내용 없는 릴리스 노트
+
+
+def _stale(record: dict) -> bool:
+    result = record["result"]
+    return (result.get("status") == "검토 필요" and result.get("category") in RECHECK_CATEGORIES
+            and str(record.get("stored_at", "")) < RECHECK_BEFORE)
+
+
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
     if not analysis_db.exists():
         return {}
     # 같은 입력의 결과가 여러 개면 나중에 저장된 것을 쓴다 (list_analyses 는 저장 시각 순).
     return {(r["result"]["article_id"], r["result"]["input_hash"]): AnalysisResult.model_validate(r["result"])
-            for r in list_analyses(analysis_db)}
+            for r in list_analyses(analysis_db) if not _stale(r)}
 
 
 def _kst_today() -> date:
@@ -133,9 +146,10 @@ def display_result(result: AnalysisResult) -> AnalysisResult:
         "tags": [_hangul(t) for t in result.tags], "key_points": [_hangul(p) for p in result.key_points]})
 
 
-def display_insight(insight: InsightResult) -> InsightResult:
+def display_insight(insight: InsightResult, category: str | None = None) -> InsightResult:
+    allowed = allowed_departments(category)  # 분류에 맞지 않는 부서 연결은 버린다 (2026-10-16)
     return insight.model_copy(update={"implication": _hangul(insight.implication), "connections": [
-        c.model_copy(update={"text": _hangul(c.text)}) for c in insight.connections]})
+        c.model_copy(update={"text": _hangul(c.text)}) for c in insight.connections if c.department in allowed]})
 
 
 def add_insights(issues: list[Issue], results: dict[str, AnalysisResult], excerpts: dict[str, str],
@@ -212,5 +226,5 @@ def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: b
             continue
         insight = insights.get(issue.representative.article_id)
         views.append(build_article_view(preview_article(issue), display_result(result) if result else None,
-                                        insight=display_insight(insight) if insight else None))
+                                        insight=display_insight(insight, result.category if result else None) if insight else None))
     return views, selection, stats

@@ -15,6 +15,16 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 검증: 직접 배포 테스트 17개 통과. 최종 전체 unittest discover 1회 548개 중 547개 통과·1개 Skip, 실패·오류 0개 (103.406초). 실제 OpenAI 조건 비활성화, 레지스트리·외부 DNS/접속 차단, Mock·임시 데이터·상속 ACL tempfile 런타임 어댑터 사용. 시작 기준 보호·운영·설정 78개 SHA-256 동일·추가/삭제 없음. GROUP_SEND_APPROVED=False, diff --check 통과, 변경분 키 패턴 발견 0건·언어 위반 0건·U+3002 없음. 커밋·브랜치·외부 호출·실제 발송·이 PC 관리 페이지/스케줄러 변경은 하지 않았다.
 - 종료 A: 이번 오프라인 빌드·이전 준비 범위 완료. 로드맵 3단계 전체와 파일럿 완료가 아니다. 새 PC 설치·회사 실행 정책·실제 브라우저·로그아웃 무인 실행·HKCU 인증·다음 평일 자동 실행·메일 도착은 미검증이다. Claude Code는 현재 diff·보호 해시·테스트와 묶음·오프라인 근거를 교차 검증하고 후속 프롬프트를 작성한다. 사용자 승인 없이 새 PC 작업이나 기존 PC 예약 해제를 실행하지 않는다.
 
+### 메일 작성자 설정 (2026-10-16, 사용자 요청, Claude Code 구현, Codex 검증 대기)
+- src/saba/author.py (config/author.json, 이름·직급·영문 이름·본부·부서·인사말 부서·휴대폰·이메일, 검증·기본값), 관리 화면 설정 "메일 작성자" 카드와 author_save (변경 이력), 템플릿 작성자 자리 placeholder 화 (newsletter.html·newsletter_mail.html·email_signature.html, sign/ 원본은 그대로), 서명 값 HTML 이스케이프, build_exe.ps1 에 author.json 복사. 원본은 머리말 SW보안사업팀·인사말 보안사업팀이 달라 인사말 부서를 따로 둠 (기본값 결과가 원본과 같음, 기존 원본 비교 테스트 유지). tests/test_author.py, AuthorSettingsTests 추가. 전체 unittest 561개 중 560개 통과·1개 Skip (99초, 한 번은 화면 확인과 겹쳐 40분 걸리며 관리 화면 테스트 1개가 시간 초과, 단독·재실행 통과).
+
+### 분석 품질 개선과 비밀번호 초기화 (2026-10-16, Claude Code 구현, Codex 검증 대기)
+- 09:42 메일 23건 점검 (적절 15, 제외 대상 5: 청중평가단 모집·일자리전담반 회의·9월 고용지표·KT·안전공단 협약·SonarQube 릴리스 노트 준비 중, 억지 부서 연결 9줄, 부서별 주요 이슈를 경영 기사가 차지) 과 사용자 화면 지적을 반영. 원인: 분석 지시문의 source_topic 규칙이 노동 기관 보도자료의 "정책" 을 넓게 통과, 시사점 부서 연결 제한 없음, 부서별 주요 이슈가 메일 순서 앞 3건.
+- 수정: 분석 지시문 제외 기준·경영/사업 통과 기준·내용 없는 릴리스 노트 입력 부족 (A·C), 시사점 지시문 추측 연결·제품 사용 가정 금지 (E), 분류별 허용 부서만 표시 (insights.CATEGORY_DEPARTMENTS, briefing.display_insight, B), 부서별 주요 이슈 순서 (newsletter._department_views, F), 기준 강화 전 저장된 경영·사업·테스트 분류 검토 필요 판단 재분석 (briefing.RECHECK_BEFORE). 같은 사건 묶기 (D) 는 다음 작업.
+- 오프라인 확인 (AI 호출 없음): 같은 데이터에서 기술개발연구소·보안사업팀·STE본부 상자가 각 부서 분류 기사로 바뀜, 경영 기사의 다른 부서 연결 0. 경영 상자의 잘못된 기사는 다음 실행의 재분석으로 빠질 예정 (실제 효과 미확인).
+- 비밀번호 초기화: auth.reset_password, python -m saba.auth --reset-password, saba.ps1 reset-password, scripts/reset_password.cmd. 이 PC Windows 로그인을 본인 확인으로, 비밀번호 숨김 입력, 변경 사실만 이력.
+- 테스트: tests/test_quality_rules.py, test_auth.py 초기화 테스트 추가, 전체 unittest 558개 중 557개 통과·1개 Skip. Codex 교차 검증은 사용량 한도 해제 (13:51) 후. 새 PC 적용은 사용자 결정대로 모든 작업 뒤 별도 패치.
+
 ### 새 PC 설치 시도와 간소화 (2026-10-16, 사용자 수행·Claude Code)
 - 새 PC 에서 SABA.exe 가 Windows 11 스마트 앱 컨트롤 (서명 없는 앱 차단) 에 막힘. 실행 파일 폴더에서 saba.ps1 install 은 실행 파일 모드라 바탕화면 시작도 같은 이유로 바로 종료. 사용자 결정: 회사 코드 서명 대신 간단한 소스 설치부터 시도.
 - 추가: scripts/setup.cmd (Python 3.12 확인·winget 사용자 설치, install, 백업 자동 복원·데이터 있으면 건너뜀, 관리 페이지 시작, 실패 시 창 유지), 바탕화면 바로가기 -NoExit (실패 오류 표시), DEPLOY.md 0절. 가짜 saba.ps1 로 setup.cmd 흐름 확인 (첫 실행 install·restore·start, 두 번째 실행 restore 건너뜀). 기존 PC 백업 saba_backup_20261016_1040.zip 과 소스를 바탕화면 SABA_새PC_설치.zip (1.2MB) 로 묶음. 새 PC 실제 설치·스마트 앱 컨트롤의 Python 부품 차단 여부는 미확인.

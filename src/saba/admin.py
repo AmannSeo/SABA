@@ -381,7 +381,25 @@ class AdminApp:
             return self.account_action(action, form)
         if action == "api_keywords_save":
             return self.save_api_keywords(form)
+        if action == "author_save":
+            return self.save_author(form)
         raise AdminError("알 수 없는 동작입니다.")
+
+    def save_author(self, form: dict) -> str:
+        """메일 작성자 (머리말·인사말·서명) 변경 (2026-10-16 사용자 요청). 변경 내용은 설정 변경 이력에 남는다."""
+        from saba.author import FIELDS, AuthorError, load_author, save_author
+        from saba.history import append_change
+        path = self.root / "config" / "author.json"
+        old = load_author(path)
+        try:
+            new = save_author({key: _first(form, key) for key in FIELDS}, path)
+        except AuthorError as error:
+            raise AdminError(f"저장하지 않음 · {error}") from None
+        changes = {f"메일 작성자 {FIELDS[k][0]}": (old[k], new[k]) for k in FIELDS if old[k] != new[k]}
+        if not changes:
+            return "변경 사항이 없습니다."
+        append_change(self.changes_path, changes, False)
+        return "메일 작성자 저장 완료 (다음 메일부터 반영)"
 
     def save_api_keywords(self, form: dict) -> str:
         from saba.history import append_change
@@ -1775,7 +1793,24 @@ def settings_page(app: AdminApp) -> str:
             f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table>{secret_form(app)}</div>'
             f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
             f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
-            + accounts_card(app) + criteria_card(app) + api_keywords_card(app))
+            + accounts_card(app) + author_card(app) + criteria_card(app) + api_keywords_card(app))
+
+
+def author_card(app: AdminApp) -> str:
+    """메일 머리말 "작성자", 인사말, 서명에 들어가는 작성자 정보. 회사 홈페이지·주소는 바꾸지 않는다."""
+    from saba.author import FIELDS, load_author
+    try:
+        author = load_author(app.root / "config" / "author.json")
+    except Exception as error:
+        return f'<div class="card"><h2>메일 작성자</h2><p class="info">설정을 읽지 못했습니다: {escape(str(error))}</p></div>'
+    rows = "".join(f'<tr><th style="width:160px">{label}{" *" if required else ""}</th><td><input name="{key}" maxlength="{limit}" '
+                   f'value="{escape(author[key], quote=True)}" aria-label="{label}" style="width:100%"></td></tr>'
+                   for key, (label, limit, required) in FIELDS.items())
+    return (f'<div class="card"><h2>메일 작성자<span class="muted">머리말 "작성자", 인사말, 메일 서명에 들어갑니다. * 필수</span></h2>'
+            f'<form method="post" action="/action/author_save"><input type="hidden" name="token" value="{app.token}">'
+            f'<input type="hidden" name="back" value="/settings"><table>{rows}</table>'
+            f'<div class="row"><button class="btn primary">저장</button><span class="muted">다음 메일부터 반영됩니다. '
+            f'변경은 설정 변경 이력에 남습니다.</span></div></form></div>')
 
 
 def api_keywords_card(app: AdminApp) -> str:

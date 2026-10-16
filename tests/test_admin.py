@@ -418,6 +418,18 @@ class AdminTests(AdminBase):
         self.assertIn("<option", detail)
 
 
+class AuthorSettingsTests(AdminBase):
+    def test_admin_saves_author_and_logs_change(self):
+        from saba import author
+        form = {**author.DEFAULT, "name": "홍길동", "back": "/settings"}
+        self.post("author_save", confirm=False, **form)
+        self.assertEqual(author.load_author(self.root / "config" / "author.json")["name"], "홍길동")
+        self.assertIn("메일 작성자 이름", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
+        self.assertIn('value="홍길동"', self.get("/settings"))
+        self.post("author_save", confirm=False, **{**form, "email": "no-at"})
+        self.assertEqual(author.load_author(self.root / "config" / "author.json")["email"], author.DEFAULT["email"])
+
+
 class ScheduleTests(AdminBase):
     """예약 발송 설정 저장 (D-072)."""
 

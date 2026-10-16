@@ -139,6 +139,29 @@ def _connections(view: ArticleView) -> dict[str, str]:
     return dict(view.ai_connections)
 
 
+_IMPORTANCE_RANK = {"높음": 0, "보통": 1, "낮음": 2}
+
+
+def _department_views(name: str, views: list[ArticleView]) -> list[ArticleView]:
+    """부서별 주요 이슈 3건: 그 부서가 주 담당인 분류의 기사를 먼저, 그다음 중요도 순 (2026-10-16).
+
+    예전에는 메일 순서 앞 3건이라 다른 분류 기사가 억지 연결로 윗자리를 차지했다.
+    """
+    from saba.insights import CATEGORY_DEPARTMENTS
+    linked = [view for view in views if name in _connections(view)]
+    own = lambda view: CATEGORY_DEPARTMENTS.get(view.category or "", ("",))[0] == name
+    return sorted(linked, key=lambda view: (not own(view), _IMPORTANCE_RANK.get(view.importance or "", 3)))[:3]
+
+
+def author_fields() -> dict[str, str]:
+    """머리말·인사말의 작성자 (config/author.json, 관리 화면 설정에서 변경)."""
+    from saba.author import load_author
+    author = load_author()
+    title = " ".join(filter(None, (author["name"], author["position"])))
+    return {"author_title": _safe_escape(title), "author_team": _safe_escape(author["team"]),
+            "author_greeting_team": _safe_escape(author["greeting_team"] or author["team"])}
+
+
 def _analysis_is_ready(analysis: Optional[AnalysisResult]) -> bool:
     return analysis is not None and analysis.status == _ANALYSIS_READY_STATUS
 
@@ -293,7 +316,7 @@ def _render_brief_detail(groups: dict[str, list[ArticleView]], anchors: dict[str
 def _render_department_cards(views: list[ArticleView], anchors: dict[str, str]) -> str:
     cards: list[str] = []
     for name, icon, css_class in _DEPARTMENT_CARDS:
-        assigned = [view for view in views if name in _connections(view)][:3]
+        assigned = _department_views(name, views)
         content = "\n".join(
             '<div class="department-news-item">'
             '<div class="card-meta-row"><div class="card-badges">'
@@ -464,7 +487,7 @@ def build_newsletter_html(
         css_href=css_href, logo_src=logo_src, today_display=today_display,
         article_count=len(safe_views), brief_summary=brief_summary,
         brief_detail=brief_detail, deep_news=deep_news,
-        department_cards=_render_department_cards(safe_views, anchors),
+        department_cards=_render_department_cards(safe_views, anchors), **author_fields(),
         preview_label=' · SAMPLE/MOCK 미리보기' if preview_mode else '',
     )
 
@@ -506,7 +529,7 @@ def _mail_brief_rows(groups: dict[str, list[ArticleView]]) -> str:
 
 def _mail_department_card(name: str, icon: str, css_class: str, views: list[ArticleView],
                           anchors: dict[str, str]) -> str:
-    assigned = [view for view in views if name in _connections(view)][:3]
+    assigned = _department_views(name, views)
     items = "".join(
         f'<tr><td style="padding:18px 18px;border-bottom:1px solid #eef0f2;">'
         f'<table {_TABLE}><tr><td>{_mail_badge(view.category or "미분류")}</td>'
@@ -607,5 +630,5 @@ def build_mail_html(views: list[ArticleView], *, today: Optional[str] = None, lo
         logo_src=_safe_escape(logo_src), today_display=_safe_escape(_format_today_display(today)),
         article_count=len(safe_views), brief_rows=_mail_brief_rows(brief_groups),
         department_cards=_mail_departments(safe_views, anchors), deep_news=_mail_deep_news(deep_groups, anchors),
-        signature=signature,
+        signature=signature, **author_fields(),
     )

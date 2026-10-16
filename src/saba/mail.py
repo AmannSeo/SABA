@@ -30,7 +30,18 @@ def signature_body() -> str:
     body = re.search(r"<body>(.*)</body>", html, re.S)
     if style is None or body is None:
         raise MailFormatError("메일 서명 Template 구조가 예상과 다릅니다.")
-    return style.group(0) + body.group(1)
+    return style.group(0) + _fill_author(body.group(1))
+
+
+def _fill_author(html: str) -> str:
+    """서명의 작성자 자리 (%%AUTHOR_...%%) 를 config/author.json 값으로 채운다. 값은 HTML 이스케이프."""
+    from html import escape
+    from saba.author import load_author
+    author = load_author()
+    values = {**author, "title": " ".join(filter(None, (author["name"], author["position"])))}
+    for key, value in values.items():
+        html = html.replace(f"%%AUTHOR_{key.upper()}%%", escape(value, quote=True))
+    return html
 
 
 def to_mail_html(views: list[ArticleView], *, today: str | None = None) -> str:

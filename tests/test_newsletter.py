@@ -190,7 +190,7 @@ class NewsletterTests(unittest.TestCase):
         template = (ROOT / "templates/newsletter.html").read_text(encoding="utf-8")
         self.assertIn("{deep_news}", template)
         self.assertIn("{department_cards}", template)
-        self.assertIn("서창현 선임 · SW보안사업팀", template)
+        self.assertIn("작성자 : {author_title} · {author_team}", template)  # 작성자는 config/author.json (관리 화면 설정)
 
     def test_sample_group_validation_and_input_preservation(self):
         article = self.articles[0]

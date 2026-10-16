@@ -280,7 +280,7 @@ class TrialScriptTests(unittest.TestCase):
         self.assertIn('import PyInstaller', build)
         self.assertIn('--contents-directory _internal', build)
         self.assertIn('기존 묶음에 운영 폴더', build)
-        self.assertIn('"admin.json", "daily.json", "departments.json", "public_api.json", "sources.json"', build)
+        self.assertIn('"admin.json", "author.json", "daily.json", "departments.json", "public_api.json", "sources.json"', build)
         self.assertIn('foreach ($folder in "templates", "sign")', build)
 
     def test_secret_names_and_presence_only_guidance(self):

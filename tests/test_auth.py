@@ -69,6 +69,43 @@ class UsersTests(unittest.TestCase):
         self.assertNotIn('{broken', str(caught.exception))
 
 
+class ResetPasswordTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        patcher = patch.object(auth, "ITERATIONS", 1000)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.root = Path(temp.name)
+        self.users = auth.Users(self.root / "data" / "admin_users.json")
+        self.users.add("admin1", "admin", "virtual-pass-1")
+        self.out = []
+
+    def reset(self, user, *passwords):
+        answers = iter(passwords)
+        return auth.reset_password(self.users, ask=lambda _: user, secret=lambda _: next(answers), out=self.out.append)
+
+    def test_reset_sets_new_password_and_logs_without_value(self):
+        self.assertEqual(self.reset("admin1", "virtual-new-2", "virtual-new-2"), 0)
+        self.assertEqual(self.users.verify("admin1", "virtual-new-2"), "admin")
+        self.assertIsNone(self.users.verify("admin1", "virtual-pass-1"))
+        log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
+        self.assertIn("비밀번호 초기화", log)
+        self.assertNotIn("virtual-new-2", log + "".join(self.out))
+
+    def test_reset_refuses_mismatch_unknown_and_weak(self):
+        for args in (("admin1", "virtual-new-2", "virtual-new-3"), ("nobody", "virtual-new-2", "virtual-new-2"),
+                     ("admin1", "short", "short")):
+            with self.subTest(args=args):
+                self.assertEqual(self.reset(*args), 1)
+        self.assertEqual(self.users.verify("admin1", "virtual-pass-1"), "admin")  # 바뀐 것 없음
+
+    def test_no_accounts(self):
+        empty = auth.Users(self.root / "data" / "none.json")
+        self.assertEqual(auth.reset_password(empty, out=self.out.append), 1)
+        self.assertIn("첫 관리자", self.out[-1])
+
+
 class SessionTests(unittest.TestCase):
     def test_exact_idle_limit_expires_session(self):
         now = [0.0]
