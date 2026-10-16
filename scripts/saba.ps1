@@ -83,9 +83,10 @@ switch ($Command) {
         }
         $shell = New-Object -ComObject WScript.Shell
         foreach ($name in $Shortcuts.Keys) {
+            # -NoExit: 시작 실패 (예: 스마트 앱 컨트롤 차단) 때 창이 바로 닫히지 않고 오류가 보인다 (2026-10-16 새 PC).
             $link = $shell.CreateShortcut((Join-Path $Desktop $name))
             $link.TargetPath = "powershell.exe"
-            $link.Arguments = "-ExecutionPolicy Bypass -WindowStyle Minimized -File `"$PSCommandPath`" $($Shortcuts[$name])"
+            $link.Arguments = "-NoExit -ExecutionPolicy Bypass -WindowStyle Minimized -File `"$PSCommandPath`" $($Shortcuts[$name])"
             $link.WorkingDirectory = $Root
             $link.Save()
         }

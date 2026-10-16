@@ -15,6 +15,10 @@ SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적�
 - 검증: 직접 배포 테스트 17개 통과. 최종 전체 unittest discover 1회 548개 중 547개 통과·1개 Skip, 실패·오류 0개 (103.406초). 실제 OpenAI 조건 비활성화, 레지스트리·외부 DNS/접속 차단, Mock·임시 데이터·상속 ACL tempfile 런타임 어댑터 사용. 시작 기준 보호·운영·설정 78개 SHA-256 동일·추가/삭제 없음. GROUP_SEND_APPROVED=False, diff --check 통과, 변경분 키 패턴 발견 0건·언어 위반 0건·U+3002 없음. 커밋·브랜치·외부 호출·실제 발송·이 PC 관리 페이지/스케줄러 변경은 하지 않았다.
 - 종료 A: 이번 오프라인 빌드·이전 준비 범위 완료. 로드맵 3단계 전체와 파일럿 완료가 아니다. 새 PC 설치·회사 실행 정책·실제 브라우저·로그아웃 무인 실행·HKCU 인증·다음 평일 자동 실행·메일 도착은 미검증이다. Claude Code는 현재 diff·보호 해시·테스트와 묶음·오프라인 근거를 교차 검증하고 후속 프롬프트를 작성한다. 사용자 승인 없이 새 PC 작업이나 기존 PC 예약 해제를 실행하지 않는다.
 
+### 새 PC 설치 시도와 간소화 (2026-10-16, 사용자 수행·Claude Code)
+- 새 PC 에서 SABA.exe 가 Windows 11 스마트 앱 컨트롤 (서명 없는 앱 차단) 에 막힘. 실행 파일 폴더에서 saba.ps1 install 은 실행 파일 모드라 바탕화면 시작도 같은 이유로 바로 종료. 사용자 결정: 회사 코드 서명 대신 간단한 소스 설치부터 시도.
+- 추가: scripts/setup.cmd (Python 3.12 확인·winget 사용자 설치, install, 백업 자동 복원·데이터 있으면 건너뜀, 관리 페이지 시작, 실패 시 창 유지), 바탕화면 바로가기 -NoExit (실패 오류 표시), DEPLOY.md 0절. 가짜 saba.ps1 로 setup.cmd 흐름 확인 (첫 실행 install·restore·start, 두 번째 실행 restore 건너뜀). 기존 PC 백업 saba_backup_20261016_1040.zip 과 소스를 바탕화면 SABA_새PC_설치.zip (1.2MB) 로 묶음. 새 PC 실제 설치·스마트 앱 컨트롤의 Python 부품 차단 여부는 미확인.
+
 ### 실행 파일 묶음 Claude Code 교차 검증 (2026-10-16)
 - Codex 결과 검토: build_exe.ps1 (다운로드 없이 빌드, 운영 폴더 있으면 중단, config 5개 파일만 복사), saba_entry.py (무인 실행도 HKCU 최신 Secret 읽기), DEPLOY.md 이전 절차. dist\SABA 에 data·계정·Secret·메일·로그 없음 확인, 등록 명령 (무인) 에 Get-Credential·StartWhenAvailable·WakeToRun 포함.
 - Claude Code 가 실제 실행 파일을 임시 사본·포트 8799 로 실행해 찾은 결함 2건 수정: (1) PYTHONIOENCODING 이 "utf-8:surrogateescape" 처럼 오류처리 포함 형식이면 SABA.exe 가 시작 즉시 종료 (saba_entry.py 에서 인코딩·오류처리 분리, 모르는 값은 무시). (2) PowerShell 5 로 저장한 BOM 붙은 설정 파일을 읽지 못함 (admin.json·daily.json·departments.json·public_api.json·sources.json 읽기를 utf-8-sig 로). 테스트 추가, 전체 unittest 550개 중 549개 통과·1개 Skip, 재빌드 후 같은 조건에서 관리 페이지 로그인 화면 200, data 폴더가 SABA.exe 옆에 생성됨 확인. 새 PC 실제 설치·무인 실행·수집·AI·메일은 미확인.
