@@ -1,11 +1,12 @@
 """실제 수집 기사 Newsletter 화면 구성 (D-029, D-033). 기사 DB는 읽기만 한다."""
 
 from dataclasses import dataclass, field
+import json
 from datetime import date, datetime
 from pathlib import Path
 from typing import Callable
 
-from saba.analysis import AnalysisResult, analysis_input
+from saba.analysis import AnalysisResult, analysis_input, json_hash
 from saba.ai_adapter import prepare_request
 from saba.analysis_storage import list_analyses, save_analysis
 from saba.insights import (DEFAULT_INSIGHT_DB, InsightResult, allowed_departments, insight_hash, load_insights, run_insight,
@@ -45,18 +46,37 @@ RECHECK_BEFORE = "2026-10-16T03:00:00"  # UTC, 저장 시각 비교
 RECHECK_CATEGORIES = {"경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질"}  # 테스트: 내용 없는 릴리스 노트
 
 
-def _stale(record: dict) -> bool:
+def _stale(record: dict, rechecked: frozenset[str] = frozenset()) -> bool:
     result = record["result"]
     return (result.get("status") == "검토 필요" and result.get("category") in RECHECK_CATEGORIES
-            and str(record.get("stored_at", "")) < RECHECK_BEFORE)
+            and str(record.get("stored_at", "")) < RECHECK_BEFORE and record.get("analysis_id") not in rechecked)
+
+
+def _rechecked_path(analysis_db: Path) -> Path:
+    """새 기준으로 다시 분석해 같은 결과가 나온 분석 ID. 분석 DB 는 같은 결과를 다시 쓰지 않으므로 (저장 시각 유지)
+    따로 남겨 매 실행마다 다시 호출하지 않게 한다."""
+    return analysis_db.with_name("analysis_rechecked.json")
+
+
+def _load_rechecked(analysis_db: Path) -> frozenset[str]:
+    try:
+        return frozenset(json.loads(_rechecked_path(analysis_db).read_text(encoding="utf-8")))
+    except (OSError, ValueError, TypeError):
+        return frozenset()
+
+
+def _mark_rechecked(analysis_db: Path, analysis_id: str) -> None:
+    path = _rechecked_path(analysis_db)
+    path.write_text(json.dumps(sorted(_load_rechecked(analysis_db) | {analysis_id})), encoding="utf-8")
 
 
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
     if not analysis_db.exists():
         return {}
+    rechecked = _load_rechecked(analysis_db)
     # 같은 입력의 결과가 여러 개면 나중에 저장된 것을 쓴다 (list_analyses 는 저장 시각 순).
     return {(r["result"]["article_id"], r["result"]["input_hash"]): AnalysisResult.model_validate(r["result"])
-            for r in list_analyses(analysis_db) if not _stale(r)}
+            for r in list_analyses(analysis_db) if not _stale(r, rechecked)}
 
 
 def _kst_today() -> date:
@@ -119,7 +139,9 @@ def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
                 stats.excluded[article.article_id] = "응답 오류" if outcome.status == "response_invalid" else "기타"
                 continue
             result = outcome.result
-            save_analysis(article_db, analysis_db, [result.model_dump(mode="json")], excerpts=excerpts)
+            _, skipped = save_analysis(article_db, analysis_db, [result.model_dump(mode="json")], excerpts=excerpts)
+            if skipped:  # 예전과 같은 결과: DB 는 그대로이므로 재확인했다고 따로 남긴다
+                _mark_rechecked(analysis_db, json_hash(result.model_dump(mode="json")))
         results[article.article_id] = result
         if result.status == OUT_OF_SCOPE:
             stats.out_of_scope += 1

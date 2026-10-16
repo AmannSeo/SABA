@@ -67,7 +67,8 @@ class MailTests(unittest.TestCase):
         for view in self.views:
             self.assertIn(view.title, visible_text(self.html))
             self.assertIn(f'name="news-', self.html)
-        self.assertEqual(self.html.count("💡 시사점"), len(self.views))
+        # 시사점이 있는 카드만 시사점 상자를 그린다 (2026-10-16, 빈 상자 제거)
+        self.assertEqual(self.html.count("💡 시사점"), sum(1 for v in self.views if v.ai_implication or v.sample_implications))
 
     def test_external_links_only_and_bold_titles(self):
         # 한비로메일은 메일 안 이동 링크를 막고 외부 링크만 동작한다 (D-057 진단). 버튼은 기사 원문으로 연결 (D-058).

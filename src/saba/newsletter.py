@@ -155,8 +155,8 @@ def _department_views(name: str, views: list[ArticleView]) -> list[ArticleView]:
 
 def author_fields() -> dict[str, str]:
     """머리말·인사말의 작성자 (config/author.json, 관리 화면 설정에서 변경)."""
-    from saba.author import load_author
-    author = load_author()
+    from saba.author import current_author
+    author = current_author()
     title = " ".join(filter(None, (author["name"], author["position"])))
     return {"author_title": _safe_escape(title), "author_team": _safe_escape(author["team"]),
             "author_greeting_team": _safe_escape(author["greeting_team"] or author["team"])}
@@ -391,11 +391,14 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
             anchor = anchors.get(view.article_id, "")
             body = _render_article_body(view)
             implications = "".join(f'<p>{_safe_escape(text)}</p>' for text in _implications(view))
-            implications = implications or '<p>분석 정보가 없습니다.</p>'
             connections = "".join(
                 f'<div class="impact-row"><strong>{_safe_escape(name)}</strong><span>{_safe_escape(text)}</span></div>'
                 for name, text in _connections(view).items()
-            ) or '<p>검토된 업무 연결 정보가 없습니다.</p>'
+            )
+            # 시사점·업무 연결이 없으면 빈 상자를 그리지 않는다 (2026-10-16 사용자 지적: 내용 없는 카드)
+            insight_box = f'<div class="insight-box"><h4><span>💡</span> 시사점</h4>{implications}</div>\n' if implications else ""
+            impact_box = (f'<div class="department-impact"><h4><span>🏢</span> 우리 업무와의 연결</h4>{connections}</div>\n'
+                          if connections else "")
             sources = "".join(
                 f'<a class="source-row" href="{_safe_escape(url)}" target="_blank" rel="noopener noreferrer">'
                 f'<span class="source-name">{_safe_escape(name)}</span>'
@@ -414,9 +417,7 @@ def _render_deep_news(groups: dict[str, list[ArticleView]], anchors: dict[str, s
 </div>
 <h3 class="news-title">{_safe_escape(view.title)}</h3>
 {body}
-<div class="insight-box"><h4><span>💡</span> 시사점</h4>{implications}</div>
-<div class="department-impact"><h4><span>🏢</span> 우리 업무와의 연결</h4>{connections}</div>
-<div class="source-related"><h4><span>🔗</span> 출처 · 관련 기사</h4>{sources}</div>
+{insight_box}{impact_box}<div class="source-related"><h4><span>🔗</span> 출처 · 관련 기사</h4>{sources}</div>
 </article>""".strip()
             )
         sections.append(
@@ -569,14 +570,19 @@ def _mail_news_card(view: ArticleView, anchor: str) -> str:
     body = (f'<p style="margin:12px 0 0;color:#374151;font-size:14px;line-height:1.8;">{_safe_escape(view.summary)}</p>'
             if view.has_full_analysis and view.summary else "")
     implications = "".join(f'<p style="margin:6px 0 0;color:#4b5563;font-size:13px;line-height:1.7;">{_safe_escape(text)}</p>'
-                           for text in _implications(view)) or \
-        '<p style="margin:6px 0 0;color:#9ca3af;font-size:13px;">분석 정보가 없습니다.</p>'
+                           for text in _implications(view))
     connections = "".join(
         f'<tr><td valign="top" width="110" style="padding:7px 0;border-bottom:1px solid #f0f1f3;color:#111827;'
         f'font-size:12px;font-weight:700;">{_safe_escape(name)}</td><td style="padding:7px 0;border-bottom:1px solid #f0f1f3;'
         f'color:#4b5563;font-size:12px;line-height:1.6;">{_safe_escape(text)}</td></tr>'
         for name, text in _connections(view).items()
-    ) or '<tr><td style="padding:7px 0;color:#9ca3af;font-size:12px;">검토된 업무 연결 정보가 없습니다.</td></tr>'
+    )
+    # 시사점·업무 연결이 없으면 빈 상자를 그리지 않는다 (2026-10-16 사용자 지적: 내용 없는 카드)
+    insight_box = (f'<table {_TABLE} bgcolor="#fffdf5" style="margin-top:16px;background:#fffdf5;border-left:3px solid #f59e0b;">'
+                   f'<tr><td style="padding:14px 16px;"><p style="margin:0;color:#111827;font-size:13px;font-weight:700;">💡 시사점</p>'
+                   f'{implications}</td></tr></table>') if implications else ""
+    impact_box = (f'<p style="margin:16px 0 4px;color:#111827;font-size:13px;font-weight:700;">🏢 우리 업무와의 연결</p>'
+                  f'<table {_TABLE}>{connections}</table>') if connections else ""
     sources = "".join(
         f'<tr><td valign="top" width="120" style="padding:8px 0;border-bottom:1px solid #eef0f2;color:#2563eb;'
         f'font-size:11px;font-weight:700;">{_safe_escape(name)}</td>'
@@ -591,12 +597,7 @@ def _mail_news_card(view: ArticleView, anchor: str) -> str:
             f'<table {_TABLE}><tr><td valign="top">{badges}</td><td valign="top" align="right" width="120" '
             f'style="color:#9ca3af;font-size:11px;white-space:nowrap;">{_safe_escape(view.date_label)} · {_safe_escape(view.date_display)}</td></tr></table>'
             f'<h3 style="margin:8px 0 0;color:#111827;font-size:19px;font-weight:700;line-height:1.5;"><strong>{_safe_escape(view.title)}</strong></h3>'
-            f'{body}'
-            f'<table {_TABLE} bgcolor="#fffdf5" style="margin-top:16px;background:#fffdf5;border-left:3px solid #f59e0b;">'
-            f'<tr><td style="padding:14px 16px;"><p style="margin:0;color:#111827;font-size:13px;font-weight:700;">💡 시사점</p>'
-            f'{implications}</td></tr></table>'
-            f'<p style="margin:16px 0 4px;color:#111827;font-size:13px;font-weight:700;">🏢 우리 업무와의 연결</p>'
-            f'<table {_TABLE}>{connections}</table>'
+            f'{body}{insight_box}{impact_box}'
             f'<p style="margin:16px 0 4px;color:#111827;font-size:13px;font-weight:700;">🔗 출처 · 관련 기사</p>'
             f'<table {_TABLE} style="border-top:1px solid #e5e7eb;">{sources}</table>'
             f'</td></tr></table>')

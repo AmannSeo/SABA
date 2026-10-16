@@ -36,8 +36,8 @@ def signature_body() -> str:
 def _fill_author(html: str) -> str:
     """서명의 작성자 자리 (%%AUTHOR_...%%) 를 config/author.json 값으로 채운다. 값은 HTML 이스케이프."""
     from html import escape
-    from saba.author import load_author
-    author = load_author()
+    from saba.author import current_author
+    author = current_author()
     values = {**author, "title": " ".join(filter(None, (author["name"], author["position"])))}
     for key, value in values.items():
         html = html.replace(f"%%AUTHOR_{key.upper()}%%", escape(value, quote=True))

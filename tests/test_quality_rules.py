@@ -53,6 +53,20 @@ class QualityRuleTests(unittest.TestCase):
         self.assertFalse(briefing._stale(record("취약점·권고", "2026-10-15T12:00:00+00:00")))  # 보안은 재사용
         self.assertFalse(briefing._stale(record("경영·노무·세무", "2026-10-15T12:00:00+00:00", "대상 밖")))
 
+    def test_identical_recheck_is_remembered(self):
+        # 새 기준으로 다시 분석해도 같은 결과면 분석 DB 는 그대로라 (저장 시각 유지) 따로 남겨 매일 재호출하지 않는다
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as directory:
+            db = Path(directory) / "analysis.db"
+            old = {"analysis_id": "a1", "stored_at": "2026-10-15T00:00:00+00:00",
+                   "result": {"status": "검토 필요", "category": "경영·노무·세무"}}
+            self.assertTrue(briefing._stale(old, briefing._load_rechecked(db)))
+            briefing._mark_rechecked(db, "a1")
+            self.assertFalse(briefing._stale(old, briefing._load_rechecked(db)))
+            (Path(directory) / "analysis_rechecked.json").write_text("{broken", encoding="utf-8")
+            self.assertEqual(briefing._load_rechecked(db), frozenset())  # 깨진 파일은 다시 확인하면 된다
+
     def test_instructions_name_exclusions_and_no_assumption(self):
         for phrase in ("청중·참가자·평가단 모집", "고용·경제 통계 발표", "업무협약", "곧 게시"):
             self.assertIn(phrase, openai_adapter.INSTRUCTIONS)

@@ -54,6 +54,16 @@ def load_author(path: Path = AUTHOR_PATH) -> dict:
     return validate({**DEFAULT, **data})
 
 
+def current_author(path: Path = AUTHOR_PATH) -> dict:
+    """메일 생성용: 설정 파일이 깨져도 그날 메일은 기본 작성자로 보낸다 (경고 로그). 관리 화면은 load_author 로 오류를 보여 준다."""
+    try:
+        return load_author(path)
+    except (AuthorError, OSError) as error:
+        import logging
+        logging.warning("메일 작성자 설정을 읽지 못해 기본 작성자로 보냅니다: %s", error)
+        return dict(DEFAULT)
+
+
 def save_author(data: dict, path: Path = AUTHOR_PATH) -> dict:
     author = validate(data)
     path.write_text(json.dumps(author, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

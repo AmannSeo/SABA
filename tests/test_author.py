@@ -14,7 +14,7 @@ CHANGED = {**author.DEFAULT, "name": "홍길동", "position": "책임", "team": 
 
 class AuthorTests(unittest.TestCase):
     def test_changed_author_appears_in_header_greeting_and_signature(self):
-        with patch.object(author, "load_author", return_value=CHANGED):
+        with patch.object(author, "current_author", return_value=CHANGED):
             html, signature = build_newsletter_html([]), signature_body()
         self.assertIn("작성자 : 홍길동 책임 · 가상&lt;팀&gt;", html)  # HTML 이스케이프
         self.assertIn("안녕하세요. 가상&lt;팀&gt; 홍길동 책임입니다.", html)  # 인사말 부서를 비우면 부서
@@ -22,6 +22,15 @@ class AuthorTests(unittest.TestCase):
             self.assertIn(value, signature)
         self.assertNotIn("서창현", html + signature)
         self.assertNotIn("%%AUTHOR", signature)
+
+    def test_broken_author_file_falls_back_to_default_for_mail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "author.json"
+            path.write_text("{broken", encoding="utf-8")
+            with self.assertRaises(author.AuthorError):
+                author.load_author(path)  # 관리 화면은 오류를 보여 준다
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(author.current_author(path), author.DEFAULT)  # 메일은 기본 작성자로 나간다
 
     def test_validation_and_file_round_trip(self):
         for bad in ({"name": ""}, {"team": ""}, {"email": "no-at"}, {"mobile": "abc"}, {"name": "가" * 21}):

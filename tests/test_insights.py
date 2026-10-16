@@ -118,7 +118,7 @@ class InsightBriefingTests(unittest.TestCase):
         views, _, stats = self.views(run)
         self.assertEqual((run.calls, stats.insights_called), ([], 0))
         self.assertIsNone(views[0].ai_implication)
-        self.assertIn("분석 정보가 없습니다.", build_newsletter_html(views))
+        self.assertNotIn("분석 정보가 없습니다.", build_newsletter_html(views))  # 시사점이 없으면 상자를 그리지 않는다 (2026-10-16)
 
     def test_insight_saved_reused_and_rendered_with_ai_label(self):
         first = self.fake_run()

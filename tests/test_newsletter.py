@@ -174,9 +174,11 @@ class NewsletterTests(unittest.TestCase):
 
     def test_fallback_has_structure_but_no_fabricated_analysis(self):
         html = build_newsletter_html([build_article_view(self.articles[0])])
-        self.assertIn("우리 업무와의 연결", html)
-        self.assertIn("분석 정보가 없습니다.", html)
-        self.assertIn("검토된 업무 연결 정보가 없습니다.", html)
+        # 시사점·업무 연결이 없으면 빈 상자 없이 출처만 남는다 (2026-10-16 사용자 지적)
+        self.assertNotIn("우리 업무와의 연결", html)
+        self.assertNotIn("분석 정보가 없습니다.", html)
+        self.assertNotIn("검토된 업무 연결 정보가 없습니다.", html)
+        self.assertIn("출처 · 관련 기사", html)
         self.assertNotIn("SAMPLE/MOCK:", html)
         self.assertNotIn("핵심 사실", html)
 
