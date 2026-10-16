@@ -167,6 +167,8 @@ def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:
     message = build_message(to_mail_html(views, today=today), f"[TEST] Security & AI Briefing · {today}")
     summary = (f"표시 {len(views)}건 · 분석 재사용 {stats.reused} · 신규 {stats.called} · 실패 {len(stats.failed)}"
                f" · 분석 없음 제외 {stats.dropped_unanalyzed}"
+               " · 게재 제외 " + " · ".join(f"{reason} {sum(v == reason for v in stats.excluded.values())}"
+                                            for reason in ("입력 부족", "응답 오류", "상한", "대상 밖", "기타")) +
                f" · 시사점 재사용 {stats.insights_reused} · 신규 {stats.insights_called} · 실패 {stats.insights_failed}")
     return message.as_bytes(), summary
 

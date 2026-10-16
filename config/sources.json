@@ -177,7 +177,7 @@
     "method": "rss",
     "kst": true,
     "date_only": true,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "google-search-central",
@@ -345,7 +345,7 @@
     "method": "crawl:nipa",
     "kst": true,
     "date_only": true,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "smtech-notice",
@@ -357,7 +357,7 @@
     "method": "crawl:smtech",
     "kst": true,
     "date_only": true,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "kocca-notice",
@@ -369,7 +369,7 @@
     "method": "crawl:kocca",
     "kst": true,
     "date_only": true,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "naver-searchadvisor",
@@ -381,7 +381,7 @@
     "method": "crawl:searchadvisor",
     "kst": true,
     "date_only": true,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "kiat-business",
@@ -393,7 +393,7 @@
     "method": "crawl:kiat",
     "kst": true,
     "date_only": true,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "selenium-blog",
@@ -405,7 +405,7 @@
     "method": "crawl:selenium",
     "kst": false,
     "date_only": true,
-    "enabled": true
+    "enabled": false
   },
   {
     "id": "g2b-service-bids",

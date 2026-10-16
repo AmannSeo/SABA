@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from saba.analysis import AnalysisResult, analysis_input
+from saba.ai_adapter import prepare_request
 from saba.analysis_storage import list_analyses, save_analysis
 from saba.insights import DEFAULT_INSIGHT_DB, InsightResult, insight_hash, load_insights, run_insight, save_insight
 from saba.issues import Issue, Selection, preview_article, select_issues
@@ -34,6 +35,7 @@ class AnalysisStats:
     insights_failed: int = 0
     dropped_unanalyzed: int = 0
     auth_failed: bool = False
+    excluded: dict[str, str] = field(default_factory=dict) 
 
 
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
@@ -73,34 +75,46 @@ def analyze_issues(issues: list[Issue], article_db: Path, analysis_db: Path, *,
         if cached is not None:
             stats.reused += 1
             result = cached
+        elif prepare_request(article).status == "input_insufficient":
+            stats.insufficient += 1
+            stats.excluded[article.article_id] = "입력 부족"
+            continue
         elif stats.auth_failed:  # 인증 실패 뒤에는 더 호출하지 않는다 (같은 키로 다시 실패하고 하루 상한만 쓴다)
             stats.failed.append(f"{article.article_id}: authentication (호출 안 함)")
+            stats.excluded[article.article_id] = "기타"
             continue
         elif stats.called >= max_new_calls:
             stats.skipped_by_cap += 1
             stats.capped_ids.add(article.article_id)
+            stats.excluded[article.article_id] = "상한"
             continue
         else:
             outcome = run(article, ledger_path=ledger_path, max_calls=max_calls, **limit)
             if outcome.status in LIMIT_STATUSES:  # 전송 전 거부: 호출로 세지 않는다
                 stats.skipped_by_cap += 1
                 stats.capped_ids.add(article.article_id)
+                stats.excluded[article.article_id] = "상한"
                 continue
             if outcome.status == "input_insufficient":
                 stats.insufficient += 1
+                stats.excluded[article.article_id] = "입력 부족"
                 continue
             stats.called += 1
             if outcome.result is None:
                 stats.failed.append(f"{article.article_id}: {outcome.status}")
                 stats.auth_failed = stats.auth_failed or outcome.status == "authentication"
+                stats.excluded[article.article_id] = "응답 오류" if outcome.status == "response_invalid" else "기타"
                 continue
             result = outcome.result
             save_analysis(article_db, analysis_db, [result.model_dump(mode="json")], excerpts=excerpts)
         results[article.article_id] = result
         if result.status == OUT_OF_SCOPE:
             stats.out_of_scope += 1
+            stats.excluded[article.article_id] = "대상 밖"
         elif result.status == "검토 필요":
             stats.valid += 1
+        else:
+            stats.excluded[article.article_id] = "입력 부족"
     return results, stats
 
 
@@ -188,12 +202,13 @@ def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: b
     views = []
     for issue in selection.issues:
         result = results.get(issue.representative.article_id)
-        if result is not None and result.status == OUT_OF_SCOPE:
+        # 매일 실행은 같은 입력 해시의 검토 필요 결과만 게재한다 (D-083).
+        if analyzed_only and (result is None or result.status != "검토 필요"):
+            if stats is not None:
+                stats.dropped_unanalyzed += 1
+                stats.excluded.setdefault(issue.representative.article_id, "기타")
             continue
-        # 상한 때문에 분석하지 못한 글은 관련성 확인 전이라 메일에서 뺀다 (D-080).
-        # 본문이 없어 분석할 수 없는 공지 (보호나라 등) 와 분석 실패 글은 지금처럼 원문 발췌로 남긴다.
-        if analyzed_only and stats is not None and issue.representative.article_id in stats.capped_ids:
-            stats.dropped_unanalyzed += 1
+        if result is not None and result.status == OUT_OF_SCOPE:
             continue
         insight = insights.get(issue.representative.article_id)
         views.append(build_article_view(preview_article(issue), display_result(result) if result else None,

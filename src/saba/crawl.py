@@ -14,7 +14,7 @@ import urllib.parse
 import urllib.request
 import urllib.robotparser
 
-from saba.rss import KST, MAX_BYTES, TIMEOUT, RssError, Source
+from saba.rss import KST, MAX_BYTES, TIMEOUT, NoRedirect, RssError, Source
 from saba.schema import Article, validate_articles
 
 USER_AGENT = "SABA/0.1 company newsletter collector (public list pages only)"
@@ -46,7 +46,7 @@ class SameHostRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _get(url: str, *, sleep=time.sleep, clock=time.monotonic) -> tuple[int, str, bytes]:
+def _get(url: str, *, sleep=time.sleep, clock=time.monotonic, redirects=True) -> tuple[int, str, bytes]:
     host = urllib.parse.urlsplit(url).hostname or ""
     interval = _interval(url)
     wait = interval - (clock() - _last_request.get(host, -interval))
@@ -55,7 +55,8 @@ def _get(url: str, *, sleep=time.sleep, clock=time.monotonic) -> tuple[int, str,
     _last_request[host] = clock()
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "identity"})
     try:
-        with urllib.request.build_opener(SameHostRedirect()).open(request, timeout=TIMEOUT) as response:
+        handler = SameHostRedirect() if redirects else NoRedirect()
+        with urllib.request.build_opener(handler).open(request, timeout=TIMEOUT) as response:
             body = response.read(MAX_BYTES + 1)
             if len(body) > MAX_BYTES:
                 raise RssError("목록 페이지 응답이 2MiB 상한을 초과했습니다.")

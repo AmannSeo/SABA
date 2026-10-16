@@ -98,7 +98,7 @@ class BriefingTests(unittest.TestCase):
         second = FakeRun(self.plan)
         _, _, stats = self.views(second)
         self.assertEqual(stats.reused, 3)
-        self.assertEqual([c[0] for c in second.calls], ["boho", "fail"])  # 저장 안 된 것만 다시 시도
+        self.assertEqual([c[0] for c in second.calls], ["fail"])  # 제목뿐인 입력은 호출 전에 제외
         self.assertEqual(len(list_analyses(self.analysis_db)), 3)
 
     def test_changed_input_not_reused(self):
@@ -116,16 +116,45 @@ class BriefingTests(unittest.TestCase):
         self.assertGreaterEqual(stats.skipped_by_cap, 1)
         self.assertTrue(all(max_calls == 2 for _, max_calls in run.calls))  # 빈 사용량 기록 + 2
 
-    def test_analyzed_only_drops_capped_but_keeps_title_only_and_failed(self):
+    def test_analyzed_only_drops_every_result_without_valid_analysis(self):
         run = FakeRun(self.plan)
         views, _, stats = self.views(run, max_new_calls=2, analyzed_only=True)
         shown = {v.article_id for v in views}
         self.assertTrue(stats.capped_ids)
         self.assertFalse(shown & stats.capped_ids)  # 상한으로 분석 못 한 글은 메일에서 뺀다 (D-080)
-        self.assertEqual(stats.dropped_unanalyzed, len(stats.capped_ids))
-        self.assertIn("boho", shown)  # 본문 없는 공지는 분석 불가라도 남긴다
+        self.assertEqual(stats.dropped_unanalyzed, 5 - len(shown))
+        self.assertNotIn("boho", shown)
+        self.assertNotIn("fail", shown)
+        self.assertNotIn("boan", shown)
+        self.assertTrue(all(v.has_full_analysis for v in views))
+        self.assertEqual(len(stats.excluded), stats.dropped_unanalyzed)
         _, _, plain = self.views(FakeRun(self.plan), max_new_calls=2)
         self.assertEqual(plain.dropped_unanalyzed, 0)  # 기본값은 이전 동작 그대로
+
+    def test_strict_exclusion_reasons_and_response_failure(self):
+        base = FakeRun(self.plan)
+        def run(article, **options):
+            return LiveOutcome("response_invalid") if article.article_id == "fail" else base(article, **options)
+        views, selection, stats = self.views(run, max_new_calls=20, analyzed_only=True)
+        self.assertEqual({v.article_id for v in views}, {"thn", "ai"})
+        self.assertEqual(stats.excluded, {"boho": "입력 부족", "boan": "대상 밖", "fail": "응답 오류"})
+        self.assertEqual(len(views) + len(stats.excluded), len(selection.issues))
+
+    def test_strict_cached_results_reused_with_zero_calls_and_changed_input_excluded(self):
+        self.views(FakeRun(self.plan))
+        run = FakeRun({})
+        views, _, stats = self.views(run, max_new_calls=0, analyzed_only=True)
+        self.assertEqual({v.article_id for v in views}, {"thn", "ai"})
+        self.assertEqual(run.calls, [])
+        changed = self.articles[0].model_copy(update={"feed_excerpt": EXCERPT + " 추가 문장."})
+        self.article_db = self.dir / "changed.db"
+        save_articles(self.article_db, [changed])
+        views, _, stats = self.views(run, max_new_calls=0, analyzed_only=True)
+        self.assertNotIn("thn", {v.article_id for v in views})
+
+    def test_strict_no_ai_path_has_no_unverified_articles(self):
+        views, _, stats = self.views(FakeRun({}), use_ai=False, analyzed_only=True)
+        self.assertEqual(views, [])
 
     def test_authentication_failure_stops_further_calls(self):
         calls = []

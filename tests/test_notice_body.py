@@ -2,11 +2,13 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from saba.analysis_storage import list_analyses
 from saba.briefing import analyze_issues
 from saba.issues import select_issues
 from saba.notice_body import body_excerpt, notice_excerpts
+from saba import notice_body, crawl
 from saba.schema import validate_articles
 from saba.storage import list_articles, save_articles
 from test_briefing import NOW, FakeRun, response, row
@@ -55,6 +57,61 @@ class NoticeBodyTests(unittest.TestCase):
         self.assertEqual((stats.valid, stats.insufficient), (1, 0))
         self.assertEqual(len(list_analyses(analysis_db)), 1)
         self.assertIsNone(list_articles(article_db)[0].feed_excerpt)  # 기사 DB 불변
+
+    def test_moel_body_scoped_bounded_and_cached_without_attachments(self):
+        url = "https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=123"
+        article = self.article.model_copy(update={"source_id": "moel-press", "url": url})
+        page = ('<div>navigation</div><div class=" b_content news_content"><p>' + BODY +
+                '</p><div>추가 본문.</div><script>hidden()</script></div>'
+                '<div class="files"><a href="/download.hwpx">attachment</a></div>').encode()
+        cache = self.dir / 'moel.json'
+        with patch.object(crawl, 'allowed', return_value=True) as robots, \
+                patch.object(crawl, '_get', return_value=(200, 'text/html', page)) as get:
+            first = notice_excerpts([article], cache_path=cache)
+            self.assertEqual(notice_excerpts([article], cache_path=cache), first)
+            get.assert_called_once_with(url, redirects=False)
+            robots.assert_called_once_with(url)
+        self.assertIn(BODY, first[article.article_id])
+        for hidden in ('navigation', 'hidden', 'attachment'):
+            self.assertNotIn(hidden, first[article.article_id])
+        huge = ('<div class="b_content news_content">' + 'x' * 1500 + '</div>').encode()
+        self.assertLessEqual(len(body_excerpt(huge, 'moel')), notice_body.EXCERPT_CHARS)
+
+    def test_detail_fetch_rejects_robots_outside_paths_types_and_sizes(self):
+        url = "https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=123"
+        with patch.object(crawl, 'allowed', return_value=False), patch.object(crawl, '_get') as get:
+            self.assertIsNone(notice_body.fetch_page(url))
+            get.assert_not_called()
+        for bad in ('http://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=1',
+                    'https://www.moel.go.kr/download.pdf', 'https://www.moel.go.kr.evil.test/news/enews/report/enewsView.do?news_seq=1',
+                    'https://user@www.moel.go.kr/news/enews/report/enewsView.do?news_seq=1',
+                    'https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=1&news_seq=2',
+                    'https://www.moel.go.kr/news/enews/report/enewsView.do?news_seq=x'):
+            with patch.object(crawl, 'allowed') as robots, patch.object(crawl, '_get') as get:
+                self.assertIsNone(notice_body.fetch_page(bad))
+                robots.assert_not_called()
+                get.assert_not_called()
+        for reply in ((200, 'application/pdf', b'x'), (302, 'text/html', b'x'),
+                      (200, 'text/html', b'x' * (notice_body.MAX_BYTES + 1))):
+            with patch.object(crawl, 'allowed', return_value=True), patch.object(crawl, '_get', return_value=reply):
+                self.assertIsNone(notice_body.fetch_page(url))
+
+    def test_body_analysis_remains_in_strict_newsletter(self):
+        from saba.briefing import build_views
+        article_db, analysis_db = self.dir / 'articles.db', self.dir / 'analyses.db'
+        save_articles(article_db, [self.article])
+        cache = self.dir / 'cache.json'
+        notice_excerpts([self.article], cache_path=cache, fetcher=lambda url: PAGE)
+        excerpts = notice_excerpts([self.article], cache_path=cache, fetch=False)
+        from saba.ai_adapter import prepare_request
+        text = prepare_request(self.article.model_copy(update={"feed_excerpt": excerpts[self.article.article_id]})).request.snapshot.texts['feed_excerpt']
+        plan = response()
+        plan['evidence'] = [{'input_field': 'feed_excerpt', 'quote': text, 'target': t}
+                            for t in ('newsletter_title', 'summary', 'category', 'importance_reason', 'tags[0]', 'key_points[0]')]
+        views, _, stats = build_views(article_db, analysis_db, NOW, body_cache=cache, insight_db=self.dir/'insights.db',
+                                      ledger_path=self.dir/'usage.json', analyzed_only=True, run=FakeRun({'boho': plan}))
+        self.assertEqual([v.article_id for v in views], ['boho'])
+        self.assertEqual(stats.dropped_unanalyzed, 0)
 
 
 if __name__ == "__main__":

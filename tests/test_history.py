@@ -48,6 +48,16 @@ class HistoryTests(unittest.TestCase):
         [run] = parse_runs(read_log(self.log))
         self.assertEqual((run.mail_file, run.articles, run.ai_calls), ("daily_20261012_1600.eml", 5, 4))
 
+    def test_summary_with_all_exclusion_reasons_still_parsed(self):
+        text = ('2026-10-12 16:00:01,000 INFO 실행 시작: 자동 실행 (발송 없이)\n'
+                '2026-10-12 16:00:40,000 INFO 메일 생성 완료: 26/10/daily_20261012_1600.eml · 표시 5건'
+                ' · 분석 재사용 2 · 신규 3 · 실패 1 · 분석 없음 제외 15'
+                ' · 게재 제외 입력 부족 7 · 응답 오류 3 · 상한 2 · 대상 밖 2 · 기타 1'
+                ' · 시사점 재사용 0 · 신규 1 · 실패 0 · 99,000 bytes\n')
+        self.log.write_text(text, encoding='utf-8')
+        [run] = parse_runs(read_log(self.log))
+        self.assertEqual((run.mail_file, run.articles, run.ai_calls), ('26/10/daily_20261012_1600.eml', 5, 4))
+
     def test_legacy_top_level_name_finds_moved_monthly_file(self):
         output = self.root / "output"
         (output / "26" / "10").mkdir(parents=True)

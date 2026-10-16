@@ -159,6 +159,41 @@ class OpenAIAdapterTests(unittest.TestCase):
                 self.assertEqual(entry['status'], 'response_invalid')
                 self.assertNotIn('quote_occurrences', entry)  # 번호 단계에서 거절되면 인용문이 없다
 
+    def test_missing_title_and_importance_ids_use_safe_fallbacks(self):
+        output = model_output() | {'newsletter_title_ids': [], 'importance': '높음',
+                                  'importance_reason': '가상 중요도 이유', 'importance_reason_ids': []}
+        outcome = self.run_with(Mock(return_value=api_response(output=output)))
+        self.assertEqual(outcome.status, 'valid')
+        result = outcome.result
+        self.assertEqual(result.newsletter_title, prepare_request(self.article).request.snapshot.texts['original_title'])
+        self.assertIsNone(result.importance)
+        self.assertIsNone(result.importance_reason)
+        self.assertEqual(len(outcome.warnings), 2)
+        evidence = next(e for e in result.evidence if e.target == 'newsletter_title')
+        self.assertEqual((evidence.input_field, evidence.start, evidence.end), ('original_title', 0, len(result.newsletter_title)))
+        self.assertFalse(any(e.target == 'importance_reason' for e in result.evidence))
+        from saba.analysis_storage import save_analysis, list_analyses
+        from saba.storage import save_articles
+        article_db = Path(self.temp.name) / 'articles.db'
+        analysis_db = Path(self.temp.name) / 'analysis.db'
+        save_articles(article_db, [self.article])
+        save_analysis(article_db, analysis_db, [result.model_dump(mode='json')])
+        self.assertEqual(list_analyses(analysis_db)[0]['result'], result.model_dump(mode='json'))
+
+    def test_fallback_does_not_accept_invalid_or_missing_summary_keypoint_ids(self):
+        for field in ('summary_ids', 'category_ids'):
+            output = model_output() | {'newsletter_title_ids': [], field: []}
+            self.assertEqual(self.run_with(Mock(return_value=api_response(output=output))).status, 'response_invalid')
+        output = model_output() | {'newsletter_title_ids': []}
+        output['key_points'][0]['sentence_ids'] = []
+        self.assertEqual(self.run_with(Mock(return_value=api_response(output=output))).status, 'response_invalid')
+        for field in ('newsletter_title_ids', 'importance_reason_ids'):
+            for bad in ([99], ['1'], [True], None):
+                output = model_output() | {field: bad}
+                if field == 'importance_reason_ids':
+                    output.update(importance='높음', importance_reason='가상 이유')
+                self.assertEqual(self.run_with(Mock(return_value=api_response(output=output))).status, 'response_invalid')
+
     def test_ids_split_into_runs_across_fields_and_gaps(self):
         from saba.openai_adapter import evidence_runs
         units = [('original_title', 'T'), ('feed_excerpt', 'A.'), ('feed_excerpt', 'B.'), ('feed_excerpt', 'C.')]
