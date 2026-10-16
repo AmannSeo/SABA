@@ -422,6 +422,12 @@ SABA 의 주요 기능을 터미널 명령어 없이 관리한다.
 - 설정 화면 "메일 작성자" 에서 이름·직급·영문 이름·본부·부서·인사말 부서·휴대폰·이메일을 바꾼다. 값은 config/author.json 에 저장되고 다음 메일부터 머리말 "작성자", 인사말, 메일 서명에 들어간다. 인사말 부서를 비우면 부서를 쓴다. 회사 홈페이지·주소와 서명 이미지 (sign/ 원본) 는 바꾸지 않는다. 변경 내용은 설정 변경 이력에 남는다.
 - 작성자 자리는 templates/newsletter.html·newsletter_mail.html 의 {author_title}·{author_team}·{author_greeting_team} 과 templates/email_signature.html 의 %%AUTHOR_...%% 이다. 기본값으로 만든 메일은 원본 디자인 문구와 같다.
 
+### 메일 서명 (2026-10-16)
+
+- 설정 화면 "메일 서명" 에서 서명 HTML 을 붙여 넣거나 HTML 파일을 골라 저장한다. config/signature.html 에 저장되고 다음 메일부터 쓴다. 없으면 기본 서명 (templates/email_signature.html) 을 쓴다. "기본 서명으로 되돌리기" 로 지운다.
+- 작성자 설정 값은 %%AUTHOR_TITLE%% (이름 직급)·%%AUTHOR_NAME%%·%%AUTHOR_TEAM%%·%%AUTHOR_DIVISION%%·%%AUTHOR_ENGLISH_NAME%%·%%AUTHOR_MOBILE%%·%%AUTHOR_EMAIL%% 로 넣는다. 회사 서명 이미지는 cid:saba-signature. 전체 HTML 문서면 style 과 body 안쪽만 쓴다.
+- script·iframe·object·embed·form·javascript:·on 이벤트 속성이 있거나 10만 자를 넘으면 저장하지 않는다. 파일이 직접 고쳐져 깨졌으면 메일은 기본 서명으로 보내고 경고 로그를 남긴다. 미리보기는 스크립트 없는 sandbox 로 보인다. 변경 사실과 글자 수만 설정 변경 이력에 남긴다.
+
 ### 비밀번호 초기화 (2026-10-16)
 
 - 관리자 비밀번호를 잊으면 SABA 가 설치된 PC 에서 `scripts

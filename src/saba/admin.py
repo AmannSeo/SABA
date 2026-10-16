@@ -43,6 +43,7 @@ CURRENT = threading.local()  # 요청을 처리하는 스레드의 로그인 사
 COST_PER_CALL = 0.0004  # 실제 사용량 기록 평균 (분석·시사점 1건 약 $0.0003~0.0005), 예상 비용 표시용
 # 확인 창과 confirm=yes 가 필요한 동작 (외부 접속·AI 호출·발송·설정 변경)
 CONFIRM_TEXT = {
+    "signature_reset": "직접 넣은 메일 서명을 지우고 기본 서명으로 되돌립니다. 진행할까요?",
     "run_send": "지금 발송: RSS 수집 → AI 분석 (하루 상한 안) → 메일 생성 → TEST 1명 발송을 실행합니다. 진행할까요?",
     "test_now": "즉시 테스트 발송: RSS 수집 → AI 분석 (하루 상한 안) → 메일 생성 → TEST 1명 발송을 지금 실행합니다. 진행할까요?",
     "test_schedule": "정한 시각에 테스트 발송을 1회 예약합니다 (평소 예약 발송 일정은 그대로). 진행할까요?",
@@ -383,7 +384,39 @@ class AdminApp:
             return self.save_api_keywords(form)
         if action == "author_save":
             return self.save_author(form)
+        if action in ("signature_save", "signature_reset"):
+            return self.save_signature(form, reset=action == "signature_reset")
         raise AdminError("알 수 없는 동작입니다.")
+
+    @staticmethod
+    def inline_images(html: str) -> str:
+        """미리보기용: 메일 CID 이미지 (로고·서명) 를 data URI 로 바꾼다."""
+        from saba.mail import LOGO_CID, LOGO_PATH, SIGNATURE_CID, SIGNATURE_IMAGE_PATH
+        for path, cid in ((LOGO_PATH, LOGO_CID), (SIGNATURE_IMAGE_PATH, SIGNATURE_CID)):
+            data = path.read_bytes()
+            kind = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
+            html = html.replace(f"cid:{cid}", f"data:{kind};base64,{base64.b64encode(data).decode()}")
+        return html
+
+    def save_signature(self, form: dict, *, reset: bool = False) -> str:
+        """메일 서명 HTML 저장·기본으로 되돌리기 (2026-10-16 사용자 요청). 값 전체는 이력에 남기지 않고 글자 수만."""
+        from saba.history import append_change
+        from saba.mail import MailFormatError, check_signature
+        path = self.root / "config" / "signature.html"
+        before = f"직접 ({len(path.read_text(encoding='utf-8-sig'))}자)" if path.exists() else "기본 서명"
+        if reset:
+            if not path.exists():
+                return "이미 기본 서명을 쓰고 있습니다."
+            path.unlink()
+            append_change(self.changes_path, {"메일 서명": (before, "기본 서명")}, False)
+            return "기본 서명으로 되돌렸습니다 (다음 메일부터 반영)"
+        try:
+            html = check_signature(_first(form, "signature"))
+        except MailFormatError as error:
+            raise AdminError(f"저장하지 않음 · {error}") from None
+        path.write_text(html + "\n", encoding="utf-8")
+        append_change(self.changes_path, {"메일 서명": (before, f"직접 ({len(html)}자)")}, False)
+        return "메일 서명 저장 완료 (다음 메일부터 반영)"
 
     def save_author(self, form: dict) -> str:
         """메일 작성자 (머리말·인사말·서명) 변경 (2026-10-16 사용자 요청). 변경 내용은 설정 변경 이력에 남는다."""
@@ -1793,7 +1826,7 @@ def settings_page(app: AdminApp) -> str:
             f'<table><tr><th>이름</th><th>상태</th></tr>{secret_rows}</table>{secret_form(app)}</div>'
             f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
             f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
-            + accounts_card(app) + author_card(app) + criteria_card(app) + api_keywords_card(app))
+            + accounts_card(app) + author_card(app) + signature_card(app) + criteria_card(app) + api_keywords_card(app))
 
 
 def author_card(app: AdminApp) -> str:
@@ -1811,6 +1844,29 @@ def author_card(app: AdminApp) -> str:
             f'<input type="hidden" name="back" value="/settings"><table>{rows}</table>'
             f'<div class="row"><button class="btn primary">저장</button><span class="muted">다음 메일부터 반영됩니다. '
             f'변경은 설정 변경 이력에 남습니다.</span></div></form></div>')
+
+
+def signature_card(app: AdminApp) -> str:
+    """메일 서명: HTML 코드를 붙여 넣거나 HTML 파일을 골라 바꾼다. 미리보기는 스크립트 없는 sandbox 로 보여 준다."""
+    from saba.mail import SIGNATURE_PATH, signature_source
+    html, custom = signature_source(app.root / "config" / "signature.html")
+    state = badge("직접 넣은 서명", "b-info") if custom else badge("기본 서명", "b-mute")
+    reset = (f'<form method="post" action="/action/signature_reset" class="inline" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["signature_reset"])}\')">'
+             f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
+             '<button class="btn">기본 서명으로 되돌리기</button></form>') if custom else ""
+    return (f'<div class="card"><h2>메일 서명 {state}<span class="muted">메일 맨 아래 서명입니다. HTML 코드를 붙여 넣거나 HTML 파일을 고르세요.</span></h2>'
+            '<p class="muted">작성자 설정 값을 쓰려면 %%AUTHOR_TITLE%% (이름 직급), %%AUTHOR_NAME%%, %%AUTHOR_TEAM%%, %%AUTHOR_DIVISION%%, '
+            '%%AUTHOR_ENGLISH_NAME%%, %%AUTHOR_MOBILE%%, %%AUTHOR_EMAIL%% 를 넣습니다. 회사 서명 이미지는 cid:saba-signature 로 씁니다. '
+            'script·iframe·form·javascript:·on 이벤트 속성은 저장되지 않습니다. 메일 앱에 따라 일부 스타일은 보이지 않을 수 있습니다.</p>'
+            f'<form method="post" action="/action/signature_save"><input type="hidden" name="token" value="{app.token}">'
+            '<input type="hidden" name="back" value="/settings">'
+            '<div class="row"><input type="file" aria-label="서명 HTML 파일 고르기" accept=".html,.htm,text/html" onchange="var f=this.files[0];if(!f)return;'
+            'var r=new FileReader();r.onload=function(){document.getElementById(\'sigtext\').value=r.result};r.readAsText(f,\'utf-8\')"></div>'
+            f'<textarea name="signature" id="sigtext" aria-label="서명 HTML" rows="10" style="width:100%;font-family:Consolas,monospace">{escape(html)}</textarea>'
+            '<div class="row"><button class="btn primary">저장</button><span class="muted">다음 메일부터 반영됩니다. 변경 사실은 설정 변경 이력에 남습니다.</span></div></form>'
+            f'<div class="row">{reset}</div>'
+            '<h3 style="margin-top:12px">현재 서명 미리보기</h3>'
+            '<iframe title="메일 서명 미리보기" sandbox src="/signature/preview" style="width:100%;height:260px;border:1px solid var(--line);border-radius:8px;background:#fff"></iframe></div>')
 
 
 def api_keywords_card(app: AdminApp) -> str:
@@ -2000,6 +2056,9 @@ def make_handler(app: AdminApp, port: int):
                                             message, active="/logs"))
             if url.path == "/newsletter":  # 예전 주소: 실행 이력·뉴스레터의 뉴스레터 탭 (D-074)
                 return self._send(200, page("실행 이력·뉴스레터", logs_page(app, "mail", None, _first(query, "name") or None, query), message, active="/logs"))
+            if url.path == "/signature/preview":  # 설정 화면 서명 미리보기 (sandbox iframe, 이미지는 data URI)
+                from saba.mail import signature_body
+                return self._send(200, app.inline_images(f"<!DOCTYPE html><html><body>{signature_body(app.root / 'config' / 'signature.html')}</body></html>"))
             if url.path == "/newsletter/view":
                 html = app.newsletter_html(_first(query, "name") or None)
                 return self._send(200, html or "<p>생성된 메일이 없습니다.</p>")

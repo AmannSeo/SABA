@@ -24,13 +24,53 @@ class MailFormatError(ValueError):
     """메일 서명 Template 구조가 변환 전제와 다르다."""
 
 
-def signature_body() -> str:
-    html = SIGNATURE_PATH.read_text(encoding="utf-8")
-    style = re.search(r"<style>.*?</style>", html, re.S)
-    body = re.search(r"<body>(.*)</body>", html, re.S)
-    if style is None or body is None:
-        raise MailFormatError("메일 서명 Template 구조가 예상과 다릅니다.")
-    return style.group(0) + _fill_author(body.group(1))
+# 관리 화면에서 넣은 서명 (2026-10-16 사용자 요청). 없으면 templates/email_signature.html 을 쓴다.
+CUSTOM_SIGNATURE_PATH = ROOT / "config" / "signature.html"
+MAX_SIGNATURE = 100_000
+_UNSAFE_SIGNATURE = re.compile(r"<\s*(script|iframe|object|embed|form)\b|javascript:|\son[a-z]+\s*=", re.I)
+
+
+def check_signature(html: str) -> str:
+    """관리 화면에서 넣은 서명 HTML 검사. 스크립트·이벤트 속성·폼은 받지 않는다 (메일 앱이 지우거나 위험)."""
+    html = html.strip()
+    if not html:
+        raise MailFormatError("서명 HTML 이 비어 있습니다.")
+    if len(html) > MAX_SIGNATURE:
+        raise MailFormatError(f"서명 HTML 은 {MAX_SIGNATURE:,}자 이하여야 합니다.")
+    if _UNSAFE_SIGNATURE.search(html):
+        raise MailFormatError("서명에 script·iframe·form·javascript:·on 이벤트 속성은 쓸 수 없습니다.")
+    return html
+
+
+def _signature_parts(html: str) -> str:
+    """전체 HTML 문서면 <style> 과 <body> 안쪽만, 조각이면 그대로 쓴다."""
+    body = re.search(r"<body[^>]*>(.*)</body>", html, re.S | re.I)
+    if body is None:
+        return html
+    styles = "".join(re.findall(r"<style[^>]*>.*?</style>", html, re.S | re.I))
+    return styles + body.group(1)
+
+
+def signature_source(custom_path: Path = CUSTOM_SIGNATURE_PATH) -> tuple[str, bool]:
+    """(서명 HTML, 직접 넣은 서명인지). 직접 넣은 서명이 깨졌으면 기본 서명으로 보내고 경고를 남긴다."""
+    if custom_path.exists():
+        try:
+            return check_signature(custom_path.read_text(encoding="utf-8-sig")), True
+        except (MailFormatError, OSError, UnicodeDecodeError) as error:
+            import logging
+            logging.warning("직접 넣은 메일 서명을 쓰지 못해 기본 서명으로 보냅니다: %s", error)
+    return SIGNATURE_PATH.read_text(encoding="utf-8"), False
+
+
+def signature_body(custom_path: Path = CUSTOM_SIGNATURE_PATH) -> str:
+    html, custom = signature_source(custom_path)
+    if not custom:
+        style = re.search(r"<style>.*?</style>", html, re.S)
+        body = re.search(r"<body>(.*)</body>", html, re.S)
+        if style is None or body is None:
+            raise MailFormatError("메일 서명 Template 구조가 예상과 다릅니다.")
+        return style.group(0) + _fill_author(body.group(1))
+    return _fill_author(_signature_parts(html))
 
 
 def _fill_author(html: str) -> str:

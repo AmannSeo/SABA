@@ -430,6 +430,23 @@ class AuthorSettingsTests(AdminBase):
         self.assertEqual(author.load_author(self.root / "config" / "author.json")["email"], author.DEFAULT["email"])
 
 
+class SignatureSettingsTests(AdminBase):
+    def test_save_preview_and_reset_signature(self):
+        path = self.root / "config" / "signature.html"
+        self.post("signature_save", confirm=False, signature="<p>%%AUTHOR_TITLE%% 가상 서명</p>", back="/settings")
+        self.assertIn("가상 서명", path.read_text(encoding="utf-8"))
+        self.assertIn("서창현 선임 가상 서명", self.get("/signature/preview"))
+        self.assertIn("직접 넣은 서명", self.get("/settings"))
+        log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
+        self.assertIn("메일 서명", log)
+        self.assertNotIn("가상 서명", log)  # 서명 내용 전체는 이력에 남기지 않는다
+        self.post("signature_save", confirm=False, signature="<script>x()</script>", back="/settings")
+        self.assertIn("가상 서명", path.read_text(encoding="utf-8"))  # 위험한 서명은 저장하지 않음
+        self.post("signature_reset", signature="", back="/settings")
+        self.assertFalse(path.exists())
+        self.assertIn("기본 서명", self.get("/settings"))
+
+
 class ScheduleTests(AdminBase):
     """예약 발송 설정 저장 (D-072)."""
 
