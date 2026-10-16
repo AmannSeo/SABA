@@ -37,7 +37,7 @@ PAGES = 4  # 실행당 최대 페이지 (나라장터 300건 x 4, K-Startup 100�
 
 def load_keywords(path: Path = KEYWORDS_PATH) -> dict[str, list[str]]:
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
     except FileNotFoundError:
         return {k: list(v) for k, v in DEFAULT_KEYWORDS.items()}
     except json.JSONDecodeError:

@@ -97,7 +97,7 @@ class AdminError(Exception):
 
 
 def load_admin_config(path: Path = CONFIG_PATH) -> tuple[str, int]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8-sig"))  # 직접 편집한 설정의 BOM 허용 (PowerShell 5 저장)
     host, port = str(data["host"]), int(data["port"])
     # 사내망 접속은 로그인·IP 제한 구현 후 별도 승인 (D-067, D-070).
     if host not in LOOPBACK:
@@ -109,7 +109,7 @@ def load_admin_config(path: Path = CONFIG_PATH) -> tuple[str, int]:
 
 def login_enabled(path: Path = CONFIG_PATH) -> bool:
     """config/admin.json 의 "login" (작업 5, 사용자 결정 2026-10-14: 지금은 끄고 사내망·부서 PC 이전 때 켬). 값이 없으면 켬."""
-    value = json.loads(path.read_text(encoding="utf-8")).get("login", True)
+    value = json.loads(path.read_text(encoding="utf-8-sig")).get("login", True)
     if not isinstance(value, bool):
         raise AdminError('config/admin.json 의 "login" 은 true 또는 false 여야 합니다.')
     return value
@@ -264,13 +264,13 @@ class AdminApp:
         code, out = self.shell(f"$t=Get-ScheduledTask -TaskName {TASK_NAME} -ErrorAction SilentlyContinue; "
                                "if ($t) { $i=$t|Get-ScheduledTaskInfo; "
                                "\"$($t.State)|$($i.LastRunTime.ToString('yyyy-MM-dd HH:mm'))|$($i.LastTaskResult)|"
-                               "$($i.NextRunTime.ToString('yyyy-MM-dd HH:mm'))\" } else { 'NotRegistered' }")
+                               "$($i.NextRunTime.ToString('yyyy-MM-dd HH:mm'))|$($t.Principal.LogonType)\" } else { 'NotRegistered' }")
         if code != 0 or not out.strip():
             return {"state": "확인 실패"}
         if out.strip() == "NotRegistered":
             return {"state": "등록 안 됨"}
-        state, last, result, next_run = (out.strip().splitlines()[-1].split("|") + ["", "", "", ""])[:4]
-        return {"state": state, "last": last, "result": result, "next": next_run}
+        state, last, result, next_run, logon = (out.strip().splitlines()[-1].split("|") + ["", "", "", "", ""])[:5]
+        return {"state": state, "last": last, "result": result, "next": next_run, "logon": logon}
 
     def secrets_present(self) -> dict[str, bool]:
         return {name: bool(os.environ.get(name, "").strip()) for name in SECRET_NAMES}
@@ -697,11 +697,17 @@ class AdminApp:
         changes = {key: (before[key], after[key]) for key in after if before[key] != after[key]}
         if not changes:
             return "변경 사항이 없습니다."
+        reregister = bool(SCHEDULE_FIELDS & changes.keys())
+        task = self.task() if reregister else {}
+        if task.get("logon") in ("Password", "S4U"):
+            # 무인 실행 (로그인 없이) 예약은 Windows 비밀번호 입력 창이 있어야 다시 등록된다. 화면에서 재등록하면
+            # 일반 (로그인 필요) 예약으로 바뀌어 자동 실행이 멈추므로 거부한다 (3단계 부서 PC, 2026-10-16).
+            raise AdminError("저장하지 않음 · 무인 실행으로 등록된 예약은 화면에서 일정을 바꾸지 않습니다. "
+                             "config\\daily.json 의 일정을 고친 뒤 scripts\\saba.ps1 register -Unattended -Apply 로 다시 등록하세요.")
         original = self.config_path.read_bytes()
         save_config(new, self.config_path)
-        reregister = bool(SCHEDULE_FIELDS & changes.keys())
         if reregister:
-            was_disabled = self.task().get("state") == "Disabled"
+            was_disabled = task.get("state") == "Disabled"
             code, _ = self.shell(register_command(new))
             if code == 0 and was_disabled:  # 재등록은 켜진 상태로 만들므로 꺼져 있었으면 다시 끈다
                 from saba.daily import TASK_NAME

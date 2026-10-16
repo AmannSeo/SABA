@@ -122,7 +122,7 @@ def source_row(entry: SourceEntry) -> dict:
 
 
 def load_source_entries(path: Path = SOURCES_PATH) -> list[SourceEntry]:
-    return parse_sources(json.loads(path.read_text(encoding="utf-8")))
+    return parse_sources(json.loads(path.read_text(encoding="utf-8-sig")))
 
 
 def save_source_entries(entries: list[SourceEntry], path: Path = SOURCES_PATH) -> None:

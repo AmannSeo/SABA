@@ -95,7 +95,7 @@ def parse_config(data: dict) -> DailyConfig:
 
 
 def load_config(path: Path = CONFIG_PATH) -> DailyConfig:
-    return parse_config(json.loads(path.read_text(encoding="utf-8")))
+    return parse_config(json.loads(path.read_text(encoding="utf-8-sig")))
 
 
 def config_dict(config: DailyConfig) -> dict:

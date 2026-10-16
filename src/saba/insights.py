@@ -45,7 +45,7 @@ def department_rows(scopes: dict[str, str], examples: dict[str, str]) -> list[di
 
 
 def load_departments(path: Path = DEPARTMENTS_PATH) -> tuple[dict[str, str], dict[str, str]]:
-    return parse_departments(json.loads(path.read_text(encoding="utf-8")))
+    return parse_departments(json.loads(path.read_text(encoding="utf-8-sig")))
 
 
 # 실행마다 설정 파일에서 읽는다. 기준이 바뀌면 지시문이 바뀌어 insight_hash 도 바뀐다 (시사점 다시 생성).

@@ -92,7 +92,7 @@ switch ($Command) {
         Write-Output "설치 완료. 바탕화면에 관리 페이지 시작·종료 바로가기를 만들었습니다."
         Write-Output "환경 변수:"
         Show-Secrets
-        Write-Output "다른 PC 시험 실행에서는 예약 발송을 등록하지 마세요. 설치·이전 절차는 docs\DEPLOY.md 를 확인하세요."
+        Write-Output "install: 예약을 등록하지 않습니다. 새 PC 무인 등록은 docs\DEPLOY.md 의 확인 절차를 마친 뒤 register -Unattended -Apply 로 수행하세요."
     }
     "start" { Invoke-Saba @("-m", "saba.admin") }
     "stop" { Invoke-Saba @("-m", "saba.admin", "--stop") }

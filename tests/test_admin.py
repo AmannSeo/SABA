@@ -428,6 +428,15 @@ class ScheduleTests(AdminBase):
     def config(self):
         return load_config(self.root / "config" / "daily.json")
 
+    def test_unattended_task_schedule_change_is_refused(self):
+        self.app.shell = FakeShell()
+        self.app.shell.state = "Ready|x|0|x|Password"  # 무인 실행 (로그인 없이) 으로 등록된 예약
+        before = (self.root / "config" / "daily.json").read_bytes()
+        self.post("save_schedule", **self.form)
+        self.assertEqual((self.root / "config" / "daily.json").read_bytes(), before)  # 저장·재등록하지 않음
+        self.assertFalse(any("Register-ScheduledTask" in c for c in self.app.shell.calls))
+        self.assertIn("register -Unattended -Apply", self.get("/schedule"))
+
     def test_save_needs_confirm(self):
         self.assertEqual(self.post("save_schedule", confirm=False, **self.form)[0], 400)
         self.assertEqual(self.config().mode, "weekly")

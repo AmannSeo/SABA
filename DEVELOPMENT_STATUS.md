@@ -4,6 +4,29 @@
 SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적한다. 작업 시작 전 `PROJECT_RULES.md`, `harness/` 아래의 모든 규칙 파일, 현재 작업 경로에 적용되는 `AGENTS.md`를 읽고 적용한다.
 
 ## 현재 확인된 상태
+### 로드맵 3단계 실행 파일 묶음 준비 (2026-10-16, Codex)
+- 시작 HEAD 6b65643, main. 기존 DEVELOPMENT_STATUS.md의 09:42 실행 기록 변경을 보존했다. 사용자 결정: 파일럿 전에 로드맵 3단계를 지금 시작하고 새 PC는 Python 없는 실행 파일 묶음·로그인 없이 실행·놓친 실행 보완을 사용한다. Secret 6개는 새 PC 관리 페이지에서 재입력, DPAPI·이전 암호는 하지 않는다. 기존 PC 예약은 새 PC 확인 후 사용자가 해제한다. DECISIONS 기록은 승인 대기이므로 이번에 수정하지 않았다.
+- scripts/build_exe.ps1은 기존 PyInstaller 존재를 검사하고 pip·다운로드 없이 빌드한다. _internal 배치를 고정해 각 모듈의 parents[2]가 실행 파일 옆을 가리키게 한다. 기존 배포 폴더에 data·logs·output·backups가 있으면 재빌드를 거부한다. templates·sign, 승인된 config JSON 5개, 설치 스크립트·DEPLOY·ADMIN 문서만 별도로 복사한다.
+- scripts/saba_entry.py는 실행 파일의 관리 페이지·일일 운영 실행에서 같은 Windows 계정의 HKCU 사용자 환경 변수 6개를 새로 읽어 프로세스에 반영한다. 값은 출력하지 않는다. 도움말·중지·등록 명령 출력·백업/복원에서는 읽지 않는다. 테스트는 가짜 winreg를 사용했다. 다른 PC의 실제 로그아웃 상태 인증 성공은 미확인이다.
+- ROOT 계산은 현 PyInstaller 배치에서 이미 맞아 업무 모듈을 추가 수정하지 않았다. 가상 frozen daily·deploy·admin ROOT와 하위 실행 인자를 검사했다. saba.ps1 실행 파일 install 분기는 Python·레지스트리·스케줄러·실제 바탕화면 쓰기 없이 COM/환경 조회를 Mock한 PowerShell 실행으로 검증했다 (임시 폴더 4개·바로가기 저장 요청 2회).
+- 실제 오프라인 빌드 1회 성공: PyInstaller 6.22.3, Python 3.12.14, dist/SABA, 95개 파일·39,793,644바이트 (약 38.0MiB), 약 220초. 루트는 SABA.exe·_internal·templates·sign·config·scripts·docs다. 운영 data·logs·output·backups, 계정 파일·DB·환경 변수 파일은 포함하지 않았다. templates·sign 복사본 해시와 두 운영 문서의 원본 일치를 확인했다.
+- 실제 실행 파일 오프라인 확인: 사용법 출력은 예상 종료 코드 2, daily --register·--register --unattended는 각각 0. 임시 사본의 예약 시각만 23:17로 바꾸고 다른 cwd에서 실행해 SABA.exe·WorkingDirectory·설정 경로를 확인했다. Get-Credential·StartWhenAvailable·WakeToRun·배터리 조건 해제를 확인했고 --apply는 실행하지 않았다. 임시 사본에서 deploy --backup·--restore 각각 0, 가상 데이터 복원·복원 전 폴더 보존·admin.pid 제외를 확인했다. 실행 파일 모드 saba.ps1 register -Unattended도 출력만 성공했다. admin --help는 0이며 실제 서버·브라우저는 실행하지 않았다.
+- docs/DEPLOY.md를 부서 PC 이전 절차로 갱신했다. 백업·묶음 복사·install·restore·login 확인·Secret 입력·설정 점검·비용 승인 후 발송 없는 실행·무인 등록·첫 자동 확인·기존 예약 해제·등록 IP·되돌리기를 포함한다. 첫 새 PC 자동 확인은 발송을 끄도록 해 기존 PC와 중복 발송을 방지한다. docs/ADMIN.md에도 새 결정과 절차를 안내했다.
+- 검증: 직접 배포 테스트 17개 통과. 최종 전체 unittest discover 1회 548개 중 547개 통과·1개 Skip, 실패·오류 0개 (103.406초). 실제 OpenAI 조건 비활성화, 레지스트리·외부 DNS/접속 차단, Mock·임시 데이터·상속 ACL tempfile 런타임 어댑터 사용. 시작 기준 보호·운영·설정 78개 SHA-256 동일·추가/삭제 없음. GROUP_SEND_APPROVED=False, diff --check 통과, 변경분 키 패턴 발견 0건·언어 위반 0건·U+3002 없음. 커밋·브랜치·외부 호출·실제 발송·이 PC 관리 페이지/스케줄러 변경은 하지 않았다.
+- 종료 A: 이번 오프라인 빌드·이전 준비 범위 완료. 로드맵 3단계 전체와 파일럿 완료가 아니다. 새 PC 설치·회사 실행 정책·실제 브라우저·로그아웃 무인 실행·HKCU 인증·다음 평일 자동 실행·메일 도착은 미검증이다. Claude Code는 현재 diff·보호 해시·테스트와 묶음·오프라인 근거를 교차 검증하고 후속 프롬프트를 작성한다. 사용자 승인 없이 새 PC 작업이나 기존 PC 예약 해제를 실행하지 않는다.
+
+### 실행 파일 묶음 Claude Code 교차 검증 (2026-10-16)
+- Codex 결과 검토: build_exe.ps1 (다운로드 없이 빌드, 운영 폴더 있으면 중단, config 5개 파일만 복사), saba_entry.py (무인 실행도 HKCU 최신 Secret 읽기), DEPLOY.md 이전 절차. dist\SABA 에 data·계정·Secret·메일·로그 없음 확인, 등록 명령 (무인) 에 Get-Credential·StartWhenAvailable·WakeToRun 포함.
+- Claude Code 가 실제 실행 파일을 임시 사본·포트 8799 로 실행해 찾은 결함 2건 수정: (1) PYTHONIOENCODING 이 "utf-8:surrogateescape" 처럼 오류처리 포함 형식이면 SABA.exe 가 시작 즉시 종료 (saba_entry.py 에서 인코딩·오류처리 분리, 모르는 값은 무시). (2) PowerShell 5 로 저장한 BOM 붙은 설정 파일을 읽지 못함 (admin.json·daily.json·departments.json·public_api.json·sources.json 읽기를 utf-8-sig 로). 테스트 추가, 전체 unittest 550개 중 549개 통과·1개 Skip, 재빌드 후 같은 조건에서 관리 페이지 로그인 화면 200, data 폴더가 SABA.exe 옆에 생성됨 확인. 새 PC 실제 설치·무인 실행·수집·AI·메일은 미확인.
+
+- 추가 결함 수정 (Claude Code): 무인 실행 예약 (LogonType Password·S4U) 에서 관리 페이지 일정 저장이 일반 예약으로 재등록해 무인 실행을 끄던 문제. 일정 변경을 거부하고 register -Unattended -Apply 안내 (admin.task 에 로그온 방식 추가, 테스트 추가, DEPLOY.md 안내). 전체 unittest 551개 중 550개 통과·1개 Skip.
+
+- Codex 교차 검증 대기: Claude Code 수정 3건 (실행 파일 인코딩, 설정 BOM, 무인 예약 일정 변경 거부) 검증 요청 중 Codex 사용량 한도 (2026-10-16 13:51 해제 예정). COLLABORATION.md 3절에 따라 Claude Code 가 대신 점검: 설정 저장은 BOM 없이 utf-8, 거부는 저장 전이라 원복 불필요, task() 추가 필드는 대시보드에 영향 없음, 다른 재등록 경로 (테스트 예약 등록·해제, 켜기·끄기) 는 무인 예약의 로그온 방식을 바꾸지 않음. 한도 해제 후 Codex 재검증 필요.
+
+### D-083 실제 확인 (2026-10-16 09:42, 사용자 요청 수동 실행, TEST 1명 발송)
+- output/26/10/daily_20261016_0942.eml, 표시 23건 모두 검토 필요 분석 결과 있음, 빈 칸 문구 0건. 신규 분석 27건 모두 valid (응답 오류 0, 원문 제목 대체·중요도 비표시 0), 시사점 23건 (재사용 14·신규 9). 게재 제외: 대상 밖 21·상한 5 (같은 날 08:23 실행 뒤라 하루 상한 도달)·입력 부족 1. 고용노동부 10건 본문 기반 분석, 새 출처 SonarQube 2·k6 1 분석. Source 수집 실패 0.
+- 사용자 지시 (같은 날): 다른 PC 에서 자동 실행하도록 로드맵 3단계 (패키지·PC 이전) 를 지금 시작. 결정: 실행 파일 묶음 (PyInstaller), 로그인 없이 실행 + 놓친 실행 보완, Secret 은 새 PC 관리 페이지에서 재입력 (D-082), 이 PC 예약은 새 PC 확인 뒤 해제. D-070 의 3단계 순서 변경 (파일럿 전에 PC 이전) 은 DECISIONS 기록 승인 대기.
+
 ### D-083 출처·게재 기준 강화 (2026-10-16)
 - 시작 HEAD 3c04eac·작업 트리 깨끗함. 작업 중 다른 실행 주체가 e981a2a로 커밋해 구현·설정·관련 테스트가 포함됐다. Codex는 커밋·브랜치 명령을 실행하지 않았으며 이 커밋을 보존했다. config/sources.json은 현재 Git 추적 파일로 확인돼 사용자 설명의 Git 제외 상태와 다르다. 추적 상태는 바꾸지 않았다.
 - nipa-business·kocca-notice·kiat-business·naver-searchadvisor·selenium-blog·smtech-notice를 삭제 없이 중지했다. 재개 조건은 본문 발췌 확보다. msit-press는 robots 허용·상세 HTML 200을 확인했으나 사용할 본문 발췌를 검증하지 못해 중지했다. 총 47곳·활성 40곳이다. moel-press는 robots 허용·상세 HTML 200과 b_content news_content 본문을 확인했다. 승인된 본문 앞 1200자·2MiB 상한·허용 URL·robots·호스트 간격·캐시·첨부 제외·리다이렉트 거부를 구현했다. 운영 캐시는 이번 검증에서 쓰지 않았다.
