@@ -376,19 +376,6 @@
     "note": "D-083: 목록에 제목만 있어 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
   },
   {
-    "id": "naver-searchadvisor",
-    "name": "네이버 서치어드바이저 웹마스터 공지",
-    "url": "https://searchadvisor.naver.com/",
-    "region": "국내",
-    "kind": "기업·벤더",
-    "topic": "사업",
-    "method": "crawl:searchadvisor",
-    "kst": true,
-    "date_only": true,
-    "enabled": false,
-    "note": "D-083: 목록에 제목만 있어 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
-  },
-  {
     "id": "kiat-business",
     "name": "KIAT 홈페이지 사업공고",
     "url": "https://www.kiat.or.kr/front/user/main.do",
