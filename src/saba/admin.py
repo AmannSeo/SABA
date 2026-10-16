@@ -2050,7 +2050,7 @@ SECRET_JS = """<script>
     var eye=view.innerHTML,eyeOff=%s,copyIcon=copy.innerHTML;
     function hide(){code.textContent=code.dataset.mask;view.innerHTML=eye;view.title="값 보기";box.classList.remove("shown");clearTimeout(timer);}
     view.onclick=function(){if(box.classList.contains("shown"))return hide();
-      get(box,"view").then(function(v){code.textContent=v;code.title=v;view.innerHTML=eyeOff;view.title="다시 가리기";box.classList.add("shown");
+      get(box,"view").then(function(v){code.textContent=v;view.innerHTML=eyeOff;view.title="다시 가리기";box.classList.add("shown");
         timer=setTimeout(hide,%d);}).catch(function(){code.textContent="가져오지 못함 (다시 로그인)";});};
     copy.onclick=function(){get(box,"copy").then(function(v){return navigator.clipboard.writeText(v);})
       .then(function(){copy.textContent="✓";setTimeout(function(){copy.innerHTML=copyIcon;},1200);})

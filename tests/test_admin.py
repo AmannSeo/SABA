@@ -145,6 +145,36 @@ class LoginTests(AdminBase):
         self.post("secret_delete", name="NOT_A_SECRET", back="/settings")
         self.assertEqual(len(self.env_writes), 1)
 
+    def test_secret_script_hides_value_everywhere_in_node(self):
+        """보기 → 수동 가리기, 보기 → 1분 만료 뒤 값이 본문·속성 어디에도 남지 않는다 (Codex 3차 확인 2026-10-16)."""
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node 없음")
+        js = admin.SECRET_JS % (json.dumps("t"), json.dumps(admin.ICON_EYE_OFF), 60000)
+        js = js.removeprefix("<script>").removesuffix("</script>")
+        fake = r"""
+var timers=[];global.setTimeout=function(f,ms){timers.push(f);return timers.length;};global.clearTimeout=function(){};
+function el(attrs){var e={dataset:attrs||{},attrs:{},textContent:"",innerHTML:"EYE",title:"",classList:{s:{},add:function(c){this.s[c]=1},
+ remove:function(c){delete this.s[c]},contains:function(c){return !!this.s[c]}},setAttribute:function(k,v){this.attrs[k]=v}};return e;}
+var code=el({mask:"MASK"});code.textContent="MASK";var view=el(),copy=el(),box=el({name:"OPENAI_API_KEY"});
+box.querySelector=function(q){return q==="code"?code:(q.indexOf("view")>0?view:copy);};
+global.document={querySelectorAll:function(){return [box];}};
+global.URLSearchParams=function(o){return o;};
+global.fetch=function(){return Promise.resolve({ok:true,text:function(){return Promise.resolve("FAKE_SECRET_ONLY");}});};
+function dump(){return JSON.stringify([code,view,box]);}
+"""
+        check = r"""
+(async function(){var out=[];
+ view.onclick();await new Promise(function(r){setImmediate(r)});out.push(dump().indexOf("FAKE_SECRET_ONLY")>=0);
+ view.onclick();out.push(dump().indexOf("FAKE_SECRET_ONLY")>=0);
+ view.onclick();await new Promise(function(r){setImmediate(r)});timers[timers.length-1]();out.push(dump().indexOf("FAKE_SECRET_ONLY")>=0);
+ console.log(JSON.stringify(out));})();
+"""
+        out = subprocess.run([node, "-e", fake + js + check], capture_output=True, text=True, encoding="utf-8", timeout=30, check=True).stdout
+        self.assertEqual(json.loads(out), [True, False, False])  # 보기 중엔 있고, 수동 가리기·만료 뒤엔 없다
+
     def test_secret_value_blocked_for_viewer_login_off_and_no_session(self):
         self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789"}
         self.app.users.add("viewer1", "viewer", "virtual-pass-1")
