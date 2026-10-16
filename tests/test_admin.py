@@ -499,6 +499,7 @@ class CriteriaChipTests(AdminBase):
         self.assertIn("function join(list)", html)
         self.assertIn('class="chips" data-tone="tone-blue" name="g2b"', html)  # 공공 API 키워드도 태그
         self.assertEqual(html.count("function split(text)"), 1)  # 스크립트는 한 번만
+        self.assertIn("function group(text)", html)  # 분야 (세부, 세부) 는 묶음 제목 + 세부 태그 (2026-10-16)
 
 
 class SignatureSettingsTests(AdminBase):
@@ -512,6 +513,9 @@ class SignatureSettingsTests(AdminBase):
         csp = conn.getresponse().getheader("Content-Security-Policy") or ""
         self.assertIn("sandbox", csp)  # 직접 열어도 스크립트가 돌지 않는다
         self.assertIn("default-src 'none'", csp)
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", "/newsletter/view", headers={"Host": f"127.0.0.1:{self.port}", "Cookie": self.cookie})
+        self.assertIn("sandbox", conn.getresponse().getheader("Content-Security-Policy") or "")  # 메일 보기도 같은 보호
         self.assertIn("직접 넣은 서명", self.get("/settings"))
         log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
         self.assertIn("메일 서명", log)

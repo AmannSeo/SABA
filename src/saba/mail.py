@@ -28,7 +28,7 @@ class MailFormatError(ValueError):
 CUSTOM_SIGNATURE_PATH = ROOT / "config" / "signature.html"
 MAX_SIGNATURE = 100_000
 _UNSAFE_SIGNATURE = re.compile(r"<\s*/?\s*(script|iframe|frame|object|embed|form|svg|math|base|meta|link|applet)\b"
-                               r"|[\s/\"'`]on[a-z]+\s*=|(java|vb)script:|data:text/html|expression\s*\(", re.I)
+                               r"|[\s/\"'`]on[a-z]+\s*=|(java|vb)script:|data:text/html|expression\s*\(|url\s*\([^)]*\\", re.I)  # 끝: CSS 이스케이프 주소
 
 
 def check_signature(html: str) -> str:
@@ -81,10 +81,20 @@ def signature_body(custom_path: Path = CUSTOM_SIGNATURE_PATH) -> str:
 
 
 def _fill_author(html: str) -> str:
-    """서명의 작성자 자리 (%%AUTHOR_...%%) 를 config/author.json 값으로 채운다. 값은 HTML 이스케이프."""
+    """서명의 작성자 자리 (%%AUTHOR_...%%) 를 config/author.json 값으로 채운다. 값은 HTML 이스케이프.
+    채운 결과를 다시 검사한다 (href="%%AUTHOR_NAME%%" 에 이름 javascript: 등, Codex 재검증 2026-10-16).
+    통과하지 못하면 기본 작성자로 채우고 경고를 남긴다."""
+    from saba.author import DEFAULT, current_author
+    try:
+        return check_signature(_fill(html, current_author()))
+    except MailFormatError:
+        import logging
+        logging.warning("작성자 값을 넣은 서명이 안전 검사를 통과하지 못해 기본 작성자로 채웁니다.")
+        return check_signature(_fill(html, DEFAULT))
+
+
+def _fill(html: str, author: dict) -> str:
     from html import escape
-    from saba.author import current_author
-    author = current_author()
     values = {**author, "title": " ".join(filter(None, (author["name"], author["position"])))}
     for key, value in values.items():
         html = html.replace(f"%%AUTHOR_{key.upper()}%%", escape(value, quote=True))

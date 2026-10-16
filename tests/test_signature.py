@@ -26,6 +26,16 @@ class SignatureTests(unittest.TestCase):
                              encoding="utf-8")
         self.assertEqual(mail.signature_body(self.path), "<style>.n{color:red}</style><b>서창현</b>")
 
+    def test_author_value_cannot_make_unsafe_signature(self):
+        from unittest.mock import patch
+        from saba import author
+        self.path.write_text('<a href="%%AUTHOR_NAME%%">%%AUTHOR_TITLE%%</a>', encoding="utf-8")
+        bad = {**author.DEFAULT, "name": "javascript:x()"}
+        with patch.object(author, "current_author", return_value=bad), self.assertLogs(level="WARNING"):
+            body = mail.signature_body(self.path)
+        self.assertNotIn("javascript", body)
+        self.assertIn("서창현", body)  # 기본 작성자로 채움 (Codex 재검증 2026-10-16)
+
     def test_default_signature_passes_check(self):
         mail.check_signature(mail.signature_body(self.path))  # 강화한 검사가 기본 서명을 막지 않는다
         original = Path(mail.__file__).resolve().parents[2] / "templates" / "email_signature.html"
@@ -40,7 +50,8 @@ class SignatureTests(unittest.TestCase):
                     '<a href="&#106;avascript:x()">a</a>', '<a href="java\tscript:x()">a</a>', '<a href="java&#x09;script:x()">a</a>',
                     '<img src=x/onerror=x()>', '<img src=x "onerror=x()">', '<svg onload=x()>', '<svg><a href=x>s</a></svg>',
                     '<base href="https://example.com/">', '<meta http-equiv="refresh" content="0;url=x">',
-                    '<link rel=stylesheet href=x>', '<a href="data:text/html,x">a</a>', '<a href="vbscript:x">a</a>'):
+                    '<link rel=stylesheet href=x>', '<a href="data:text/html,x">a</a>', '<a href="vbscript:x">a</a>',
+                    '<p style="background:url(\\6a avascript:x())">a</p>'):  # CSS 이스케이프 주소 (Codex 재검증)
             with self.subTest(bad=bad[:20]), self.assertRaises(mail.MailFormatError):
                 mail.check_signature(bad)
         self.path.write_text("<script>x()</script>", encoding="utf-8")  # 직접 고쳐 깨진 파일

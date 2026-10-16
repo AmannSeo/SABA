@@ -896,6 +896,8 @@ td .btn{margin:2px 0}
 .tone-blue .chip{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.tone-purple .chip{background:#f5f3ff;border-color:#ddd6fe;color:#6d28d9}
 .tone-red .chip{background:#fef2f2;border-color:#fecaca;color:#b91c1c}.tone-green .chip{background:#f0fdf4;border-color:#bbf7d0;color:#15803d}
 .chip.chip-ex{background:#f3f4f6;border-color:#d1d5db;color:#4b5563}
+.chip-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;padding:6px 8px;border:1px dashed var(--line);border-radius:10px}
+.chip-title{font-weight:700;font-size:13px;margin-right:2px}.chip-group .chip-input{min-width:110px;font-size:13px}
 .chip-input{flex:1;min-width:140px;border:0;outline:0;padding:4px;font:inherit}.chip-count{display:block;text-align:right;font-size:12px;color:var(--muted)}.chip-count.over{color:var(--bad)}
 .btn.icon{min-height:28px;padding:2px 8px;font-size:13px;line-height:1}
 details.inline{display:inline-block;vertical-align:middle}details.inline summary{list-style:none;display:inline-flex}details.inline summary::-webkit-details-marker{display:none}
@@ -2034,8 +2036,13 @@ def criteria_card(app: AdminApp) -> str:
             f'<form method="post" action="/action/criteria_save" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["criteria_save"])}\')">'
             f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
             f'<input type="hidden" name="confirm" value="yes">'
-            f'<table><tr><th>부서</th><th>담당 업무 (200자 이내)</th><th>판단 예시 (300자 이내)</th></tr>{rows}</table>'
-            f'<p class="muted">항목은 쉼표·문장 단위 태그입니다 (괄호 안 쉼표는 한 태그). \"…는 제외\" 로 끝나는 회색 태그는 제외 조건입니다. × 로 지우고, 입력 후 Enter 로 추가합니다. 빈칸에서 Backspace 는 마지막 태그를 지웁니다.</p>'
+            '<div class="note" style="margin:8px 0 12px;line-height:1.7">'
+            '<b>담당 업무</b> = 이 부서가 <b>하는 일</b> (넓은 분야). 예: "사업 지원 (정부지원사업·R&amp;D 과제, 공공조달)" → 이 분야와 이어지는 기사면 이 부서 후보가 됩니다.<br>'
+            '<b>판단 예시</b> = 이 부서에 <b>연결해야 하는 기사의 구체적인 모양</b>과 <b>연결하면 안 되는 기사</b> (회색 "…는 제외"). '
+            '예: "나라장터 공공조달 발주" 기사는 연결, "사업 지원 맥락 없는 일반 AI 기술 뉴스는 제외" 는 연결하지 않음.<br>'
+            'AI 에게는 부서마다 "부서: 담당 업무 (예: 판단 예시)" 한 줄로 함께 전달됩니다. 담당 업무가 넓은 범위, 판단 예시가 경계선을 정합니다.</div>'
+            f'<table><tr><th>부서</th><th>담당 업무 (200자 이내) · 하는 일</th><th>판단 예시 (300자 이내) · 연결할 기사와 제외할 기사</th></tr>{rows}</table>'
+            f'<p class="muted">항목은 쉼표·문장 단위 태그입니다. \"분야 (세부, 세부)\" 처럼 괄호 안이 쉼표로 나뉜 항목은 점선 상자에 분야 제목과 세부 태그로 보이고, 상자 안 입력칸에서 세부 항목을 더하며 상자 오른쪽 × 는 분야 전체를 지웁니다. \"…는 제외\" 로 끝나는 회색 태그는 제외 조건입니다. × 로 지우고, 입력 후 Enter 로 추가합니다. 빈칸에서 Backspace 는 마지막 태그를 지웁니다.</p>'
             f'<div class="row"><button class="btn primary">저장</button>'
             f'<span class="muted">저장하면 다음 실행부터 새 기준으로 시사점을 다시 만듭니다 (하루 AI 상한 안). 변경은 설정 변경 이력에 남습니다.</span></div>'
             f'</form></div>')
@@ -2049,6 +2056,10 @@ CHIP_JS = r"""<script>
     var sentence=c==="."&&depth===0&&(text[i+1]===" "||i===text.length-1);
     if((c===","||sentence)&&depth===0){if(buf.trim())out.push(buf.trim());buf="";}else buf+=c;}
     if(buf.trim())out.push(buf.trim());return out;}
+  // "분야 (세부, 세부)" 처럼 괄호 안이 쉼표로 2개 이상이면 묶음 제목 + 세부 태그로 보인다. 아니면 한 태그.
+  function group(text){var m=/^([^()（）]+?)\s*[(（](.*)[)）]$/.exec(text);if(!m)return null;
+    for(var i=0,d=0;i<m[2].length;i++){var c=m[2][i];if(c==="("||c==="（")d++;if(c===")"||c==="）")d--;if(d<0)return null;}
+    var subs=split(m[2]);return subs.length>1&&m[2]===subs.join(", ")?{title:m[1],subs:subs}:null;}
   document.querySelectorAll("textarea.chips").forEach(function(area){
     if(area.dataset.chipped)return;area.dataset.chipped="1";
     var box=document.createElement("div");box.className="chip-box "+(area.dataset.tone||"");
@@ -2059,13 +2070,23 @@ CHIP_JS = r"""<script>
     function items(){return split(area.value);}
     function join(list){return list.reduce(function(out,t,i){return i?out+(/제외$/.test(t)?". ":", ")+t:t;},"");}
     function save(list){area.value=join(list);render();}
-    function render(){box.querySelectorAll(".chip").forEach(function(c){c.remove();});
-      items().forEach(function(text,i){var chip=document.createElement("span");chip.className="chip";
-        if(/제외$/.test(text))chip.className+=" chip-ex";
-        var label=document.createElement("span");label.textContent=text;chip.appendChild(label);
-        var x=document.createElement("button");x.type="button";x.className="chip-x";x.textContent="×";
-        x.setAttribute("aria-label",text+" 지우기");
-        x.onclick=function(){var list=items();list.splice(i,1);save(list);};chip.appendChild(x);box.insertBefore(chip,input);});
+    function chip(text,remove){var c=document.createElement("span");c.className="chip"+(/제외$/.test(text)?" chip-ex":"");
+      var label=document.createElement("span");label.textContent=text;c.appendChild(label);
+      var x=document.createElement("button");x.type="button";x.className="chip-x";x.textContent="×";
+      x.setAttribute("aria-label",text+" 지우기");x.onclick=remove;c.appendChild(x);return c;}
+    function render(){box.querySelectorAll(".chip,.chip-group").forEach(function(c){c.remove();});
+      items().forEach(function(text,i){var g=group(text);
+        if(!g){box.insertBefore(chip(text,function(){var list=items();list.splice(i,1);save(list);}),input);return;}
+        var wrap=document.createElement("div");wrap.className="chip-group";
+        var title=document.createElement("span");title.className="chip-title";title.textContent=g.title;wrap.appendChild(title);
+        function put(subs){var list=items();list[i]=subs.length?g.title+" ("+subs.join(", ")+")":g.title;save(list);}
+        g.subs.forEach(function(sub,j){wrap.appendChild(chip(sub,function(){var subs=g.subs.slice();subs.splice(j,1);put(subs);}));});
+        var add=document.createElement("input");add.className="chip-input";add.placeholder=g.title+" 세부 항목 추가";
+        add.setAttribute("aria-label",g.title+" 세부 항목 추가");
+        add.addEventListener("keydown",function(e){if(e.key==="Enter"&&add.value.trim()){e.preventDefault();put(g.subs.concat([add.value.trim()]));}});
+        wrap.appendChild(add);var all=document.createElement("button");all.type="button";all.className="chip-x";all.textContent="×";
+        all.setAttribute("aria-label",g.title+" 분야 전체 지우기");all.title="분야 전체 지우기";
+        all.onclick=function(){var list=items();list.splice(i,1);save(list);};wrap.appendChild(all);box.insertBefore(wrap,input);});
       count.textContent=max?area.value.length+" / "+max+"자":items().length+"개";count.classList.toggle("over",!!max&&area.value.length>max);}
     input.addEventListener("keydown",function(e){
       if((e.key==="Enter"||e.key===",")&&input.value.trim()){e.preventDefault();var next=items().concat([input.value.trim()]);
@@ -2185,7 +2206,10 @@ def make_handler(app: AdminApp, port: int):
                                   headers={"Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"})
             if url.path == "/newsletter/view":
                 html = app.newsletter_html(_first(query, "name") or None)
-                return self._send(200, html or "<p>생성된 메일이 없습니다.</p>")
+                # 메일 HTML 을 직접 열어도 스크립트가 돌지 않게 한다. 기사 링크는 새 창으로 연다 (Codex 재검증 2026-10-16).
+                return self._send(200, html or "<p>생성된 메일이 없습니다.</p>", headers={
+                    "Content-Security-Policy": "sandbox allow-popups allow-popups-to-escape-sandbox; default-src 'none'; "
+                                               "img-src data: https:; style-src 'unsafe-inline'"})
             if url.path == "/articles":
                 return self._send(200, page("기사·분석", articles_page(app, query), message, active="/articles"))
             if url.path == "/settings":
