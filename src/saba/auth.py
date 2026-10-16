@@ -172,6 +172,19 @@ class Sessions:
 SECRET_VALUE = re.compile(r"[\x21-\x7e]{1,500}")  # 공백·줄바꿈·제어 문자 없는 1~500자
 
 
+def read_user_env(name: str) -> str:
+    """Windows 사용자 환경 변수 (HKCU\\Environment) 의 최신 값. 없거나 읽지 못하면 이 프로세스 값."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, name)
+            if isinstance(value, str):
+                return value
+    except (ImportError, OSError):
+        pass
+    return os.environ.get(name, "")
+
+
 def set_user_env(name: str, value: str) -> None:
     """Windows 사용자 환경 변수에 저장하고 이 프로세스에도 바로 반영한다. 다른 열린 프로그램은 다시 시작해야 읽는다."""
     import winreg

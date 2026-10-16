@@ -61,10 +61,12 @@ class AdminBase(unittest.TestCase):
         (self.root / "config" / "sources.json").write_text(json.dumps(six, ensure_ascii=False), encoding="utf-8")
         self.shell, self.commands, self.launched, self.fetched = FakeShell(), [], [], []
         self.env_writes = []  # 실제 레지스트리에 쓰지 않는다 (작업 5)
+        self.env_values = {}  # 실제 레지스트리를 읽지 않는다 (D-084 값 보기)
         self.app = AdminApp(root=self.root, shell=self.shell, launch=self.launched.append,
                             command=lambda args: (self.commands.append(args) or (0, "ok")),
                             fetch=lambda source: (self.fetched.append(source.feed_url) or RSS),
-                            env_writer=lambda name, value: self.env_writes.append((name, value)))
+                            env_writer=lambda name, value: self.env_writes.append((name, value)),
+                            env_reader=lambda name: self.env_values.get(name, ""))
         # 로그인 (작업 5): 테스트는 기본으로 관리자 세션을 쓴다. 해시 반복은 줄인다.
         iterations = patch.object(admin.auth, "ITERATIONS", 1000)
         iterations.start()
@@ -112,6 +114,41 @@ class LoginTests(AdminBase):
         status, _, location = self.request("POST", "/login", urlencode({"token": self.app.token, "user": user, "password": password}),
                                            cookie=None)
         return status, location
+
+    def test_secret_masked_then_revealed_after_password_and_logged(self):
+        self.app.login_required = True
+        self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789", "SABA_SMTP_PASSWORD": "virtual-mail-pass"}
+        html = self.get("/settings")
+        self.assertIn("sk-v••••••••", html)
+        self.assertNotIn("sk-virtual-0123456789", html)
+        self.assertNotIn("virt", html.split("SABA_SMTP_PASSWORD", 1)[1].split("</tr>", 1)[0])  # 비밀번호는 앞글자도 숨김
+        self.assertIn('data-v="OPENAI_API_KEY"', html)  # 이름 복사
+        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="wrong-pass-1", back="/settings")
+        self.assertNotIn("sk-virtual-0123456789", self.get("/settings"))
+        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="virtual-pass-1", back="/settings")
+        shown = self.get("/settings")
+        self.assertIn("<code>sk-virtual-0123456789</code>", shown)
+        self.assertIn('data-v="sk-virtual-0123456789"', shown)  # 값 복사
+        log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
+        self.assertIn("보기 (tester)", log)
+        self.assertNotIn("sk-virtual", log)
+        user, (name, value, _) = next(iter(self.app.revealed.items()))
+        self.app.revealed[user] = (name, value, 0.0)  # 1분이 지나면 다시 가린다
+        self.assertNotIn("sk-virtual-0123456789", self.get("/settings"))
+
+    def test_secret_reveal_blocked_for_viewer_and_login_off(self):
+        self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789"}
+        self.app.users.add("viewer1", "viewer", "virtual-pass-1")
+        viewer = "saba_session=" + self.app.sessions.create("viewer1", "viewer")
+        self.app.login_required = True
+        body = urlencode({"token": self.app.token, "name": "OPENAI_API_KEY", "password": "virtual-pass-1", "back": "/settings"})
+        self.request("POST", "/action/secret_reveal", body, cookie=viewer)
+        html = self.request("GET", "/settings", cookie=viewer)[1]
+        self.assertNotIn("sk-v", html)
+        self.app.login_required = False
+        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="virtual-pass-1", back="/settings")
+        self.assertEqual(self.app.revealed, {})
+        self.assertNotIn("sk-v", self.get("/settings"))
 
     def test_viewer_cannot_read_admin_csv_preview(self):
         self.post('csv_preview', csv='이름,메일,부서,그룹\n가상,private@example.com,STE본부,TEST', back='/recipients')
@@ -340,8 +377,8 @@ class AdminTests(AdminBase):
 
     def test_settings_show_secret_presence_only(self):
         fake = {"OPENAI_API_KEY": "sk-FAKE-KEY-0000", "SABA_SMTP_PASSWORD": "FAKE-SECRET-PW-0000"}
-        with patch.dict("os.environ", fake):
-            html = self.get("/settings")
+        self.env_values = fake  # 레지스트리 대신 (D-084: 값은 사용자 환경 변수에서 읽는다)
+        html = self.get("/settings")
         self.assertIn("있음", html)
         for value in fake.values():
             self.assertNotIn(value, html)
@@ -428,6 +465,15 @@ class AuthorSettingsTests(AdminBase):
         self.assertIn('value="홍길동"', self.get("/settings"))
         self.post("author_save", confirm=False, **{**form, "email": "no-at"})
         self.assertEqual(author.load_author(self.root / "config" / "author.json")["email"], author.DEFAULT["email"])
+
+
+class CriteriaChipTests(AdminBase):
+    def test_criteria_uses_chip_editor_over_same_fields(self):
+        html = self.get("/settings")
+        self.assertIn('class="chips" data-tone="tone-blue" name="scope_0"', html)  # 저장 필드 이름은 그대로
+        self.assertIn('name="examples_3"', html)
+        self.assertIn("function split(text)", html)
+        self.assertIn("function join(list)", html)
 
 
 class SignatureSettingsTests(AdminBase):
