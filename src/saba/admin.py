@@ -63,6 +63,7 @@ CONFIRM_TEXT = {
     "smtp_check": "메일 서버 로그인 점검: 회사 메일 서버에 접속해 로그인만 확인합니다 (발송 없음). 진행할까요?",
     "save_schedule": "예약 발송 설정을 저장합니다. 일정이 바뀌면 작업 스케줄러에 다시 등록합니다. 진행할까요?",
     "user_delete": "이 계정을 삭제할까요? 그 계정은 바로 로그아웃됩니다.",
+    "my_password": "내 비밀번호를 바꿉니다. 바꾸면 모든 화면에서 로그아웃되고 새 비밀번호로 다시 로그인합니다. 진행할까요?",
     "secret_set": "이 Secret 을 새 값으로 바꿉니다 (Windows 사용자 환경 변수). 이전 값은 되돌릴 수 없습니다. 진행할까요?",
     "secret_delete": "이 Secret 을 지웁니다 (Windows 사용자 환경 변수). 지우면 이 값을 쓰는 기능이 멈춥니다. 진행할까요?",
 }
@@ -394,7 +395,7 @@ class AdminApp:
             return self.set_task_state(_first(form, "state") == "on")
         if action == "save_schedule":
             return self.save_schedule(form)
-        if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_delete"):
+        if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_delete", "my_password"):
             return self.account_action(action, form)
         if action == "api_keywords_save":
             return self.save_api_keywords(form)
@@ -487,6 +488,19 @@ class AdminApp:
                 self.env_writer(name, "")
                 append_change(self.changes_path, {f"Secret {name}": ("(값 숨김)", f"삭제 ({actor})")}, False)
                 return f"{name} 삭제 완료. 이 값을 쓰는 기능은 새 값을 넣을 때까지 멈춥니다."
+            if action == "my_password":  # 내 비밀번호 변경: 현재 비밀번호를 확인한다 (조회자도 가능)
+                if self.sessions.locked(actor):
+                    raise AdminError("비밀번호를 여러 번 틀려 잠시 막혔습니다. 잠시 뒤 다시 하세요.")
+                if self.users.verify(actor, _first(form, "current")) is None:
+                    self.sessions.failed(actor)
+                    raise AdminError("현재 비밀번호가 맞지 않습니다. 바꾸지 않았습니다.")
+                self.sessions.succeeded(actor)
+                if _first(form, "password") != _first(form, "password2"):
+                    raise AdminError("새 비밀번호 두 칸이 다릅니다.")
+                self.users.set_password(actor, _first(form, "password"))
+                self.sessions.drop(user=actor)
+                append_change(self.changes_path, {f"계정 {actor}": ("", "내 비밀번호 변경")}, False)
+                return "비밀번호를 바꿨습니다. 새 비밀번호로 다시 로그인하세요."
             user_id = _first(form, "user").strip().lower()
             if action == "user_add":
                 role = _first(form, "role")
@@ -962,6 +976,14 @@ tr.src:hover td,tbody tr:hover td{background:#fafbfc}
 .chips label{padding:0 12px;height:36px;display:inline-flex;align-items:center;gap:6px}
 .field>label.t{font-weight:600;font-size:13.5px}
 .msg{font-size:14px}
+.confirm-dlg{max-width:440px;width:calc(100% - 32px)}.confirm-dlg h3{font-size:17px}.confirm-dlg p{margin:6px 0}
+.sc-target{background:var(--subtle);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-weight:600;word-break:break-all}
+.sc-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.btn.danger-solid{background:var(--bad);border-color:var(--bad);color:#fff}.btn.danger-solid:hover{background:#912018}
+.confirm-dlg::backdrop{background:rgba(15,20,30,.45)}
+header .user-link{color:var(--text);text-decoration:none;font-weight:600;padding:6px 10px;border-radius:8px}
+header .user-link:hover,header .user-link.on{background:var(--accent-soft);color:var(--accent)}
+.form-col{max-width:420px}.form-col input{width:100%}
 .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:16px;align-items:start}.grid3>.card{margin-bottom:0}
 .grid3 tr>th:first-child{width:96px}
 td input:not([type=checkbox]):not([type=radio]),td select{width:100%;max-width:560px}
@@ -993,6 +1015,15 @@ RESULT_BADGE = {"성공": "b-ok", "성공 (발송 안 함)": "b-info", "부분 �
 SEND_STATUS_BADGE = {"성공": "b-ok", "실패": "b-bad", "미시도": "b-warn", "불명확": "b-warn", "전송 중": "b-mute"}
 
 
+SETTINGS_TABS = [("general", "기본"), ("secret", "Secret"), ("mail", "메일 작성자·서명"), ("criteria", "분류 기준")]
+
+
+def _safe_back(back: str) -> str:
+    """돌아갈 주소는 메뉴 화면·내 계정·설정 탭만 (외부 주소로 보내지 않는다)."""
+    allowed = {href for href, _ in MENU} | {"/account"} | {f"/settings?tab={key}" for key, _ in SETTINGS_TABS}
+    return back if back in allowed else "/"
+
+
 def shown_email(email: str) -> str:
     """조회자에게는 메일 주소를 가린다 (작업 5). 예: ab***@tbell.co.kr"""
     if getattr(CURRENT, "role", None) == "admin" or "@" not in email:
@@ -1005,6 +1036,26 @@ def badge(text: str, cls: str) -> str:
     return f'<span class="badge {cls}">{escape(text)}</span>'
 
 
+CONFIRM_UI = """<dialog id="saba-confirm" class="confirm-dlg" aria-labelledby="sc-title"><h3 id="sc-title">확인</h3>
+<p id="sc-msg"></p><p id="sc-target" class="sc-target"></p>
+<div class="sc-actions"><button type="button" class="btn" id="sc-no">취소</button><button type="button" class="btn primary" id="sc-yes">확인</button></div></dialog>
+<script>
+(function(){var d=document.getElementById("saba-confirm"),cb=null;
+  // 삭제·변경 전에 화면 안 확인 창으로 한 번 더 묻는다 (2026-10-16 사용자 요청). 기본 버튼은 취소.
+  window.sabaConfirm=function(msg,target,danger,fn){document.getElementById("sc-msg").textContent=msg;
+    var t=document.getElementById("sc-target");t.textContent=target?"대상: "+target:"";t.style.display=target?"":"none";
+    var y=document.getElementById("sc-yes");y.textContent=danger?"삭제":"확인";y.className="btn "+(danger?"danger-solid":"primary");
+    document.getElementById("sc-title").textContent=danger?"삭제할까요?":"진행할까요?";cb=fn;d.showModal();document.getElementById("sc-no").focus();};
+  document.getElementById("sc-no").onclick=function(){cb=null;d.close();};
+  document.getElementById("sc-yes").onclick=function(){var f=cb;cb=null;d.close();if(f)f();};
+  document.addEventListener("submit",function(e){var f=e.target,s=e.submitter,msg=(s&&s.dataset.confirm)||f.dataset.confirm;
+    if(!msg||f.dataset.ok)return;e.preventDefault();
+    var act=(s&&s.getAttribute("formaction"))||f.getAttribute("action")||"",danger=/delete|reset/.test(act);
+    sabaConfirm(msg,f.dataset.target||"",danger,function(){f.dataset.ok="1";if(f.requestSubmit){f.requestSubmit(s||undefined);}else{f.submit();}});},true);
+})();
+</script>"""
+
+
 def page(title: str, body: str, message: str = "", refresh: bool = False, active: str = "/", nav: bool = True) -> str:
     links = "".join(f'<a href="{href}"{" class=on" if href == active else ""}>{label}</a>' for href, label in MENU) if nav else ""
     note = f'<div class="msg">{escape(message)}</div>' if message else ""
@@ -1014,21 +1065,26 @@ def page(title: str, body: str, message: str = "", refresh: bool = False, active
     if nav and user:  # 로그인한 사용자·역할과 로그아웃 (작업 5)
         logout = (f'<form method="post" action="/logout" class="inline"><input type="hidden" name="token" value="{CURRENT.token}">'
                   f'<button class="btn">로그아웃</button></form>') if getattr(CURRENT, "login", True) else '<span>로그인 꺼짐</span>'
-        account = f'<div class="account"><span>{escape(user)} · {auth.ROLES.get(role, "")}</span>{logout}</div>'
+        account = (f'<div class="account"><a class="user-link{" on" if active == "/account" else ""}" href="/account" title="내 계정·비밀번호·계정 관리">'
+                   f'{escape(user)} · {auth.ROLES.get(role, "")}</a>{logout}</div>')
         if role == "viewer":
             note = '<div class="info" style="margin-bottom:16px">조회 전용 계정입니다. 실행·설정 변경·수신자 관리는 관리자만 할 수 있습니다.</div>' + note
     return (f'<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8">{meta}'
             f'<meta name="viewport" content="width=device-width, initial-scale=1"><title>{escape(title)} · SABA 관리</title>'
             f'<style>{CSS}</style></head><body><header><div class="logo">SABA 관리</div><nav>{links}</nav>{account}</header>'
-            f'<main><h1>{escape(title)}</h1>{note}{body.replace("<table", "<div class=tw><table").replace("</table>", "</table></div>")}</main></body></html>')
+            f'<main><h1>{escape(title)}</h1>{note}{body.replace("<table", "<div class=tw><table").replace("</table>", "</table></div>")}</main>'
+            f'{CONFIRM_UI if nav else ""}</body></html>')
 
 
-def button(app: AdminApp, action: str, label: str, style: str = "", back: str = "/", fields: dict | None = None) -> str:
-    """style: primary(실행) · success(사용) · warn(외부 접속·중지) · danger(삭제) · 빈 값(보조)."""
+def button(app: AdminApp, action: str, label: str, style: str = "", back: str = "/", fields: dict | None = None,
+           target: str | None = None) -> str:
+    """style: primary(실행) · success(사용) · warn(외부 접속·중지) · danger(삭제) · 빈 값(보조).
+    확인 문구가 있는 동작은 화면 안 확인 창에 문구와 대상 (target, 없으면 이름·ID) 을 보이고 한 번 더 묻는다."""
     if getattr(CURRENT, "role", None) == "viewer":  # 조회자는 버튼만 보이고 누를 수 없다 (서버도 거부)
         return f'<button class="btn {style}" disabled title="관리자만 할 수 있습니다">{escape(label)}</button>'
     text = CONFIRM_TEXT.get(action)
-    confirm = f' onsubmit="return confirm(\'{escape(text)}\')"' if text else ""  # 작은따옴표 없는 고정 문구만
+    target = target or next((str(v) for k, v in (fields or {}).items() if k in ("name", "user", "id")), "")
+    confirm = f' data-confirm="{escape(text)}" data-target="{escape(target)}"' if text else ""
     hidden = '<input type="hidden" name="confirm" value="yes">' if text else ""
     hidden += "".join(f'<input type="hidden" name="{escape(k)}" value="{escape(v)}">' for k, v in (fields or {}).items())
     return (f'<form method="post" action="/action/{action}" class="inline"{confirm}>'
@@ -1257,7 +1313,7 @@ def test_page(app: AdminApp) -> str:
                      + button(app, "test_cancel", "예약 취소", "danger", back="/test") + "</div>")
     default_at = (now + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M")
     schedule_body = (f'<form method="post" action="/action/test_schedule" class="row" '
-                     f'onsubmit="return confirm(\'{escape(CONFIRM_TEXT["test_schedule"])}\')">'
+                     f'data-confirm="{escape(CONFIRM_TEXT["test_schedule"])}">'
                      f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/test">'
                      f'<input type="hidden" name="confirm" value="yes">'
                      f'<label>발송 시각 <input type="datetime-local" name="at" value="{default_at}" min="{now:%Y-%m-%dT%H:%M}" required></label>'
@@ -1307,7 +1363,7 @@ def schedule_page(app: AdminApp) -> str:
     month_boxes = "".join(f'<label><input type="checkbox" name="month_days" value="{d}"{" checked" if d in config.month_days else ""}> {d}</label>' for d in range(1, 32))
     per_day = config.max_analysis_calls + config.max_insight_calls
     form = f"""
-<form method="post" action="/action/save_schedule" onsubmit="return confirm('{escape(CONFIRM_TEXT['save_schedule'])}')">
+<form method="post" action="/action/save_schedule" data-confirm="{escape(CONFIRM_TEXT['save_schedule'])}">
 <input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/schedule"><input type="hidden" name="confirm" value="yes">
 <div class="card"><h2>주기</h2>
  <div class="field"><div class="chips">{mode_radios}</div></div>
@@ -1756,7 +1812,8 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                          f"<td>{state}</td><td style='white-space:nowrap'><a class=btn href='/sources?edit={quote(s.source_id)}'>수정</a> "
                          + button(app, "source_toggle", "중지" if e.enabled else "사용", "warn" if e.enabled else "success",
                                   back="/sources", fields={"id": s.source_id}) + " "
-                         + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id}) + "</td></tr>")
+                         + button(app, "source_delete", "삭제", "danger", back="/sources", fields={"id": s.source_id},
+                                  target=f"{s.source_name} ({s.source_id})") + "</td></tr>")
     dept_names = sorted({d for names in TOPIC_DEPARTMENTS.values() for d in names})
     search = filter_bar([("topic", "주제", list(TOPICS)), ("dept", "담당 부서", dept_names), ("region", "구분", list(REGIONS)),
                          ("kind", "종류", list(KINDS)), ("method", "수집 방식", ["RSS", "웹페이지", "공공 API"]),
@@ -1810,8 +1867,8 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
  <label><input type="checkbox" name="enabled" value="on"{checked("enabled")}> 사용</label></div></div>
 </div></div>
 <div class="row">
- <button class="btn warn" formaction="/action/source_check" onclick="return confirm('{escape(CONFIRM_TEXT["source_check"])}')">주소 확인</button>
- <button class="btn primary" onclick="return confirm('{escape(CONFIRM_TEXT["source_save"])}')">저장</button>
+ <button class="btn warn" formaction="/action/source_check" data-confirm="{escape(CONFIRM_TEXT["source_check"])}">주소 확인</button>
+ <button class="btn primary" data-confirm="{escape(CONFIRM_TEXT["source_save"])}">저장</button>
  <a class="btn" href="/sources">취소</a></div>
 <p class="muted">새 Source 를 추가하거나 주소를 바꾸면 먼저 "주소 확인" 을 통과해야 저장할 수 있습니다 (30분 안, 1회 접속, 저장 없음).</p>
 </form></div>"""
@@ -1907,11 +1964,26 @@ def recipients_page(app: AdminApp, group: str | None, edit: str | None) -> str:
             + f'<div class="grid">{form}{csv_card}</div>' + f'<div class="grid">{dept_card}{domain_card}</div>')
 
 
-def settings_page(app: AdminApp) -> str:
+def settings_page(app: AdminApp, tab: str = "general") -> str:
+    """설정은 기능별 탭 (2026-10-16 사용자 요청). 계정·비밀번호는 오른쪽 위 사용자 이름 → 내 계정 화면."""
+    tab = tab if tab in dict(SETTINGS_TABS) else "general"
+    bar = '<div class="tabs">' + "".join(f'<a href="/settings?tab={key}"{" class=on" if key == tab else ""}>{label}</a>'
+                                         for key, label in SETTINGS_TABS) + '</div>'
+    if tab == "secret":
+        body = secret_section(app)
+    elif tab == "mail":
+        body = author_card(app) + signature_card(app)
+    elif tab == "criteria":
+        body = criteria_card(app) + api_keywords_card(app) + CHIP_JS
+    else:
+        body = general_section(app)
+    return bar + body.replace('name="back" value="/settings"', f'name="back" value="/settings?tab={tab}"')
+
+
+def general_section(app: AdminApp) -> str:
     from saba.send_mail import TEST_ADDRESS
     config, valid = app.config(), app._try(app.config)
     entries = app.source_entries()
-    secret_cards = "".join(secret_card(app, n, v) for n, v in app.secrets_present().items())
     enabled = sum(1 for e in entries if e.enabled)
     return (f'<div class="grid3">'
             f'<div class="card"><h2>예약 발송<a class="btn right" href="/schedule">변경</a></h2><table>'
@@ -1926,9 +1998,13 @@ def settings_page(app: AdminApp) -> str:
             f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2><table>'
             f'<tr><th>현재</th><td>TEST 1명 (고정)</td></tr><tr><th>주소</th><td>{escape(TEST_ADDRESS)}</td></tr>'
             f'<tr><th>그룹 발송</th><td>잠금 (별도 승인 후)</td></tr></table></div></div>'
-            f'<div class="card"><h2>Secret<span class="muted">값은 가려서 보이고, 눈 아이콘으로 1분 동안 보고 복사 아이콘으로 바로 복사합니다 (관리자만).</span></h2>'
+            f'<p class="muted">계정·비밀번호는 오른쪽 위 사용자 이름을 눌러 <a href="/account">내 계정</a> 화면에서 관리합니다.</p>')
+
+
+def secret_section(app: AdminApp) -> str:
+    secret_cards = "".join(secret_card(app, n, v) for n, v in app.secrets_present().items())
+    return (f'<div class="card"><h2>Secret<span class="muted">값은 가려서 보이고, 눈 아이콘으로 1분 동안 보고 복사 아이콘으로 바로 복사합니다 (관리자만).</span></h2>'
             f'<div class="sc-grid">{secret_cards}</div>{secret_note(app)}</div>'
-            + accounts_card(app) + author_card(app) + signature_card(app) + criteria_card(app) + api_keywords_card(app) + CHIP_JS
             + SECRET_JS % (json.dumps(app.token), json.dumps(ICON_EYE_OFF), REVEAL_SECONDS * 1000))
 
 
@@ -1954,7 +2030,7 @@ def signature_card(app: AdminApp) -> str:
     from saba.mail import SIGNATURE_PATH, signature_source
     html, custom = signature_source(app.root / "config" / "signature.html")
     state = badge("직접 넣은 서명", "b-info") if custom else badge("기본 서명", "b-mute")
-    reset = (f'<form method="post" action="/action/signature_reset" class="inline" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["signature_reset"])}\')">'
+    reset = (f'<form method="post" action="/action/signature_reset" class="inline" data-confirm="{escape(CONFIRM_TEXT["signature_reset"])}">'
              f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
              '<button class="btn">기본 서명으로 되돌리기</button></form>') if custom else ""
     return (f'<div class="card"><h2>메일 서명 {state}<span class="muted">메일 맨 아래 서명입니다. HTML 코드를 붙여 넣거나 HTML 파일을 고르세요.</span></h2>'
@@ -2028,11 +2104,11 @@ def secret_card(app: AdminApp, name: str, present: bool) -> str:
     if admin_view:
         hidden = (f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
                   f'<input type="hidden" name="confirm" value="yes"><input type="hidden" name="name" value="{escape(name, quote=True)}">')
-        delete = (f'<form method="post" action="/action/secret_delete" class="inline" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["secret_delete"])}\')">'
+        delete = (f'<form method="post" action="/action/secret_delete" class="inline" data-confirm="{escape(CONFIRM_TEXT["secret_delete"])}">'
                   f'{hidden}<button class="btn pill">삭제</button></form>') if present else ""
         foot = (f'<div class="sc-foot"><details class="sc-edit"><summary class="btn pill">{"수정" if present else "입력"}</summary>'
                 f'<form method="post" action="/action/secret_set" class="sc-form" autocomplete="off" '
-                f'onsubmit="return confirm(\'{escape(CONFIRM_TEXT["secret_set"])}\')">{hidden}'
+                f'data-confirm="{escape(CONFIRM_TEXT["secret_set"])}">{hidden}'
                 f'<input name="value" type="password" autocomplete="new-password" required maxlength="500" aria-label="{escape(name)} 새 값" placeholder="새 값">'
                 '<button class="btn primary">저장</button><button type="button" class="btn" onclick="this.closest(\'details\').open=false">취소</button>'
                 '</form></details>' + delete + '</div>')
@@ -2079,23 +2155,43 @@ def accounts_card(app: AdminApp) -> str:
     admin = getattr(CURRENT, "role", None) == "admin"
     rows = "".join(
         f"<tr><td>{escape(uid)}</td><td>{badge(auth.ROLES[role], 'b-info' if role == 'admin' else 'b-mute')}</td><td style='white-space:nowrap'>"
-        + (button(app, "user_delete", "삭제", "danger", back="/settings", fields={"user": uid}) if admin else "-") + "</td></tr>"
+        + ('<span class="muted">관리자 계정은 삭제 불가</span>' if role == "admin"
+           else (button(app, "user_delete", "삭제", "danger", back="/account", fields={"user": uid}) if admin else "-")) + "</td></tr>"
         for uid, role in users)
     body = f'<table><tr><th>아이디</th><th>역할</th><th>관리</th></tr>{rows}</table>'
     if admin:
         user_options = "".join(f"<option>{escape(uid)}</option>" for uid, _ in users)
         pw = (f'<label>비밀번호 <input name="password" type="password" autocomplete="new-password" required minlength="{auth.MIN_PASSWORD}"></label>'
               f'<label>확인 <input name="password2" type="password" autocomplete="new-password" required minlength="{auth.MIN_PASSWORD}"></label>')
-        hidden = f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
+        hidden = f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/account">'
         body += (f'<h3 style="margin:16px 0 6px;font-size:14px">계정 추가</h3><form method="post" action="/action/user_add" class="row">{hidden}'
                  '<label>아이디 <input name="user" required pattern="[a-z0-9][a-z0-9._-]{2,29}"></label>'
                  '<label>역할 <select name="role"><option value="viewer">조회자</option><option value="admin">관리자</option></select></label>'
                  f'{pw}<button class="btn primary">추가</button></form>'
-                 f'<h3 style="margin:16px 0 6px;font-size:14px">비밀번호 변경</h3><form method="post" action="/action/user_password" class="row">{hidden}'
+                 f'<h3 style="margin:16px 0 6px;font-size:14px">다른 계정 비밀번호 다시 정하기</h3><form method="post" action="/action/user_password" class="row">{hidden}'
                  f'<label>아이디 <select name="user">{user_options}</select></label>{pw}<button class="btn">변경</button></form>'
                  f'<p class="muted">비밀번호는 {auth.MIN_PASSWORD}자 이상, 글자와 숫자·기호를 섞어야 합니다. 소금 포함 해시로만 저장합니다 (data/admin_users.json, Git 제외). '
                  '관리자는 모든 실행·설정·수신자 관리를, 조회자는 화면 보기만 할 수 있습니다 (수신자 메일 가림, 명단 내려받기 불가).</p>')
-    return f'<div class="card"><h2>계정</h2>{body}</div>'
+    return f'<div class="card"><h2>계정 관리<span class="muted">관리자 계정은 삭제할 수 없습니다.</span></h2>{body}</div>'
+
+
+def account_page(app: AdminApp) -> str:
+    """내 계정 (2026-10-16 사용자 요청): 오른쪽 위 사용자 이름을 누르면 열린다. 내 정보·내 비밀번호 변경·계정 관리."""
+    if not app.login_required:
+        return accounts_card(app)
+    user, role = getattr(CURRENT, "user", ""), getattr(CURRENT, "role", "")
+    mine = (f'<div class="card"><h2>내 정보</h2><table><tr><th>아이디</th><td>{escape(user)}</td></tr>'
+            f'<tr><th>역할</th><td>{badge(auth.ROLES.get(role, ""), "b-info" if role == "admin" else "b-mute")}</td></tr></table></div>')
+    password = (f'<div class="card"><h2>비밀번호 변경<span class="muted">현재 비밀번호를 확인한 뒤 바꿉니다. 바꾸면 다시 로그인합니다. '
+                f'새 비밀번호는 {auth.MIN_PASSWORD}자 이상, 글자와 숫자·기호를 섞어야 합니다.</span></h2>'
+                f'<form method="post" action="/action/my_password" class="form-col" autocomplete="off" data-confirm="{escape(CONFIRM_TEXT["my_password"])}">'
+                f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/account">'
+                '<input type="hidden" name="confirm" value="yes">'
+                '<div class="field"><label class="t" for="pw-cur">현재 비밀번호</label><input id="pw-cur" name="current" type="password" autocomplete="current-password" required></div>'
+                f'<div class="field"><label class="t" for="pw-new">새 비밀번호</label><input id="pw-new" name="password" type="password" autocomplete="new-password" required minlength="{auth.MIN_PASSWORD}"></div>'
+                f'<div class="field"><label class="t" for="pw-new2">새 비밀번호 확인</label><input id="pw-new2" name="password2" type="password" autocomplete="new-password" required minlength="{auth.MIN_PASSWORD}"></div>'
+                '<button class="btn primary">비밀번호 변경</button></form></div>')
+    return f'<div class="grid">{mine}{password}</div>' + accounts_card(app)
 
 
 def criteria_card(app: AdminApp) -> str:
@@ -2109,7 +2205,7 @@ def criteria_card(app: AdminApp) -> str:
         for i, name in enumerate(DEPARTMENT_NAMES))
     return (f'<div class="card"><h2>부서별 분류 기준<span class="muted">AI 가 기사마다 관련 부서를 고르는 기준입니다. '
             f'부서 이름 4개는 메일 부서 카드와 같아 고정입니다.</span></h2>'
-            f'<form method="post" action="/action/criteria_save" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["criteria_save"])}\')">'
+            f'<form method="post" action="/action/criteria_save" data-confirm="{escape(CONFIRM_TEXT["criteria_save"])}">'
             f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
             f'<input type="hidden" name="confirm" value="yes">'
             '<div class="note" style="margin:8px 0 12px;line-height:1.7">'
@@ -2118,7 +2214,7 @@ def criteria_card(app: AdminApp) -> str:
             '예: "나라장터 공공조달 발주" 기사는 연결, "사업 지원 맥락 없는 일반 AI 기술 뉴스는 제외" 는 연결하지 않음.<br>'
             'AI 에게는 부서마다 "부서: 담당 업무 (예: 판단 예시)" 한 줄로 함께 전달됩니다. 담당 업무가 넓은 범위, 판단 예시가 경계선을 정합니다.</div>'
             f'<table><tr><th>부서</th><th>담당 업무 (200자 이내) · 하는 일</th><th>판단 예시 (300자 이내) · 연결할 기사와 제외할 기사</th></tr>{rows}</table>'
-            f'<p class="muted">항목은 쉼표·문장 단위 태그입니다. \"분야 (세부, 세부)\" 처럼 괄호 안이 쉼표로 나뉜 항목은 점선 상자에 분야 제목과 세부 태그로 보이고, 상자 안 입력칸에서 세부 항목을 더하며 상자 오른쪽 × 는 분야 전체를 지웁니다. \"…는 제외\" 로 끝나는 회색 태그는 제외 조건입니다. × 로 지우고, 입력 후 Enter 로 추가합니다. 빈칸에서 Backspace 는 마지막 태그를 지웁니다.</p>'
+            f'<p class="muted">항목은 쉼표·문장 단위 태그입니다. \"분야 (세부, 세부)\" 처럼 괄호 안이 쉼표로 나뉜 항목은 점선 상자에 분야 제목과 세부 태그로 보이고, 상자 안 입력칸에서 세부 항목을 더하며 상자 오른쪽 × 는 분야 전체를 지웁니다. \"…는 제외\" 로 끝나는 회색 태그는 제외 조건입니다. × 를 누르면 확인 창이 뜨고, 입력 후 Enter 로 추가합니다. 저장을 눌러야 반영됩니다.</p>'
             f'<div class="row"><button class="btn primary">저장</button>'
             f'<span class="muted">저장하면 다음 실행부터 새 기준으로 시사점을 다시 만듭니다 (하루 AI 상한 안). 변경은 설정 변경 이력에 남습니다.</span></div>'
             f'</form></div>')
@@ -2150,7 +2246,8 @@ CHIP_JS = r"""<script>
     function chip(text,remove){var c=document.createElement("span");c.className="chip"+(/제외$/.test(text)?" chip-ex":"");
       var label=document.createElement("span");label.textContent=text;c.appendChild(label);
       var x=document.createElement("button");x.type="button";x.className="chip-x";x.textContent="×";
-      x.setAttribute("aria-label",text+" 지우기");x.onclick=remove;c.appendChild(x);return c;}
+      x.setAttribute("aria-label",text+" 지우기");
+      x.onclick=function(){sabaConfirm("이 항목을 지울까요? 아래 저장을 눌러야 실제로 반영됩니다.",text,true,remove);};c.appendChild(x);return c;}
     function render(){box.querySelectorAll(".chip,.chip-group").forEach(function(c){c.remove();});
       items().forEach(function(text,i){var g=group(text);
         if(!g){box.insertBefore(chip(text,function(){var list=items();list.splice(i,1);save(list);}),input);return;}
@@ -2163,12 +2260,12 @@ CHIP_JS = r"""<script>
         add.addEventListener("keydown",function(e){if(e.key==="Enter"&&add.value.trim()){e.preventDefault();put(g.subs.concat([add.value.trim()]));}});
         wrap.appendChild(add);var all=document.createElement("button");all.type="button";all.className="chip-x";all.textContent="×";
         all.setAttribute("aria-label",g.title+" 분야 전체 지우기");all.title="분야 전체 지우기";
-        all.onclick=function(){var list=items();list.splice(i,1);save(list);};wrap.appendChild(all);box.insertBefore(wrap,input);});
+        all.onclick=function(){sabaConfirm("이 분야와 세부 항목을 모두 지울까요? 아래 저장을 눌러야 실제로 반영됩니다.",g.title,true,
+          function(){var list=items();list.splice(i,1);save(list);});};wrap.appendChild(all);box.insertBefore(wrap,input);});
       count.textContent=max?area.value.length+" / "+max+"자":items().length+"개";count.classList.toggle("over",!!max&&area.value.length>max);}
     input.addEventListener("keydown",function(e){
       if((e.key==="Enter"||e.key===",")&&input.value.trim()){e.preventDefault();var next=items().concat([input.value.trim()]);
-        if(max&&next.join(", ").length>max){count.classList.add("over");return;}input.value="";save(next);}
-      else if(e.key==="Backspace"&&!input.value){var list=items();list.pop();save(list);}});
+        if(max&&next.join(", ").length>max){count.classList.add("over");return;}input.value="";save(next);}});
     box.appendChild(input);area.style.display="none";area.parentNode.insertBefore(box,area);area.parentNode.insertBefore(count,area);render();});
 })();
 </script>"""
@@ -2289,7 +2386,9 @@ def make_handler(app: AdminApp, port: int):
             if url.path == "/articles":
                 return self._send(200, page("기사·분석", articles_page(app, query), message, active="/articles"))
             if url.path == "/settings":
-                return self._send(200, page("설정", settings_page(app), message, active="/settings"))
+                return self._send(200, page("설정", settings_page(app, _first(query, "tab") or "general"), message, active="/settings"))
+            if url.path == "/account":
+                return self._send(200, page("내 계정", account_page(app), message, active="/account"))
             return self._send(404, page("없는 페이지", "<p>없는 페이지입니다.</p>"))
 
         def do_POST(self):
@@ -2315,7 +2414,7 @@ def make_handler(app: AdminApp, port: int):
             if not app.login_required:
                 if not path.startswith("/action/"):
                     return self._redirect("/")
-                if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_delete", "secret_value"):  # 로그인 없이 Secret·계정은 못 바꾼다
+                if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_delete", "secret_value", "my_password"):  # 로그인 없이 Secret·계정은 못 바꾼다
                     app.message = "실패: 로그인이 꺼져 있어 Secret·계정은 바꿀 수 없습니다 (config/admin.json 의 login 을 켠 뒤 사용)."
                     return self._redirect("/settings")
                 session = auth.Session("이 PC", "admin", 0.0)
@@ -2326,9 +2425,9 @@ def make_handler(app: AdminApp, port: int):
             if session is None or not path.startswith("/action/"):
                 return self._redirect("/login")
             self._bind(session)
-            if session.role != "admin":  # 조회자는 실행·변경 불가 (버튼도 비활성)
+            if session.role != "admin" and action != "my_password":  # 조회자는 실행·변경 불가 (내 비밀번호 변경만 가능)
                 app.message = "실패: 조회자 계정은 실행·변경을 할 수 없습니다."
-                return self._redirect(_first(form, "back") if _first(form, "back") in {href for href, _ in MENU} else "/")
+                return self._redirect(_safe_back(_first(form, "back")))
             if action in CONFIRM_TEXT and _first(form, "confirm") != "yes":
                 return self._send(400, "confirm required", "text/plain; charset=utf-8")
             if action == "secret_value":  # 👁·⧉ 를 누를 때만 값 한 개를 돌려준다. 화면 HTML 에는 넣지 않는다.
@@ -2340,7 +2439,7 @@ def make_handler(app: AdminApp, port: int):
                 app.message = f"실패: {error}" if isinstance(error, AdminError) else f"실패: {type(error).__name__}"
             back = _first(form, "back")
             self.send_response(303)
-            self.send_header("Location", back if back in {href for href, _ in MENU} else "/")  # 내부 화면으로만
+            self.send_header("Location", _safe_back(back))  # 내부 화면으로만
             self.end_headers()
 
         def _account_post(self, path: str, form: dict):

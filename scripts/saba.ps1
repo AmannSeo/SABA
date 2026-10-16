@@ -12,12 +12,13 @@
 #   restore -Path <zip>         백업 zip 복원 (기존 폴더는 이름을 바꿔 보관)
 #   uninstall [-Apply]          자동 실행 해제, 관리 페이지 종료, .venv·바로가기 삭제 (data\ 는 남김)
 #   reset-password              계정 비밀번호 초기화 (비밀번호를 잊었을 때, 이 PC 에서만)
+#   create-admin                계정이 없을 때 첫 관리자 계정 만들기 (설치 때 자동 실행)
 #
 # Secret(API Key, SMTP 비밀번호) 은 이 스크립트가 받거나 저장하지 않는다. 있음·없음만 확인한다.
 
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("install", "start", "stop", "status", "register", "unregister", "backup", "restore", "uninstall", "reset-password", "help")]
+    [ValidateSet("install", "start", "stop", "status", "register", "unregister", "backup", "restore", "uninstall", "reset-password", "create-admin", "help")]
     [string]$Command = "help",
     [switch]$Apply,
     [switch]$Unattended,
@@ -98,6 +99,7 @@ switch ($Command) {
     }
     "start" { Invoke-Saba @("-m", "saba.admin") }
     "reset-password" { Invoke-Saba @("-m", "saba.auth", "--reset-password") }  # 비밀번호를 잊었을 때 이 PC 에서 초기화
+    "create-admin" { Invoke-Saba @("-m", "saba.auth", "--create-admin") }  # 설치 때 첫 관리자 계정 (이미 있으면 건너뜀)
     "stop" { Invoke-Saba @("-m", "saba.admin", "--stop") }
     "status" {
         $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue

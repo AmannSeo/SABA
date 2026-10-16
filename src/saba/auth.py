@@ -101,8 +101,8 @@ class Users:
             users = self.load()
             if user_id not in users:
                 raise AuthError("계정을 찾지 못했습니다.")
-            if users[user_id]["role"] == "admin" and sum(u["role"] == "admin" for u in users.values()) == 1:
-                raise AuthError("마지막 관리자 계정은 지울 수 없습니다.")
+            if users[user_id]["role"] == "admin":  # 관리자 계정은 지우지 않는다 (2026-10-16 사용자 결정)
+                raise AuthError("관리자 계정은 삭제할 수 없습니다.")
             del users[user_id]
             self._save(users)
 
@@ -241,9 +241,41 @@ def reset_password(users: Users, *, ask=input, secret=None, log_path: Path | Non
     return 0
 
 
+def create_admin(users: Users, *, ask=input, secret=None, log_path: Path | None = None, out=print) -> int:
+    """설치할 때 첫 관리자 계정을 만든다 (2026-10-16 사용자 요청). 이미 계정이 있으면 아무것도 하지 않는다.
+    관리 페이지의 첫 관리자 만들기 화면과 같은 규칙이고, 비밀번호는 화면에 보이지 않게 받아 어디에도 기록하지 않는다."""
+    import getpass
+    from saba.history import append_change
+    secret = secret or getpass.getpass
+    if users.any():
+        out("이미 계정이 있어 관리자 계정을 새로 만들지 않습니다.")
+        return 0
+    out("첫 관리자 계정을 만듭니다 (관리자 계정은 삭제할 수 없습니다).")
+    for _ in range(3):
+        user_id = ask("  아이디 (영문 소문자·숫자 3~30자): ").strip().lower()
+        password = secret(f"  비밀번호 ({MIN_PASSWORD}자 이상, 글자와 숫자·기호, 화면에 보이지 않음): ")
+        if password != secret("  비밀번호 확인: "):
+            out("  두 비밀번호가 다릅니다. 다시 입력하세요.")
+            continue
+        try:
+            users.add(user_id, "admin", password, first_admin=True)
+        except AuthError as error:
+            out(f"  {error}")
+            continue
+        append_change(log_path or users.path.parents[1] / "logs" / "settings_changes.log",
+                      {f"계정 {user_id}": ("", "첫 관리자 만들기 (설치)")}, False)
+        out(f"완료: 관리자 계정 {user_id} 를 만들었습니다. 관리 페이지에서 이 계정으로 로그인하세요.")
+        return 0
+    out("관리자 계정을 만들지 못했습니다. 관리 페이지를 처음 열 때 나오는 첫 관리자 만들기 화면에서 만들 수 있습니다.")
+    return 1
+
+
 if __name__ == "__main__":
     import sys
+    if sys.argv[1:] == ["--create-admin"]:
+        raise SystemExit(create_admin(Users()))
     if sys.argv[1:] != ["--reset-password"]:
-        print("사용법: python -m saba.auth --reset-password  (이 PC 에서 계정 비밀번호 초기화)")
+        print("사용법: python -m saba.auth --reset-password  (이 PC 에서 계정 비밀번호 초기화)\n"
+              "        python -m saba.auth --create-admin    (계정이 없을 때 첫 관리자 계정 만들기)")
         raise SystemExit(2)
     raise SystemExit(reset_password(Users()))

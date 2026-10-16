@@ -123,7 +123,7 @@ class LoginTests(AdminBase):
         # 2026-10-16 사용자 결정: 비밀번호 재확인 없이 👁 보기·🙈 가리기·⧉ 복사. 값은 화면 HTML 에 넣지 않는다.
         self.app.login_required = True
         self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789", "SABA_SMTP_PASSWORD": "virtual-mail-pass"}
-        html = self.get("/settings")
+        html = self.get("/settings?tab=secret")
         self.assertIn("sk-v••••••••", html)
         self.assertNotIn("sk-virtual-0123456789", html)
         self.assertNotIn("virt", html.split("SABA_SMTP_PASSWORD", 1)[1].split("</tr>", 1)[0])  # 비밀번호는 앞글자도 숨김
@@ -132,17 +132,17 @@ class LoginTests(AdminBase):
         self.assertIn("다시 가리기", html)
         self.assertEqual(self.secret_value("OPENAI_API_KEY")[:2], (200, "sk-virtual-0123456789"))
         self.secret_value("OPENAI_API_KEY", "copy")
-        self.assertNotIn("sk-virtual-0123456789", self.get("/settings"))  # 새로 고치면 다시 가림 (서버에 보기 상태 없음)
+        self.assertNotIn("sk-virtual-0123456789", self.get("/settings?tab=secret"))  # 새로 고치면 다시 가림 (서버에 보기 상태 없음)
         log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
         self.assertIn("보기 (tester)", log)
         self.assertIn("복사 (tester)", log)
         self.assertNotIn("sk-virtual", log)
         self.assertEqual(self.secret_value("NOT_A_SECRET")[0], 404)  # 정해진 6개 이름만
         self.assertEqual(html.count('class="sc-card"'), 6)  # 항목마다 카드 (수정·삭제)
-        self.post("secret_delete", name="OPENAI_API_KEY", back="/settings")
+        self.post("secret_delete", name="OPENAI_API_KEY", back="/settings?tab=secret")
         self.assertIn(("OPENAI_API_KEY", ""), self.env_writes)  # 빈 값 = 지우기
         self.assertIn("삭제 (tester)", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
-        self.post("secret_delete", name="NOT_A_SECRET", back="/settings")
+        self.post("secret_delete", name="NOT_A_SECRET", back="/settings?tab=secret")
         self.assertEqual(len(self.env_writes), 1)
 
     def test_secret_script_hides_value_everywhere_in_node(self):
@@ -184,11 +184,47 @@ function dump(){return JSON.stringify([code,view,box]);}
             with self.subTest(cookie=cookie):
                 status, body, _ = self.secret_value("OPENAI_API_KEY", cookie=cookie)
                 self.assertNotIn("sk-virtual", body)
-        self.assertNotIn("sk-v", self.request("GET", "/settings", cookie=viewer)[1])
+        self.assertNotIn("sk-v", self.request("GET", "/settings?tab=secret", cookie=viewer)[1])
         self.app.login_required = False
         status, body, _ = self.secret_value("OPENAI_API_KEY")
         self.assertNotIn("sk-virtual", body)
-        self.assertNotIn("sk-v", self.get("/settings"))
+        self.assertNotIn("sk-v", self.get("/settings?tab=secret"))
+
+    def test_account_page_password_change_and_admin_protection(self):
+        """내 계정 화면 (2026-10-16 사용자 요청): 내 비밀번호 변경 (조회자도), 관리자 삭제 불가."""
+        self.app.login_required = True
+        self.app.users.add("viewer1", "viewer", "virtual-pass-1")
+        viewer = "saba_session=" + self.app.sessions.create("viewer1", "viewer")
+        html = self.get("/account")
+        self.assertIn('href="/account"', html)  # 오른쪽 위 사용자 이름 링크
+        self.assertIn("관리자 계정은 삭제 불가", html)
+        self.assertNotIn('name="user" value="tester"', html)  # 관리자 줄에는 삭제 버튼 없음
+        self.post("user_delete", user="tester", back="/account")
+        self.assertIn(("tester", "admin"), self.app.users.list())  # 서버도 거부
+        body = urlencode({"token": self.app.token, "confirm": "yes", "current": "wrong-pass-1", "password": "virtual-pass-9",
+                          "password2": "virtual-pass-9", "back": "/account"})
+        self.request("POST", "/action/my_password", body, cookie=viewer)
+        self.assertEqual(self.app.users.verify("viewer1", "virtual-pass-1"), "viewer")  # 현재 비밀번호가 틀리면 그대로
+        self.request("POST", "/action/my_password", body.replace("wrong-pass-1", "virtual-pass-1"), cookie=viewer)
+        self.assertEqual(self.app.users.verify("viewer1", "virtual-pass-9"), "viewer")  # 조회자도 자기 비밀번호는 바꾼다
+        self.assertIsNone(self.app.sessions.get(viewer.split("=", 1)[1]))  # 다시 로그인
+        log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
+        self.assertIn("내 비밀번호 변경", log)
+        self.assertNotIn("virtual-pass-9", log)
+
+    def test_settings_tabs_and_confirm_dialog(self):
+        for tab, text in (("general", "예약 발송"), ("secret", "sc-grid"), ("mail", "메일 작성자"), ("criteria", "부서별 분류 기준")):
+            html = self.get(f"/settings?tab={tab}")
+            self.assertIn(text, html)
+            self.assertIn(f'<a href="/settings?tab={tab}" class=on>', html)
+        self.assertNotIn("부서별 분류 기준", self.get("/settings"))  # 기본 탭에는 요약만
+        self.assertIn('name="back" value="/settings?tab=criteria"', self.get("/settings?tab=criteria"))
+        html = self.get("/sources")
+        self.assertIn('id="saba-confirm"', html)  # 화면 안 확인 창
+        self.assertIn('action="/action/source_delete" class="inline" data-confirm="', html)
+        self.assertIn('data-target="', html)  # 확인 창에 지울 대상 이름
+        self.assertNotIn("return confirm(", html)
+        self.assertIn('sabaConfirm("이 항목을 지울까요?', self.get("/settings?tab=criteria"))  # 태그 × 도 확인
 
     def test_viewer_cannot_read_admin_csv_preview(self):
         self.post('csv_preview', csv='이름,메일,부서,그룹\n가상,private@example.com,STE본부,TEST', back='/recipients')
@@ -285,16 +321,16 @@ function dump(){return JSON.stringify([code,view,box]);}
         self.assertEqual(self.env_writes, [])
 
     def test_admin_changes_secret_without_exposing_value(self):
-        self.post("secret_set", name="SABA_SMTP_PASSWORD", value="virtual-secret-VALUE-123", back="/settings")
+        self.post("secret_set", name="SABA_SMTP_PASSWORD", value="virtual-secret-VALUE-123", back="/settings?tab=secret")
         self.assertEqual(self.env_writes, [("SABA_SMTP_PASSWORD", "virtual-secret-VALUE-123")])
-        html = self.get("/settings")
+        html = self.get("/settings?tab=secret")
         self.assertIn("저장 완료", html)
         self.assertNotIn("virtual-secret-VALUE-123", html)
         self.assertNotIn("virtual-secret-VALUE-123", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
-        self.post("secret_set", name="PATH", value="x", back="/settings")
-        self.post("secret_set", name="OPENAI_API_KEY", value="has space", back="/settings")
+        self.post("secret_set", name="PATH", value="x", back="/settings?tab=secret")
+        self.post("secret_set", name="OPENAI_API_KEY", value="has space", back="/settings?tab=secret")
         self.assertEqual(len(self.env_writes), 1)
-        self.assertIn("SABA_DATA_GO_KR_KEY", self.get("/settings"))
+        self.assertIn("SABA_DATA_GO_KR_KEY", self.get("/settings?tab=secret"))
 
     def test_login_required_for_all_six_secret_inputs(self):
         path = self.root / "config" / "admin.json"
@@ -418,7 +454,7 @@ class AdminTests(AdminBase):
     def test_settings_show_secret_presence_only(self):
         fake = {"OPENAI_API_KEY": "sk-FAKE-KEY-0000", "SABA_SMTP_PASSWORD": "FAKE-SECRET-PW-0000"}
         self.env_values = fake  # 레지스트리 대신 (D-084: 값은 사용자 환경 변수에서 읽는다)
-        html = self.get("/settings")
+        html = self.get("/settings?tab=secret")
         self.assertIn("있음", html)
         for value in fake.values():
             self.assertNotIn(value, html)
@@ -502,7 +538,7 @@ class AuthorSettingsTests(AdminBase):
         self.post("author_save", confirm=False, **form)
         self.assertEqual(author.load_author(self.root / "config" / "author.json")["name"], "홍길동")
         self.assertIn("메일 작성자 이름", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
-        self.assertIn('value="홍길동"', self.get("/settings"))
+        self.assertIn('value="홍길동"', self.get("/settings?tab=mail"))
         self.post("author_save", confirm=False, **{**form, "email": "no-at"})
         self.assertEqual(author.load_author(self.root / "config" / "author.json")["email"], author.DEFAULT["email"])
 
@@ -520,7 +556,7 @@ class AuthFailureAlertTests(AdminBase):
 
 class CriteriaChipTests(AdminBase):
     def test_criteria_uses_chip_editor_over_same_fields(self):
-        html = self.get("/settings")
+        html = self.get("/settings?tab=criteria")
         self.assertIn('class="chips" data-tone="tone-blue" name="scope_0"', html)  # 저장 필드 이름은 그대로
         self.assertIn('name="examples_3"', html)
         self.assertIn("function split(text)", html)
@@ -548,7 +584,7 @@ class CriteriaChipTests(AdminBase):
 class SignatureSettingsTests(AdminBase):
     def test_save_preview_and_reset_signature(self):
         path = self.root / "config" / "signature.html"
-        self.post("signature_save", confirm=False, signature="<p>%%AUTHOR_TITLE%% 가상 서명</p>", back="/settings")
+        self.post("signature_save", confirm=False, signature="<p>%%AUTHOR_TITLE%% 가상 서명</p>", back="/settings?tab=mail")
         self.assertIn("가상 서명", path.read_text(encoding="utf-8"))
         self.assertIn("서창현 선임 가상 서명", self.get("/signature/preview"))
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
@@ -559,15 +595,15 @@ class SignatureSettingsTests(AdminBase):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
         conn.request("GET", "/newsletter/view", headers={"Host": f"127.0.0.1:{self.port}", "Cookie": self.cookie})
         self.assertIn("sandbox", conn.getresponse().getheader("Content-Security-Policy") or "")  # 메일 보기도 같은 보호
-        self.assertIn("직접 넣은 서명", self.get("/settings"))
+        self.assertIn("직접 넣은 서명", self.get("/settings?tab=mail"))
         log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
         self.assertIn("메일 서명", log)
         self.assertNotIn("가상 서명", log)  # 서명 내용 전체는 이력에 남기지 않는다
-        self.post("signature_save", confirm=False, signature="<script>x()</script>", back="/settings")
+        self.post("signature_save", confirm=False, signature="<script>x()</script>", back="/settings?tab=mail")
         self.assertIn("가상 서명", path.read_text(encoding="utf-8"))  # 위험한 서명은 저장하지 않음
-        self.post("signature_reset", signature="", back="/settings")
+        self.post("signature_reset", signature="", back="/settings?tab=mail")
         self.assertFalse(path.exists())
-        self.assertIn("기본 서명", self.get("/settings"))
+        self.assertIn("기본 서명", self.get("/settings?tab=mail"))
 
 
 class ScheduleTests(AdminBase):
@@ -887,7 +923,7 @@ class CriteriaTests(AdminBase):
         return {**data, **changes, "back": "/settings"}
 
     def test_save_updates_file_and_logs(self):
-        self.assertIn("부서별 분류 기준", self.get("/settings"))
+        self.assertIn("부서별 분류 기준", self.get("/settings?tab=criteria"))
         self.post("criteria_save", **self.form(examples_1="가상 판단 예시"))
         self.assertIn("기술개발연구소", self.app.message)
         from saba.insights import load_departments

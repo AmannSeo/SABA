@@ -37,15 +37,29 @@ class UsersTests(unittest.TestCase):
         with self.assertRaises(auth.AuthError):
             self.users.add("viewer1", "viewer", "virtual-pass-2")
 
-    def test_last_admin_cannot_be_deleted_and_password_change(self):
+    def test_admin_cannot_be_deleted_and_password_change(self):
         self.users.add("admin1", "admin", "virtual-pass-1")
+        self.users.add("admin2", "admin", "virtual-pass-1")
         self.users.add("viewer1", "viewer", "virtual-pass-1")
-        with self.assertRaisesRegex(auth.AuthError, "마지막 관리자"):
-            self.users.delete("admin1")
+        for uid in ("admin1", "admin2"):  # 관리자는 몇 명이든 지우지 않는다 (2026-10-16 사용자 결정)
+            with self.assertRaisesRegex(auth.AuthError, "관리자 계정은 삭제할 수 없습니다"):
+                self.users.delete(uid)
         self.users.delete("viewer1")
         self.users.set_password("admin1", "virtual-pass-2")
         self.assertIsNone(self.users.verify("admin1", "virtual-pass-1"))
         self.assertEqual(self.users.verify("admin1", "virtual-pass-2"), "admin")
+
+    def test_create_admin_at_install(self):
+        answers = iter(["Admin1"])
+        secrets_ = iter(["virtual-pass-1", "virtual-pass-1"])
+        out = []
+        log = self.users.path.parent / "changes.log"
+        self.assertEqual(auth.create_admin(self.users, ask=lambda _: next(answers), secret=lambda _: next(secrets_),
+                                           log_path=log, out=out.append), 0)
+        self.assertEqual(self.users.list(), [("admin1", "admin")])
+        self.assertNotIn("virtual-pass", log.read_text(encoding="utf-8") + "".join(out))
+        self.assertEqual(auth.create_admin(self.users, out=out.append), 0)  # 이미 있으면 건너뜀
+        self.assertIn("이미 계정이 있어", out[-1])
 
     def test_first_admin_is_atomic_under_concurrent_setup(self):
         from concurrent.futures import ThreadPoolExecutor
