@@ -281,7 +281,7 @@ def parse_feed(payload: bytes, now: datetime, source: Source = CERT_EU) -> list[
         data.append({
             "schema_version": 1, "article_id": source.source_id + ":" + digest,
             "source_id": source.source_id, "source_name": source.source_name,
-            "original_title": html.unescape(title),  # 일부 기관 피드는 제목 엔터티를 두 번 이스케이프 (&amp;#034;)
+            "original_title": " ".join(html.unescape(title).split()),  # 이중 이스케이프 (&amp;#034;) 와 제목 앞뒤 줄바꿈 (Jenkins) 정리
             "url": url, "collection_method": "rss",
             "source_item_id": guid, "collected_at": now.isoformat(),
             "published_at": publication_time(item["date"], offset),

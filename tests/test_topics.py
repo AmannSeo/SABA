@@ -1,5 +1,8 @@
 """F13: Atom 피드, 본문 안 DOCTYPE 글자, 주제 Source 의 수집·표시 기간과 상한 묶음, 메일 섹션."""
 from datetime import datetime, timedelta, timezone
+import json
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -28,6 +31,21 @@ def article(source, hours_old, collected_hours_ago, key="a"):
 
 
 class TopicTests(unittest.TestCase):
+    def test_stopped_sources_are_not_collection_targets_and_still_count_toward_limit(self):
+        from saba import rss
+        rows = [{"id": f"virtual-{i}", "name": "가상 출처", "url": f"https://example.com/{i}.xml",
+                 "kind": "기업·벤더", "enabled": i == 0} for i in range(60)]
+        self.assertEqual(len(rss.parse_sources(rows)), 60)
+        with self.assertRaises(RssError):
+            rss.parse_sources(rows + [rows[-1] | {"id": "virtual-60"}])
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'sources.json'
+            path.write_text(json.dumps(rows), encoding='utf-8')
+            with patch.object(rss, 'SOURCES', rss.SOURCES), patch.dict(rss.SOURCE_BY_ID, clear=True):
+                rss.reload_sources(path)
+                self.assertEqual([s.source_id for s in rss.SOURCES], ['virtual-0'])
+                self.assertEqual(len(rss.SOURCE_BY_ID), 60)
+
     def test_atom_feed_is_parsed_like_rss(self):
         [item] = parse_feed(ATOM, NOW, TESTING)
         self.assertEqual((item.original_title, str(item.url)), ("v1.0.0", "https://example.com/r/1"))
@@ -44,6 +62,8 @@ class TopicTests(unittest.TestCase):
         body = (b'<?xml version="1.0"?><rss version="2.0"><channel><item><title>&amp;#034;v&amp;#034; &amp;amp; w</title>'
                 b'<link>https://example.com/x</link></item></channel></rss>')
         self.assertEqual(parse_feed(body, NOW, SECURITY)[0].original_title, '"v" & w')
+        spaced = body.replace(b'<title>', b'<title>\n  ').replace(b'</title>', b'\n</title>')
+        self.assertEqual(parse_feed(spaced, NOW, SECURITY)[0].original_title, '"v" & w')  # 제목 앞뒤 줄바꿈 (Jenkins)
 
     def test_topic_sources_keep_seven_days_and_security_keeps_one(self):
         old = article(TESTING, 24 * 5, 0)

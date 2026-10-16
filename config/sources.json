@@ -562,5 +562,89 @@
     "kst": false,
     "date_only": false,
     "enabled": true
+  },
+  {
+    "id": "jenkins-security-advisories",
+    "name": "Jenkins 보안 권고",
+    "url": "https://www.jenkins.io/security/advisories/rss.xml",
+    "region": "해외",
+    "kind": "공식 기관",
+    "topic": "보안",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "gitlab-patch-releases",
+    "name": "GitLab 패치·보안 릴리스",
+    "url": "https://docs.gitlab.com/releases/patch-releases.xml",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "topic": "보안",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "github-blog-security",
+    "name": "GitHub 블로그 보안",
+    "url": "https://github.blog/security/feed/",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "topic": "보안",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "gradle-releases",
+    "name": "Gradle 릴리스",
+    "url": "https://github.com/gradle/gradle/releases.atom",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "topic": "테스트",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "k6-releases",
+    "name": "k6 릴리스",
+    "url": "https://github.com/grafana/k6/releases.atom",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "topic": "테스트",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "junit-releases",
+    "name": "JUnit 릴리스",
+    "url": "https://github.com/junit-team/junit-framework/releases.atom",
+    "region": "해외",
+    "kind": "공식 기관",
+    "topic": "테스트",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "sonarqube-releases",
+    "name": "SonarQube 릴리스",
+    "url": "https://github.com/SonarSource/sonarqube/releases.atom",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "topic": "테스트",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
   }
 ]

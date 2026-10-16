@@ -35,7 +35,7 @@ class AnalysisStats:
     insights_failed: int = 0
     dropped_unanalyzed: int = 0
     auth_failed: bool = False
-    excluded: dict[str, str] = field(default_factory=dict) 
+    excluded: dict[str, str] = field(default_factory=dict)
 
 
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:

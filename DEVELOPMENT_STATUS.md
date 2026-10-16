@@ -4,6 +4,16 @@
 SABA의 실제 구현 상태와 다음 작업을 저장소 기준으로 추적한다. 작업 시작 전 `PROJECT_RULES.md`, `harness/` 아래의 모든 규칙 파일, 현재 작업 경로에 적용되는 `AGENTS.md`를 읽고 적용한다.
 
 ## 현재 확인된 상태
+### D-083 출처·게재 기준 강화 (2026-10-16)
+- 시작 HEAD 3c04eac·작업 트리 깨끗함. 작업 중 다른 실행 주체가 e981a2a로 커밋해 구현·설정·관련 테스트가 포함됐다. Codex는 커밋·브랜치 명령을 실행하지 않았으며 이 커밋을 보존했다. config/sources.json은 현재 Git 추적 파일로 확인돼 사용자 설명의 Git 제외 상태와 다르다. 추적 상태는 바꾸지 않았다.
+- nipa-business·kocca-notice·kiat-business·naver-searchadvisor·selenium-blog·smtech-notice를 삭제 없이 중지했다. 재개 조건은 본문 발췌 확보다. msit-press는 robots 허용·상세 HTML 200을 확인했으나 사용할 본문 발췌를 검증하지 못해 중지했다. 총 47곳·활성 40곳이다. moel-press는 robots 허용·상세 HTML 200과 b_content news_content 본문을 확인했다. 승인된 본문 앞 1200자·2MiB 상한·허용 URL·robots·호스트 간격·캐시·첨부 제외·리다이렉트 거부를 구현했다. 운영 캐시는 이번 검증에서 쓰지 않았다.
+- 같은 입력 해시의 검토 필요 결과만 매일 메일에 게재한다. 본문 주입 뒤 분석·캐시 재사용, 기사당 입력 부족·응답 오류·상한·대상 밖·기타 중 하나를 기록하고 실행 이력은 이전·새 로그를 모두 읽는다. 제목 근거가 빈 배열이면 실제 원문 제목으로 대체하고 원문 위치를 연결한다. 중요도 근거 누락은 중요도·이유를 비표시한다. 요약·요점·분류·태그 및 잘못된 번호 검증은 유지한다. 대체 경고를 남기며 운영 분석 DB는 바꾸지 않았다.
+- 출처 추가는 미완료다. 승인된 7개 주소의 GET을 각 1회 시도했으나 GitLab·JUnit은 301로 거부됐고, 나머지 5곳은 검증 명령의 parse_feed 필수 now 인수 누락으로 파싱을 실행하지 못했다. 응답을 보존하지 못해 재사용할 수 없었다. 5곳 추가 GET·2곳 공식 리다이렉트 목적지 확인의 사용자 승인을 요청했으며, 승인 없이 재접속하거나 미검증 주소를 추가하지 않았다. 다음 작업은 이 검증을 마친 뒤 7곳을 추가하는 것이다. 추가 후 총 54곳이므로 중지 포함 상한 60 이내다.
+- Claude Code 인계·교차 검증 (2026-10-16, COLLABORATION.md): Codex 구현 diff 검토 (본문 수집 허용 URL·robots·간격·Redirect 거부, 검토 필요만 게재, 원문 제목 대체는 실제 원문 위치 연결) 결과 타당. 출처 추가 미완료분을 이어받아 SABA 수집 경로 (fetch_feed·parse_feed) 로 7곳 확인 후 추가: jenkins-security-advisories, gitlab-patch-releases (이전한 주소 docs.gitlab.com), github-blog-security (이상 해외 보안), gradle-releases, k6-releases, junit-releases (junit-framework 저장소), sonarqube-releases (이상 해외 테스트). 총 54곳·활성 47곳. Jenkins 제목 앞뒤 줄바꿈을 RSS 제목 공통 정리로 수정. 고용노동부 실제 상세 페이지 1회로 본문 발췌 1,197자 추출 확인 (첨부 URL 거부).
+- D-083에 사용자 결정 1~5와 TEST 운영 중 충전기 연결·전원 연결 시 절전 안 함 결정을 기록했다. 코드·작업 스케줄러·Windows 전원 설정·관리 페이지 프로세스를 바꾸는 전원 작업은 하지 않았다. 실제 AI 호출·발송·운영 실행은 하지 않았다. 후속 프롬프트는 사용자 지시에 따라 Claude Code 교차 검증 후 작성한다.
+- 검증: 관련 테스트 94개 중 93개 통과·1개 Skip 후, 중지·상한 테스트를 추가하고 전체 unittest discover 1회를 실행했다. 전체 543개 중 542개 통과·1개 Skip, 실패·오류 0개 (118.323초). 실제 OpenAI 조건을 끄고 레지스트리 접근·외부 DNS/접속을 차단했으며 임시 root·Mock·상속 ACL tempfile 런타임 어댑터를 사용했다. 처음 직접 테스트에서 새 Fixture의 인용문 정규화와 로그 파싱 인수가 틀려 2개 오류가 났고 해당 Fixture를 바로잡아 재검증했다. assertion을 약화하지 않았다.
+- 보존: 시작 기준 77개 보호·운영·설정 파일 중 승인된 config/sources.json만 변경, 나머지 76개 SHA-256 동일·추가/삭제 없음. GROUP_SEND_APPROVED=False 유지. 시작 HEAD 3c04eac 대비 diff --check 통과, 변경분 언어 위반 0건·U+3002 없음·Secret 키 패턴 발견 0건. 종료 C: 결정 1~4 구현·회귀는 완료했으나 결정 5의 실제 피드 파싱·7곳 추가는 미완료다. 추가 GET 승인 답변 후 현재 저장소에서 이어서 검증하며 기존 작업을 처음부터 반복하지 않는다. 실제 AI 품질·SMTP·발송은 검증하지 않았다.
+
 ### 현재 단계와 승인 상태
 - D-082 시험 실행 준비 (2026-10-15, Codex): 시작 HEAD 26b1a00, main, 작업 트리 깨끗함을 확인했다. config/admin.json은 login만 false에서 true로 변경했다. 실행 중인 관리 페이지는 종료·재시작하지 않았으므로 사용자가 다시 켜야 로그인 요구가 반영된다. 기존 관리자 계정 파일의 내용과 Secret 값은 표시하거나 수정하지 않았다.
 - scripts/saba.ps1의 Secret 목록을 관리 화면 SECRET_NAMES와 같은 6개로 맞추고 install·status에서 값 없이 있음·없음과 관리 페이지 설정 입력 안내를 제공한다. install 안내에서 시험 PC 예약 등록을 금지한다. src/saba/deploy.py는 기존 data/·config/ 전체 백업이 필요한 출처 설정·계정 파일을 이미 포함하므로 변경하지 않았다. 가상 파일 백업·복원과 환경 변수 값 미포함을 테스트했다. 백업은 암호화되지 않으며 개인정보·계정 해시가 들어가고 임의 Secret 파일은 자동 제거하지 않는다.
