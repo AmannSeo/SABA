@@ -65,7 +65,48 @@ class QualityRuleTests(unittest.TestCase):
             briefing._mark_rechecked(db, "a1")
             self.assertFalse(briefing._stale(old, briefing._load_rechecked(db)))
             (Path(directory) / "analysis_rechecked.json").write_text("{broken", encoding="utf-8")
-            self.assertEqual(briefing._load_rechecked(db), frozenset())  # 깨진 파일은 다시 확인하면 된다
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(briefing._load_rechecked(db), frozenset())  # 깨진 파일은 다시 확인하면 된다
+            with patch("os.replace", side_effect=PermissionError), self.assertLogs(level="WARNING"):
+                briefing._mark_rechecked(db, "a2")  # 쓰지 못해도 실행은 계속한다
+
+    def test_same_event_merge_is_conservative(self):
+        from datetime import datetime, timedelta, timezone
+        from types import SimpleNamespace
+        base = newsletter.ArticleView(article_id="x", title="t", source_name="s", url="https://example.com", date_display="",
+                                      date_label="", excerpt=None, category="취약점·권고")
+        day = datetime(2026, 10, 14, tzinfo=timezone.utc)
+
+        def pair(i, title, summary, source="cert-eu-security-advisories", category="취약점·권고", days=0):
+            view = replace(base, article_id=f"{source}:{i}", title=title, summary=summary, category=category,
+                           sources=[(source, title, f"https://example.com/{i}", "")])
+            return view, SimpleNamespace(article_id=view.article_id, source_id=source, published_at=day + timedelta(days=days),
+                                         original_title=title, feed_excerpt=None)
+        kisa = pair(1, "Cisco 제품 보안 업데이트 권고", "Cisco Secure Email Gateway 에서 발생하는 취약점", "boho-security-notice")
+        cert = pair(2, "Cisco Secure Email Gateway 의 심각한 취약점", "Cisco Secure Email Gateway 루트 권한 실행")
+        merged = briefing.merge_same_event([kisa, cert])
+        self.assertEqual(len(merged), 1)
+        self.assertEqual([s[0] for s in merged[0].sources], ["boho-security-notice", "cert-eu-security-advisories"])
+        xe, xr = pair(3, "Cisco IOS XE 취약점", "Cisco IOS XE 웹 UI"), pair(4, "Cisco IOS XR 취약점", "Cisco IOS XR 라우터")
+        self.assertEqual(len(briefing.merge_same_event([xe, xr])), 2)  # 두 단어만 같으면 다른 제품
+        late = pair(5, "Cisco Secure Email Gateway 패치", "Cisco Secure Email Gateway 패치", days=5)
+        self.assertEqual(len(briefing.merge_same_event([cert, late])), 2)  # 3일 넘으면 따로
+        ai = pair(6, "Cisco Secure Email Gateway AI 기능", "Cisco Secure Email Gateway AI", category="AI·기술")
+        self.assertEqual(len(briefing.merge_same_event([cert, ai])), 2)  # 보안 분류끼리만
+        a = pair(7, "Cisco Secure Email Gateway CVE-2026-1111", "Cisco Secure Email Gateway 취약점")
+        b = pair(8, "Cisco Secure Email Gateway CVE-2026-2222", "Cisco Secure Email Gateway 취약점")
+        self.assertEqual(len(briefing.merge_same_event([a, b])), 2)  # 서로 다른 CVE 는 다른 취약점 (Codex 교차 검증)
+        same = pair(9, "Cisco Secure Email Gateway 권고 CVE-2026-1111", "Cisco Secure Email Gateway 패치")
+        self.assertEqual(len(briefing.merge_same_event([a, same])), 1)
+        self.assertEqual(len(briefing.merge_same_event([a, cert])), 1)  # 한쪽에만 CVE 가 있으면 제품으로 판단
+
+    def test_auth_failure_day_is_not_sent(self):
+        from datetime import datetime, timezone
+        from saba import daily
+        stats = briefing.AnalysisStats(auth_failed=True)
+        config = daily.load_config()
+        with patch("saba.briefing.build_views", return_value=([object()], None, stats)),                 self.assertRaisesRegex(daily.DailyError, "AI 인증 실패로 발송하지 않음"):
+            daily.build_mail(datetime(2026, 10, 16, tzinfo=timezone.utc), config)
 
     def test_instructions_name_exclusions_and_no_assumption(self):
         for phrase in ("청중·참가자·평가단 모집", "고용·경제 통계 발표", "업무협약", "곧 게시"):

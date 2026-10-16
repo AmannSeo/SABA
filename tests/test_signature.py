@@ -26,9 +26,21 @@ class SignatureTests(unittest.TestCase):
                              encoding="utf-8")
         self.assertEqual(mail.signature_body(self.path), "<style>.n{color:red}</style><b>서창현</b>")
 
+    def test_default_signature_passes_check(self):
+        mail.check_signature(mail.signature_body(self.path))  # 강화한 검사가 기본 서명을 막지 않는다
+        original = Path(mail.__file__).resolve().parents[2] / "templates" / "email_signature.html"
+        mail.check_signature(original.read_text(encoding="utf-8"))  # <meta charset> 이 있는 원본 파일 그대로 올려도 된다
+        with self.assertRaises(mail.MailFormatError):
+            mail.check_signature("<html><head></head><body><svg onload=x()></svg></body></html>")
+
     def test_unsafe_signature_rejected_and_broken_file_falls_back(self):
         for bad in ("", "<script>x()</script>", '<img src=x onerror="x()">', '<a href="javascript:x()">a</a>',
-                    "<iframe src=x></iframe>", "a" * (mail.MAX_SIGNATURE + 1)):
+                    "<iframe src=x></iframe>", "a" * (mail.MAX_SIGNATURE + 1),
+                    # Codex 교차 검증 (2026-10-16): 엔터티·공백·따옴표 뒤 이벤트·다른 태그 우회
+                    '<a href="&#106;avascript:x()">a</a>', '<a href="java\tscript:x()">a</a>', '<a href="java&#x09;script:x()">a</a>',
+                    '<img src=x/onerror=x()>', '<img src=x "onerror=x()">', '<svg onload=x()>', '<svg><a href=x>s</a></svg>',
+                    '<base href="https://example.com/">', '<meta http-equiv="refresh" content="0;url=x">',
+                    '<link rel=stylesheet href=x>', '<a href="data:text/html,x">a</a>', '<a href="vbscript:x">a</a>'):
             with self.subTest(bad=bad[:20]), self.assertRaises(mail.MailFormatError):
                 mail.check_signature(bad)
         self.path.write_text("<script>x()</script>", encoding="utf-8")  # 직접 고쳐 깨진 파일

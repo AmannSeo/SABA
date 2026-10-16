@@ -47,7 +47,7 @@ def load_author(path: Path = AUTHOR_PATH) -> dict:
         return dict(DEFAULT)
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError):
         raise AuthorError("config/author.json 형식이 올바르지 않습니다.") from None
     if not isinstance(data, dict):
         raise AuthorError("config/author.json 형식이 올바르지 않습니다.")

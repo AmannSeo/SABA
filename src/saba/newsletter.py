@@ -24,16 +24,18 @@ _DEEP_SECTION_META = {
     "domestic": ("국내 보안", "🇰🇷"),
     "overseas": ("해외 보안", "🌎"),
     "ai_tech": ("AI & Tech", "🤖"),
+    "dev": ("개발", "🛠️"),
     "management": ("경영", "🏛️"),
     "business": ("사업", "💼"),
     "testing": ("테스트", "🧪"),
     "other": ("기타", "🗂️"),
 }
 # 심층 뉴스 순서. 기존 보안·AI 섹션 뒤에 부서 업무 주제 섹션을 둔다 (F13).
-_DEEP_ORDER = ("domestic", "overseas", "ai_tech", "management", "business", "testing", "other")
-_OPTIONAL_SECTIONS = {"management", "business", "testing", "other"}  # 기사가 없으면 섹션을 숨긴다
-_TOPIC_SECTION = {"경영": "management", "사업": "business", "테스트": "testing", "AI": "ai_tech"}  # Source 주제 → 섹션
-_CATEGORY_SECTION = {"경영·노무·세무": "management", "사업 지원·마케팅": "business", "SW 테스트·품질": "testing"}
+_DEEP_ORDER = ("domestic", "overseas", "ai_tech", "dev", "management", "business", "testing", "other")
+_OPTIONAL_SECTIONS = {"dev", "management", "business", "testing", "other"}  # 기사가 없으면 섹션을 숨긴다
+_TOPIC_SECTION = {"경영": "management", "사업": "business", "테스트": "testing", "AI": "ai_tech", "개발": "dev"}  # Source 주제 → 섹션
+_CATEGORY_SECTION = {"경영·노무·세무": "management", "사업 지원·마케팅": "business", "SW 테스트·품질": "testing",
+                     "개발 도구·인프라": "dev"}
 _BRIEF_GROUP_META = {
     "schedule": ("일정", "🗓️", "schedule"),
     "hot": ("핫이슈", "🔥", "hot"),
@@ -41,6 +43,7 @@ _BRIEF_GROUP_META = {
     "security": ("보안 뉴스", "🛡️", "security"),
     "company": ("기업 소식", "🏢", "company"),
     "ai_tech": ("테크(Tech)", "⚙️", "tech"),
+    "dev": ("개발", "🛠️", "tech"),
     "economy": ("경제 지표", "📊", "economy"),
     "management": ("경영", "🏛️", "company"),
     "business": ("사업", "💼", "company"),
@@ -57,6 +60,7 @@ _SECTION_PREFIX = {
     "domestic": "domestic",
     "overseas": "overseas",
     "ai_tech": "ai",
+    "dev": "dev",
     "management": "management",
     "business": "business",
     "testing": "testing",
@@ -447,7 +451,7 @@ def _group_views(views: list[ArticleView]):
         deep_section = article_section(view)
         deep_groups[deep_section].append(view)
         brief_key = "security"
-        if deep_section in ("ai_tech", "management", "business", "testing"):
+        if deep_section in ("ai_tech", "dev", "management", "business", "testing"):
             brief_key = deep_section
         elif view.has_full_analysis and view.category == "산업·시장·기업":
             brief_key = "market"

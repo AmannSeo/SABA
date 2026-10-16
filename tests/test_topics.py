@@ -119,6 +119,19 @@ class TopicTests(unittest.TestCase):
         with patch.dict(issues.SOURCE_BY_ID, {ai.source_id: ai}):
             self.assertEqual(input_payload(article(ai, 2, 1))["source_topic"], "AI 개발·도입")
 
+    def test_dev_topic_goes_to_dev_section_and_dev_department(self):
+        from saba import insights, openai_adapter
+        dev = Source("virtual-dev", "가상 개발 도구", "https://example.com/dev", region="해외", kind="공식 기관", topic="개발")
+        with patch.dict(newsletter.SOURCE_BY_ID, {dev.source_id: dev}):
+            view = newsletter.build_article_view(article(dev, 2, 1))
+        self.assertEqual(newsletter.article_section(view), "dev")
+        from saba.analysis import input_payload
+        with patch.dict(issues.SOURCE_BY_ID, {dev.source_id: dev}):
+            self.assertEqual(input_payload(article(dev, 2, 1))["source_topic"], "개발 도구·인프라")
+        self.assertEqual(insights.allowed_departments("개발 도구·인프라"), ("기술개발연구소", "STE본부"))
+        self.assertIn("개발 도구·인프라", openai_adapter.RESPONSE_SCHEMA["properties"]["category"]["anyOf"][0]["enum"])
+        self.assertIn("개발 도구·인프라", insights.DEPARTMENTS["기술개발연구소"])
+
     def test_topic_source_goes_to_topic_section(self):
         with patch.dict(newsletter.SOURCE_BY_ID, {TESTING.source_id: TESTING}):
             view = newsletter.build_article_view(article(TESTING, 2, 1))

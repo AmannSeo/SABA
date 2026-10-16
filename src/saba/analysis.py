@@ -12,7 +12,7 @@ from saba.schema import Article, Text, utc_datetime
 
 RULES_VERSION = "saba-analysis-v1"
 Category = Literal["보안 사고", "취약점·권고", "위협 동향", "AI 보안", "AI·기술", "산업·시장·기업",
-                   "경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질"]  # 뒤 3개: 부서 업무 분야 (F13)
+                   "경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질", "개발 도구·인프라"]  # 부서 업무 분야 (F13, 개발 D-085)
 InputKind = Literal["title_only", "feed_excerpt", "extracted_text"]
 
 
@@ -84,7 +84,8 @@ def json_hash(value: object) -> str:
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
-TOPIC_FIELDS = {"경영": "경영·노무·세무", "사업": "사업 지원·마케팅", "테스트": "SW 테스트·품질", "AI": "AI 개발·도입"}
+TOPIC_FIELDS = {"경영": "경영·노무·세무", "사업": "사업 지원·마케팅", "테스트": "SW 테스트·품질", "AI": "AI 개발·도입",
+                "개발": "개발 도구·인프라"}
 
 
 def analysis_input(article: Article) -> tuple[dict[str, str], InputKind, str]:
@@ -104,7 +105,7 @@ class InputSnapshot(BaseModel):
     published_at: Text | None
     input_kind: InputKind
     texts: dict[Literal["original_title", "feed_excerpt", "extracted_text"], Text]
-    source_topic: Literal["경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질", "AI 개발·도입"] | None = None  # D-078
+    source_topic: Literal["경영·노무·세무", "사업 지원·마케팅", "SW 테스트·품질", "AI 개발·도입", "개발 도구·인프라"] | None = None  # D-078
 
     def model_dump(self, **kwargs):
         # 주제가 없으면 (보안 Source) 키를 빼서 기존 입력 해시·저장 스냅샷과 같게 둔다.

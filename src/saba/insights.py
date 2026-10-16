@@ -58,6 +58,7 @@ CATEGORY_DEPARTMENTS = {
     "보안 사고": (_SECURITY, _DEV), "취약점·권고": (_SECURITY, _DEV), "위협 동향": (_SECURITY, _DEV),
     "AI 보안": (_DEV, _SECURITY), "AI·기술": (_DEV, _STE), "산업·시장·기업": (_DEV, _STRATEGY),
     "경영·노무·세무": (_STRATEGY,), "사업 지원·마케팅": (_STRATEGY,), "SW 테스트·품질": (_STE,),
+    "개발 도구·인프라": (_DEV, _STE),  # CI 도구는 테스트 자동화와도 이어진다
 }
 
 

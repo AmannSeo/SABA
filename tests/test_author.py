@@ -26,6 +26,11 @@ class AuthorTests(unittest.TestCase):
     def test_broken_author_file_falls_back_to_default_for_mail(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "author.json"
+            path.write_bytes(b'{"name": "\xc8\xab\xb1\xe6"}')  # cp949 로 저장된 파일
+            with self.assertRaises(author.AuthorError):
+                author.load_author(path)
+            with self.assertLogs(level="WARNING"):
+                self.assertEqual(author.current_author(path), author.DEFAULT)
             path.write_text("{broken", encoding="utf-8")
             with self.assertRaises(author.AuthorError):
                 author.load_author(path)  # 관리 화면은 오류를 보여 준다

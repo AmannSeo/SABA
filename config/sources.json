@@ -646,5 +646,53 @@
     "kst": false,
     "date_only": false,
     "enabled": true
+  },
+  {
+    "id": "jenkins-lts-changelog",
+    "name": "Jenkins LTS 변경 사항",
+    "url": "https://www.jenkins.io/changelog-stable/rss.xml",
+    "region": "해외",
+    "kind": "공식 기관",
+    "topic": "개발",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "github-blog-git",
+    "name": "GitHub 블로그 Git",
+    "url": "https://github.blog/open-source/git/feed/",
+    "region": "해외",
+    "kind": "기업·벤더",
+    "topic": "개발",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "kubernetes-blog",
+    "name": "Kubernetes 블로그",
+    "url": "https://kubernetes.io/feed.xml",
+    "region": "해외",
+    "kind": "공식 기관",
+    "topic": "개발",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
+  },
+  {
+    "id": "moby-releases",
+    "name": "Moby (Docker Engine) 릴리스",
+    "url": "https://github.com/moby/moby/releases.atom",
+    "region": "해외",
+    "kind": "공식 기관",
+    "topic": "개발",
+    "method": "rss",
+    "kst": false,
+    "date_only": false,
+    "enabled": true
   }
 ]

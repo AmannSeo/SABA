@@ -279,12 +279,12 @@ class AdminApp:
     def secrets_present(self) -> dict[str, bool]:
         return {name: bool(self.env_reader(name).strip()) for name in SECRET_NAMES}
 
-    def revealed_secret(self, user: str | None) -> tuple[str, str] | None:
-        """비밀번호 재확인 뒤 REVEAL_SECONDS 동안만 (이름, 값). 시간이 지나면 지운다."""
-        item = self.revealed.get(user or "")
-        if item and item[2] > time.monotonic():
-            return item[0], item[1]
-        self.revealed.pop(user or "", None)
+    def revealed_secret(self, sid: str | None) -> tuple[str, str, float] | None:
+        """비밀번호를 다시 확인한 그 세션에서만 REVEAL_SECONDS 동안 (이름, 값, 남은 초). 시간이 지나면 지운다."""
+        item = self.revealed.get(sid or "")
+        if sid and item and item[2] > time.monotonic():
+            return item[0], item[1], item[2] - time.monotonic()
+        self.revealed.pop(sid or "", None)
         return None
 
     @staticmethod
@@ -479,7 +479,11 @@ class AdminApp:
                 value = self.env_reader(name)
                 if not value:
                     raise AdminError(f"{name} 값이 없습니다.")
-                self.revealed[actor] = (name, value, time.monotonic() + REVEAL_SECONDS)
+                sid = getattr(CURRENT, "sid", None)
+                if not sid:
+                    raise AdminError("로그인한 세션에서만 볼 수 있습니다.")
+                self.revealed = {k: v for k, v in self.revealed.items() if v[2] > time.monotonic()}
+                self.revealed[sid] = (name, value, time.monotonic() + REVEAL_SECONDS)
                 append_change(self.changes_path, {f"Secret {name}": ("(값 숨김)", f"보기 ({actor})")}, False)
                 return f"{name} 값을 {REVEAL_SECONDS}초 동안 보여 줍니다. 복사 후 화면을 닫아 주세요."
             if action == "secret_set":
@@ -778,10 +782,11 @@ class AdminApp:
             return "변경 사항이 없습니다."
         reregister = bool(SCHEDULE_FIELDS & changes.keys())
         task = self.task() if reregister else {}
-        if task.get("logon") in ("Password", "S4U"):
+        if reregister and task.get("state") != "등록 안 됨" and task.get("logon") != "Interactive":
+            # 무인 (Password·S4U) 이거나 조회 실패·로그온 방식 불명이면 화면 재등록이 무인 예약을 덮어쓸 수 있어 거부한다.
             # 무인 실행 (로그인 없이) 예약은 Windows 비밀번호 입력 창이 있어야 다시 등록된다. 화면에서 재등록하면
             # 일반 (로그인 필요) 예약으로 바뀌어 자동 실행이 멈추므로 거부한다 (3단계 부서 PC, 2026-10-16).
-            raise AdminError("저장하지 않음 · 무인 실행으로 등록된 예약은 화면에서 일정을 바꾸지 않습니다. "
+            raise AdminError("저장하지 않음 · 무인 실행으로 등록됐거나 예약 상태를 확인하지 못해 화면에서 일정을 바꾸지 않습니다. "
                              "config\\daily.json 의 일정을 고친 뒤 scripts\\saba.ps1 register -Unattended -Apply 로 다시 등록하세요.")
         original = self.config_path.read_bytes()
         save_config(new, self.config_path)
@@ -1079,8 +1084,15 @@ def dashboard(app: AdminApp) -> str:
         f'<div class="s">다음 예약 {escape(kst_label(upcoming[0]))}</div>' if on and upcoming else '<div class="s">예약 발송이 꺼져 있습니다</div>')
     if task_unknown:
         tile_task = badge("확인 불가", "b-warn") + '<div class="s">예약 발송 상태를 확인하지 못했습니다.</div>'
+    auth_failed = next((r for r in real_today if "AI 인증 실패" in r.error), None) if not sent else None
+    alert = ('<div class="msg" style="border-color:var(--bad);color:var(--bad);margin-bottom:16px">'
+             f'<b>오늘 뉴스레터를 보내지 않았습니다 ({escape(auth_failed.start[11:16])}): AI 인증 실패.</b> '
+             'OpenAI 키가 만료·폐기되었거나 결제 상태를 확인해야 합니다. 새 키를 <a href="/settings">설정 → Secret</a> 에 넣은 뒤 '
+             '"지금 발송" 으로 다시 보낼 수 있습니다.</div>') if auth_failed else ""
     if running:
         today_state, today_sub = badge("실행 중", "b-info"), "끝나면 결과가 표시됩니다"
+    elif auth_failed:
+        today_state, today_sub = badge("AI 인증 실패", "b-bad"), "설정 → Secret 에서 OPENAI_API_KEY 확인"
     elif sent and sent.result == "부분 발송":
         today_state, today_sub = badge(f"{sent.start[11:16]} 부분 발송", "b-bad"), "실행 이력·뉴스레터의 발송 이력에서 확인"
     elif sent:
@@ -1138,7 +1150,7 @@ def dashboard(app: AdminApp) -> str:
     recent_card = ('<div class="card"><h2>최근 실행<a class="btn right" href="/logs">더 보기</a></h2>'
                    f'<table><tr><th>시각</th><th>실행 주체</th><th>결과</th></tr>{recent_rows or "<tr><td colspan=3>기록 없음</td></tr>"}</table></div>')
     # 우측 한 면 전체를 오늘 뉴스레터에, 좌측에 나머지 (사용자 요청 2026-10-13)
-    return (f'<div class="grid dashboard"><div>{tiles}{today_card}{schedule_card}{recent_card}{status_card}</div>'
+    return (f'{alert}<div class="grid dashboard"><div>{tiles}{today_card}{schedule_card}{recent_card}{status_card}</div>'
             + today_newsletter(app, real_today) + '</div>')
 
 
@@ -1646,7 +1658,8 @@ def filter_bar(selects: list[tuple[str, str, list[str]]], hint: str) -> str:
 
 # Source 주제별 담당 부서 (F11). 보안 Source 는 보안 두 부서, 업무 주제는 해당 부서.
 TOPIC_DEPARTMENTS = {"보안": ("기술개발연구소", "보안사업팀"), "경영": ("경영전략팀 · 사업지원팀",),
-                     "사업": ("경영전략팀 · 사업지원팀",), "테스트": ("STE본부",), "AI": ("기술개발연구소",)}
+                     "사업": ("경영전략팀 · 사업지원팀",), "테스트": ("STE본부",), "AI": ("기술개발연구소",),
+                     "개발": ("기술개발연구소",)}
 
 
 def _health_key(status: dict | None) -> str:
@@ -1862,7 +1875,7 @@ def settings_page(app: AdminApp) -> str:
             f'<table><tr><th>이름</th><th>상태</th><th>값</th></tr>{secret_rows}</table>{secret_form(app)}</div>'
             f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
             f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
-            + accounts_card(app) + author_card(app) + signature_card(app) + criteria_card(app) + api_keywords_card(app))
+            + accounts_card(app) + author_card(app) + signature_card(app) + criteria_card(app) + api_keywords_card(app) + CHIP_JS)
 
 
 def author_card(app: AdminApp) -> str:
@@ -1913,8 +1926,8 @@ def api_keywords_card(app: AdminApp) -> str:
     except Exception as error:  # 설정 오류는 화면에 종류만
         return f'<div class="card"><h2>공공 API 공고 키워드</h2><p class="info">설정을 읽지 못했습니다: {escape(str(error))}</p></div>'
     labels = {"g2b": "나라장터 입찰공고 (용역)", "kstartup": "K-Startup 사업공고", "law": "법령 (법령명·소관부처)"}
-    rows = "".join(f'<tr><th style="width:200px">{labels[k]}</th><td><textarea name="{k}" aria-label="{labels[k]} 키워드" rows="2" '
-                   f'style="width:100%">{escape(", ".join(v))}</textarea></td></tr>' for k, v in words.items())
+    rows = "".join(f'<tr><th style="width:200px">{labels[k]}</th><td><textarea class="chips" data-tone="{TONES[i % len(TONES)]}" name="{k}" aria-label="{labels[k]} 키워드" rows="2" '
+                   f'style="width:100%">{escape(", ".join(v))}</textarea></td></tr>' for i, (k, v) in enumerate(words.items()))
     return (f'<div class="card"><h2>공공 API 공고 키워드<span class="muted">제목에 하나라도 들어 있는 공고만 가져옵니다. 쉼표로 구분, '
             f'각 1~30자·최대 60개.</span></h2><form method="post" action="/action/api_keywords_save">'
             f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
@@ -1939,11 +1952,14 @@ def secret_row(app: AdminApp, name: str, present: bool) -> str:
     """이름 복사는 누구나. 값은 로그인 켜짐 + 관리자만: 평소 가림, 👁 로 비밀번호를 다시 확인하면 1분 동안 전체·복사 (D-084)."""
     state = badge("있음", "b-ok") if present else badge("없음", "b-bad")
     value = '<span class="muted">-</span>'
-    user = getattr(CURRENT, "user", None)
     if present and app.login_required and getattr(CURRENT, "role", None) == "admin":
-        shown = app.revealed_secret(user)
+        shown = app.revealed_secret(getattr(CURRENT, "sid", None))
         if shown and shown[0] == name:
-            value = f'<code>{escape(shown[1])}</code> {copy_button(shown[1], name + " 값 복사")}'
+            # 남은 시간이 지나면 화면에서도 값·복사 속성을 지운다 (새로 고치지 않아도)
+            value = (f'<span class="reveal" data-ttl="{int(shown[2] * 1000)}"><code>{escape(shown[1])}</code> '
+                     f'{copy_button(shown[1], name + " 값 복사")}</span>'
+                     '<script>document.querySelectorAll(".reveal").forEach(function(e){setTimeout(function(){'
+                     'e.innerHTML="<span class=muted>시간이 지나 가렸습니다</span>"},parseInt(e.dataset.ttl,10))})</script>')
         else:
             value = (f'<code>{mask_secret(name, app.env_reader(name))}</code> <details class="inline"><summary class="btn icon" title="값 보기" '
                      f'aria-label="{escape(name)} 값 보기">👁</summary><form method="post" action="/action/secret_reveal" class="row">'
@@ -2022,7 +2038,7 @@ def criteria_card(app: AdminApp) -> str:
             f'<p class="muted">항목은 쉼표·문장 단위 태그입니다 (괄호 안 쉼표는 한 태그). \"…는 제외\" 로 끝나는 회색 태그는 제외 조건입니다. × 로 지우고, 입력 후 Enter 로 추가합니다. 빈칸에서 Backspace 는 마지막 태그를 지웁니다.</p>'
             f'<div class="row"><button class="btn primary">저장</button>'
             f'<span class="muted">저장하면 다음 실행부터 새 기준으로 시사점을 다시 만듭니다 (하루 AI 상한 안). 변경은 설정 변경 이력에 남습니다.</span></div>'
-            f'</form>{CHIP_JS}</div>')
+            f'</form></div>')
 
 
 TONES = ("tone-blue", "tone-purple", "tone-red", "tone-green")  # 부서 카드 색과 비슷한 태그 색
@@ -2034,6 +2050,7 @@ CHIP_JS = r"""<script>
     if((c===","||sentence)&&depth===0){if(buf.trim())out.push(buf.trim());buf="";}else buf+=c;}
     if(buf.trim())out.push(buf.trim());return out;}
   document.querySelectorAll("textarea.chips").forEach(function(area){
+    if(area.dataset.chipped)return;area.dataset.chipped="1";
     var box=document.createElement("div");box.className="chip-box "+(area.dataset.tone||"");
     var input=document.createElement("input");input.className="chip-input";input.placeholder="입력 후 Enter";
     input.setAttribute("aria-label",(area.getAttribute("aria-label")||"")+" 추가");
@@ -2049,7 +2066,7 @@ CHIP_JS = r"""<script>
         var x=document.createElement("button");x.type="button";x.className="chip-x";x.textContent="×";
         x.setAttribute("aria-label",text+" 지우기");
         x.onclick=function(){var list=items();list.splice(i,1);save(list);};chip.appendChild(x);box.insertBefore(chip,input);});
-      count.textContent=area.value.length+" / "+max+"자";count.classList.toggle("over",max&&area.value.length>max);}
+      count.textContent=max?area.value.length+" / "+max+"자":items().length+"개";count.classList.toggle("over",!!max&&area.value.length>max);}
     input.addEventListener("keydown",function(e){
       if((e.key==="Enter"||e.key===",")&&input.value.trim()){e.preventDefault();var next=items().concat([input.value.trim()]);
         if(max&&next.join(", ").length>max){count.classList.add("over");return;}input.value="";save(next);}
@@ -2102,6 +2119,7 @@ def make_handler(app: AdminApp, port: int):
 
         def _bind(self, session) -> None:
             CURRENT.user, CURRENT.role, CURRENT.token = (session.user, session.role, app.token) if session else (None, None, app.token)
+            CURRENT.sid = self._sid() if session and app.login_required else None  # Secret 보기는 세션 단위 (D-084)
             CURRENT.login = app.login_required
 
         def do_GET(self):
@@ -2163,7 +2181,8 @@ def make_handler(app: AdminApp, port: int):
                 return self._send(200, page("실행 이력·뉴스레터", logs_page(app, "mail", None, _first(query, "name") or None, query), message, active="/logs"))
             if url.path == "/signature/preview":  # 설정 화면 서명 미리보기 (sandbox iframe, 이미지는 data URI)
                 from saba.mail import signature_body
-                return self._send(200, app.inline_images(f"<!DOCTYPE html><html><body>{signature_body(app.root / 'config' / 'signature.html')}</body></html>"))
+                return self._send(200, app.inline_images(f"<!DOCTYPE html><html><body>{signature_body(app.root / 'config' / 'signature.html')}</body></html>"),
+                                  headers={"Content-Security-Policy": "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'"})
             if url.path == "/newsletter/view":
                 html = app.newsletter_html(_first(query, "name") or None)
                 return self._send(200, html or "<p>생성된 메일이 없습니다.</p>")
@@ -2227,6 +2246,7 @@ def make_handler(app: AdminApp, port: int):
             if path == "/logout":
                 session = app.sessions.get(self._sid())
                 app.sessions.drop(self._sid())
+                app.revealed.pop(self._sid() or "", None)  # 보던 Secret 도 함께 지운다
                 if session:
                     append_change(app.changes_path, {"로그아웃": ("", session.user)}, False)
                 return self._redirect("/login", clear=True)

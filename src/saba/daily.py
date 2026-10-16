@@ -148,6 +148,9 @@ def collect_rss() -> None:
         raise DailyError(f"RSS 수집 실패 (종료 코드 {result.returncode}{detail})")
 
 
+AUTH_FAILED = "AI 인증 실패로 발송하지 않음 (OPENAI_API_KEY 확인 필요: 관리 페이지 설정 → Secret)"
+
+
 def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:
     """분석·시사점 (하루 상한 안에서) 과 메일 .eml 생성. (.eml 바이트, 요약 문구)."""
     from saba.analysis_storage import DEFAULT_ANALYSIS_DB
@@ -159,7 +162,8 @@ def build_mail(now: datetime, config: DailyConfig) -> tuple[bytes, str]:
                                            max_new_calls=config.max_analysis_calls,
                                            insight_calls=config.max_insight_calls, daily_caps=True, analyzed_only=True)
     if stats is not None and stats.auth_failed:
-        logging.warning("AI 분석 인증 실패: OPENAI_API_KEY 확인 필요 · 이후 분석 호출 중단, 분석 없는 기사는 원문 발췌로 표시")
+        # 인증 실패 날은 보내지 않는다 (2026-10-16 사용자 결정, D-085): 분석 없는 메일이나 일부 기사만 나가는 것을 막는다.
+        raise DailyError(AUTH_FAILED)
     if not views:
         raise DailyError("메일 생성 실패 (표시할 기사 0건)")
     local = now.astimezone()

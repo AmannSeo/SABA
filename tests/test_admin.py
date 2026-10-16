@@ -29,14 +29,14 @@ STAMP = TODAY.strftime("%Y-%m-%d")
 class FakeShell:
     """PowerShell 대신 명령만 기록한다. 작업 상태와 등록 성공 여부를 바꿀 수 있다."""
 
-    def __init__(self, state="Ready", register_code=0):
-        self.calls, self.state, self.register_code = [], state, register_code
+    def __init__(self, state="Ready", register_code=0, logon="Interactive"):
+        self.calls, self.state, self.register_code, self.logon = [], state, register_code, logon
 
     def __call__(self, command):
         self.calls.append(command)
         if "Register-ScheduledTask" in command:
             return self.register_code, ""
-        return 0, f"{self.state}|{STAMP} 10:15|0|{STAMP} 23:59"
+        return 0, f"{self.state}|{STAMP} 10:15|0|{STAMP} 23:59|{self.logon}"
 
 
 class AdminBase(unittest.TestCase):
@@ -135,6 +135,18 @@ class LoginTests(AdminBase):
         user, (name, value, _) = next(iter(self.app.revealed.items()))
         self.app.revealed[user] = (name, value, 0.0)  # 1분이 지나면 다시 가린다
         self.assertNotIn("sk-virtual-0123456789", self.get("/settings"))
+
+    def test_secret_reveal_is_per_session_expires_on_page_and_cleared_on_logout(self):
+        self.app.login_required = True
+        self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789"}
+        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="virtual-pass-1", back="/settings")
+        shown = self.get("/settings")
+        self.assertIn("sk-virtual-0123456789", shown)
+        self.assertIn('class="reveal" data-ttl=', shown)  # 화면에서도 시간이 지나면 지운다
+        other = "saba_session=" + self.app.sessions.create("tester", "admin")  # 같은 계정의 다른 브라우저
+        self.assertNotIn("sk-virtual-0123456789", self.request("GET", "/settings", cookie=other)[1])
+        self.request("POST", "/logout", urlencode({"token": self.app.token}))
+        self.assertEqual(self.app.revealed, {})
 
     def test_secret_reveal_blocked_for_viewer_and_login_off(self):
         self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789"}
@@ -467,6 +479,17 @@ class AuthorSettingsTests(AdminBase):
         self.assertEqual(author.load_author(self.root / "config" / "author.json")["email"], author.DEFAULT["email"])
 
 
+class AuthFailureAlertTests(AdminBase):
+    def test_dashboard_alerts_when_ai_auth_failed(self):
+        from saba.history import Run
+        from saba.daily import AUTH_FAILED
+        run = Run(f"{STAMP} 08:01:00", "자동 실행", result="실패", error=f"분석·메일 생성 단계: {AUTH_FAILED}")
+        with patch.object(self.app, "real_runs_today", return_value=[run]):
+            html = self.get("/")
+        self.assertIn("오늘 뉴스레터를 보내지 않았습니다 (08:01): AI 인증 실패", html)
+        self.assertIn('href="/settings"', html)
+
+
 class CriteriaChipTests(AdminBase):
     def test_criteria_uses_chip_editor_over_same_fields(self):
         html = self.get("/settings")
@@ -474,6 +497,8 @@ class CriteriaChipTests(AdminBase):
         self.assertIn('name="examples_3"', html)
         self.assertIn("function split(text)", html)
         self.assertIn("function join(list)", html)
+        self.assertIn('class="chips" data-tone="tone-blue" name="g2b"', html)  # 공공 API 키워드도 태그
+        self.assertEqual(html.count("function split(text)"), 1)  # 스크립트는 한 번만
 
 
 class SignatureSettingsTests(AdminBase):
@@ -482,6 +507,11 @@ class SignatureSettingsTests(AdminBase):
         self.post("signature_save", confirm=False, signature="<p>%%AUTHOR_TITLE%% 가상 서명</p>", back="/settings")
         self.assertIn("가상 서명", path.read_text(encoding="utf-8"))
         self.assertIn("서창현 선임 가상 서명", self.get("/signature/preview"))
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        conn.request("GET", "/signature/preview", headers={"Host": f"127.0.0.1:{self.port}", "Cookie": self.cookie})
+        csp = conn.getresponse().getheader("Content-Security-Policy") or ""
+        self.assertIn("sandbox", csp)  # 직접 열어도 스크립트가 돌지 않는다
+        self.assertIn("default-src 'none'", csp)
         self.assertIn("직접 넣은 서명", self.get("/settings"))
         log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
         self.assertIn("메일 서명", log)
@@ -511,6 +541,18 @@ class ScheduleTests(AdminBase):
         self.assertEqual((self.root / "config" / "daily.json").read_bytes(), before)  # 저장·재등록하지 않음
         self.assertFalse(any("Register-ScheduledTask" in c for c in self.app.shell.calls))
         self.assertIn("register -Unattended -Apply", self.get("/schedule"))
+
+    def test_unknown_task_state_or_logon_refuses_schedule_change(self):
+        before = (self.root / "config" / "daily.json").read_bytes()
+        for shell in (FakeShell(logon=""), lambda command: (1, "")):  # 로그온 방식 없음, 조회 실패
+            with self.subTest(shell=shell):
+                self.app.shell = shell
+                self.post("save_schedule", **self.form)
+                self.assertEqual((self.root / "config" / "daily.json").read_bytes(), before)
+        self.app.shell = FakeShell()
+        self.app.shell.state = "NotRegistered"  # 등록 안 됨은 새로 등록해도 된다
+        self.post("save_schedule", **self.form)
+        self.assertNotEqual((self.root / "config" / "daily.json").read_bytes(), before)
 
     def test_save_needs_confirm(self):
         self.assertEqual(self.post("save_schedule", confirm=False, **self.form)[0], 400)

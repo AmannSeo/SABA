@@ -6,7 +6,7 @@
   },
   {
     "name": "기술개발연구소",
-    "scope": "AI 개발·도입 (AI 코딩 에이전트·에이전틱 개발·MCP·A2A 등 AI 개발 생태계, AI 산업·기업 동향, 산업별 AI 도입 사례, AI 보안·규제) 과 개발 보안 (제품·오픈소스 취약점, 보안 패치, 시큐어 코딩)",
+    "scope": "AI 개발·도입 (AI 코딩 에이전트·에이전틱 개발·MCP·A2A 등 AI 개발 생태계, AI 산업·기업 동향, 산업별 AI 도입 사례, AI 보안·규제) 과 개발 보안 (제품·오픈소스 취약점, 보안 패치, 시큐어 코딩), 개발 도구·인프라 (CI/CD·Git·컨테이너·쿠버네티스)",
     "examples": "OpenAI·Anthropic·Google 등 AI 제품·사업 발표, Claude Code·OpenAI Codex·GitHub Copilot·Cursor·Gemini CLI 기능 변경, Multi-Agent·Autonomous Coding, MCP·A2A·Agent Skills·AI IDE, 금융·통신·모빌리티 AI 적용·업무 자동화 사례, 프롬프트 인젝션 등 AI 보안 취약점·AI 표준·규제, 개발 도구·라이브러리 CVE. 개발·도입 내용 없는 일반 AI 뉴스는 제외"
   },
   {

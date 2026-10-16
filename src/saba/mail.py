@@ -27,7 +27,8 @@ class MailFormatError(ValueError):
 # 관리 화면에서 넣은 서명 (2026-10-16 사용자 요청). 없으면 templates/email_signature.html 을 쓴다.
 CUSTOM_SIGNATURE_PATH = ROOT / "config" / "signature.html"
 MAX_SIGNATURE = 100_000
-_UNSAFE_SIGNATURE = re.compile(r"<\s*(script|iframe|object|embed|form)\b|javascript:|\son[a-z]+\s*=", re.I)
+_UNSAFE_SIGNATURE = re.compile(r"<\s*/?\s*(script|iframe|frame|object|embed|form|svg|math|base|meta|link|applet)\b"
+                               r"|[\s/\"'`]on[a-z]+\s*=|(java|vb)script:|data:text/html|expression\s*\(", re.I)
 
 
 def check_signature(html: str) -> str:
@@ -37,8 +38,14 @@ def check_signature(html: str) -> str:
         raise MailFormatError("서명 HTML 이 비어 있습니다.")
     if len(html) > MAX_SIGNATURE:
         raise MailFormatError(f"서명 HTML 은 {MAX_SIGNATURE:,}자 이하여야 합니다.")
-    if _UNSAFE_SIGNATURE.search(html):
-        raise MailFormatError("서명에 script·iframe·form·javascript:·on 이벤트 속성은 쓸 수 없습니다.")
+    # 메일에 실제로 들어가는 부분 (<style>·<body> 안쪽) 을 검사한다. <head> 의 <meta charset> 등은 버려지므로 막지 않는다.
+    # 엔터티 (&#106;avascript: 등) 를 풀고 공백·제어 문자를 지운 모양도 함께 검사한다 (Codex 교차 검증 2026-10-16)
+    from html import unescape
+    used = _signature_parts(html)
+    decoded = unescape(used)
+    squeezed = re.sub(r"[\x00-\x20]+", "", decoded)
+    if any(_UNSAFE_SIGNATURE.search(text) for text in (used, decoded, squeezed)):
+        raise MailFormatError("서명에 script·iframe·form·svg·javascript:·on 이벤트 속성 등은 쓸 수 없습니다.")
     return html
 
 

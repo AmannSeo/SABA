@@ -11,7 +11,9 @@ from saba.ai_adapter import prepare_request
 from saba.analysis_storage import list_analyses, save_analysis
 from saba.insights import (DEFAULT_INSIGHT_DB, InsightResult, allowed_departments, insight_hash, load_insights, run_insight,
                             save_insight)
-from saba.issues import Issue, Selection, preview_article, select_issues
+from saba.issues import (CANDIDATE_WINDOW, CVE_PATTERN, PRODUCT_KEYWORDS, Issue, Selection, article_cves, is_official,
+                          preview_article, select_issues)
+import re
 from saba.newsletter import ArticleView, build_article_view
 from saba.notice_body import DEFAULT_CACHE, notice_excerpts, with_excerpt
 from saba.openai_adapter import DEFAULT_LEDGER, KST, LIMIT_STATUSES, LiveOutcome, daily_used, read_ledger, run_openai
@@ -59,15 +61,28 @@ def _rechecked_path(analysis_db: Path) -> Path:
 
 
 def _load_rechecked(analysis_db: Path) -> frozenset[str]:
+    path = _rechecked_path(analysis_db)
+    if not path.exists():
+        return frozenset()
     try:
-        return frozenset(json.loads(_rechecked_path(analysis_db).read_text(encoding="utf-8")))
+        return frozenset(json.loads(path.read_text(encoding="utf-8")))
     except (OSError, ValueError, TypeError):
+        import logging
+        logging.warning("재분석 확인 기록이 깨져 다시 확인합니다: %s", path.name)
         return frozenset()
 
 
 def _mark_rechecked(analysis_db: Path, analysis_id: str) -> None:
+    """임시 파일에 쓰고 바꿔 넣는다. 쓰지 못해도 분석·메일은 계속한다 (다음 실행에서 한 번 더 확인할 뿐)."""
+    import logging
+    import os
     path = _rechecked_path(analysis_db)
-    path.write_text(json.dumps(sorted(_load_rechecked(analysis_db) | {analysis_id})), encoding="utf-8")
+    temp = path.with_suffix(".tmp")
+    try:
+        temp.write_text(json.dumps(sorted(_load_rechecked(analysis_db) | {analysis_id})), encoding="utf-8")
+        os.replace(temp, path)
+    except OSError as error:
+        logging.warning("재분석 확인 기록을 쓰지 못했습니다 (다음 실행에서 다시 확인): %s", type(error).__name__)
 
 
 def stored_results(analysis_db: Path) -> dict[tuple[str, str], AnalysisResult]:
@@ -168,6 +183,55 @@ def display_result(result: AnalysisResult) -> AnalysisResult:
         "tags": [_hangul(t) for t in result.tags], "key_points": [_hangul(p) for p in result.key_points]})
 
 
+SECURITY_CATEGORIES = {"보안 사고", "취약점·권고", "위협 동향"}
+_PRODUCT_WORDS = {name for group in PRODUCT_KEYWORDS for name in group if name.isascii() and " " not in name}
+
+
+def product_phrases(text: str) -> set[str]:
+    """제품 키워드로 시작하는 영문 세 단어 (예: "cisco secure email"). 두 단어 ("cisco ios") 는 다른 제품이 섞여 쓰지 않는다."""
+    words = re.findall(r"[a-z0-9][a-z0-9.+-]*", text.lower())
+    return {" ".join(words[i:i + 3]) for i, word in enumerate(words) if word in _PRODUCT_WORDS and i + 2 < len(words)}
+
+
+def zip_views(views: list, issues: list) -> list:
+    """build_views 가 대상 밖·게재 제외를 건너뛰므로 article_id 로 이슈를 다시 짝짓는다."""
+    by_id = {issue.representative.article_id: issue for issue in issues}
+    return [(view, by_id[view.article_id]) for view in views if view.article_id in by_id]
+
+
+def merge_same_event(pairs: list) -> list:
+    """분석 뒤 같은 사건 합치기 (2026-10-16 사용자 지적: Cisco 취약점이 보호나라·CERT-EU 로 두 번).
+
+    묶기 단계 (D-027) 는 CVE 가 같을 때만 자동으로 묶는다. 보호나라처럼 제목만 있는 공지는 그 단계에서 CVE 가 보이지
+    않아, 분석 요약까지 본 뒤 보안 분류·3일 이내·같은 제품 세 단어가 모두 맞으면 한 카드로 합치고 출처를 함께 보인다.
+    공식 출처를 대표로 두고 자리는 먼저 나온 카드를 쓴다. # ponytail: 영문 제품명만 비교, 한글 제품명 사례가 생기면 보완
+    """
+    kept: list = []
+    for view, article in pairs:
+        target = None
+        text = " ".join(filter(None, (view.title, view.summary, *[s[1] for s in view.sources])))
+        cves = {c.upper() for c in CVE_PATTERN.findall(text)} | set(article_cves(article))
+        phrases = product_phrases(text) if view.category in SECURITY_CATEGORIES else set()
+        for index, (other, other_article, other_phrases, other_cves) in enumerate(kept):
+            close = (article.published_at and other_article.published_at
+                     and abs(article.published_at - other_article.published_at) <= CANDIDATE_WINDOW)
+            # 양쪽 모두 CVE 가 있는데 겹치지 않으면 다른 취약점이다 (Codex 교차 검증 2026-10-16)
+            other_vuln = cves and other_cves and not cves & other_cves
+            if phrases and other.category in SECURITY_CATEGORIES and close and phrases & other_phrases and not other_vuln:
+                target = index
+                break
+        if target is None:
+            kept.append((view, article, phrases, cves))
+            continue
+        other, other_article, other_phrases, other_cves = kept[target]
+        lead, lead_article, extra = ((view, article, other) if is_official(article) and not is_official(other_article)
+                                     else (other, other_article, view))
+        urls = {source[2] for source in lead.sources}
+        lead.sources = lead.sources + [source for source in extra.sources if source[2] not in urls]
+        kept[target] = (lead, lead_article, other_phrases | phrases, other_cves | cves)
+    return [view for view, _, _, _ in kept]
+
+
 def display_insight(insight: InsightResult, category: str | None = None) -> InsightResult:
     allowed = allowed_departments(category)  # 분류에 맞지 않는 부서 연결은 버린다 (2026-10-16)
     return insight.model_copy(update={"implication": _hangul(insight.implication), "connections": [
@@ -249,4 +313,5 @@ def build_views(article_db: Path, analysis_db: Path, now: datetime, *, use_ai: b
         insight = insights.get(issue.representative.article_id)
         views.append(build_article_view(preview_article(issue), display_result(result) if result else None,
                                         insight=display_insight(insight, result.category if result else None) if insight else None))
+    views = merge_same_event([(view, issue.representative) for view, issue in zip_views(views, selection.issues)])
     return views, selection, stats
