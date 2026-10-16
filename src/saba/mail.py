@@ -28,7 +28,7 @@ class MailFormatError(ValueError):
 CUSTOM_SIGNATURE_PATH = ROOT / "config" / "signature.html"
 MAX_SIGNATURE = 100_000
 _UNSAFE_SIGNATURE = re.compile(r"<\s*/?\s*(script|iframe|frame|object|embed|form|svg|math|base|meta|link|applet)\b"
-                               r"|[\s/\"'`]on[a-z]+\s*=|(java|vb)script:|data:text/html|expression\s*\(|url\s*\([^)]*\\", re.I)  # 끝: CSS 이스케이프 주소
+                               r"|[\s/\"'`]on[a-z]+\s*=|(java|vb)script:|data:text/html|expression\s*\(|\\[0-9a-f]", re.I)  # 끝: CSS·HTML 16진 이스케이프 (u\72l(\6a avascript:) 등, Codex 2차 재검증)
 
 
 def check_signature(html: str) -> str:

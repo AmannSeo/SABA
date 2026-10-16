@@ -65,7 +65,7 @@ CONFIRM_TEXT = {
     "user_delete": "이 계정을 삭제할까요? 그 계정은 바로 로그아웃됩니다.",
     "secret_set": "이 Secret 을 새 값으로 바꿉니다 (Windows 사용자 환경 변수). 이전 값은 되돌릴 수 없습니다. 진행할까요?",
 }
-REVEAL_SECONDS = 60
+REVEAL_SECONDS = 60  # 👁 로 본 값은 이 시간이 지나면 화면에서 다시 가린다 (새로 고쳐도 가림)
 VIEWER_BLOCKED = {"/recipients/export.csv"}  # 조회자에게 막는 화면 (수신자 명단 내려받기)
 MODE_LABEL = {"daily": "매일", "weekly": "매주", "monthly": "매월", "dates": "특정 날짜"}
 DAY_LABEL = dict(zip(("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"), "월화수목금토일"))
@@ -158,7 +158,6 @@ class AdminApp:
     sessions: auth.Sessions = field(default_factory=auth.Sessions)  # 로그인 세션 (메모리, 작업 5)
     env_writer: Callable[[str, str], None] = auth.set_user_env  # Secret 저장 (테스트에서 바꿈)
     env_reader: Callable[[str], str] = auth.read_user_env  # Secret 읽기 (테스트에서 바꿈)
-    revealed: dict = field(default_factory=dict)  # 사용자 -> (이름, 값, 만료 시각): 비밀번호 재확인 뒤 잠깐 보이는 Secret
     login_required: bool = True  # False 면 로그인 없이 이 PC 사용자를 관리자로 보고, Secret·계정 변경은 막는다
 
     @cached_property
@@ -276,16 +275,21 @@ class AdminApp:
         state, last, result, next_run, logon = (out.strip().splitlines()[-1].split("|") + ["", "", "", "", ""])[:5]
         return {"state": state, "last": last, "result": result, "next": next_run, "logon": logon}
 
+    def secret_value(self, name: str, purpose: str) -> str:
+        """Secret 값 보기·복사 (D-084, 2026-10-16 사용자 결정으로 비밀번호 재확인 없앰). 로그인 켜짐 + 관리자 세션에서만
+        호출된다 (_post). 그 PC 의 Windows 사용자는 이미 같은 값을 읽을 수 있어 재확인의 보호가 작다. 이력에는 값 없이 남긴다."""
+        from saba.history import append_change
+        if name not in SECRET_NAMES:
+            return ""
+        value = self.env_reader(name)
+        if value:
+            append_change(self.changes_path, {f"Secret {name}": ("(값 숨김)", f"{'복사' if purpose == 'copy' else '보기'} "
+                                                                           f"({getattr(CURRENT, 'user', '')})")}, False)
+        return value
+
     def secrets_present(self) -> dict[str, bool]:
         return {name: bool(self.env_reader(name).strip()) for name in SECRET_NAMES}
 
-    def revealed_secret(self, sid: str | None) -> tuple[str, str, float] | None:
-        """비밀번호를 다시 확인한 그 세션에서만 REVEAL_SECONDS 동안 (이름, 값, 남은 초). 시간이 지나면 지운다."""
-        item = self.revealed.get(sid or "")
-        if sid and item and item[2] > time.monotonic():
-            return item[0], item[1], item[2] - time.monotonic()
-        self.revealed.pop(sid or "", None)
-        return None
 
     @staticmethod
     def _try(func) -> str:
@@ -389,7 +393,7 @@ class AdminApp:
             return self.set_task_state(_first(form, "state") == "on")
         if action == "save_schedule":
             return self.save_schedule(form)
-        if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_reveal"):
+        if action in ("user_add", "user_password", "user_delete", "secret_set"):
             return self.account_action(action, form)
         if action == "api_keywords_save":
             return self.save_api_keywords(form)
@@ -465,27 +469,6 @@ class AdminApp:
         from saba.history import append_change
         actor = getattr(CURRENT, "user", "")
         try:
-            if action == "secret_reveal":
-                # 값 보기·복사 (2026-10-16 사용자 결정, D-084): 관리자 비밀번호를 다시 확인하고 1분만 보인다. 이력에는 값 없이 남긴다.
-                name = _first(form, "name")
-                if name not in SECRET_NAMES:
-                    raise AdminError("볼 수 없는 이름입니다.")
-                if self.sessions.locked(actor):
-                    raise AdminError("비밀번호를 여러 번 틀려 잠시 막혔습니다. 잠시 뒤 다시 하세요.")
-                if self.users.verify(actor, _first(form, "password")) != "admin":
-                    self.sessions.failed(actor)
-                    raise AdminError("비밀번호가 맞지 않습니다. 값을 보여 주지 않았습니다.")
-                self.sessions.succeeded(actor)
-                value = self.env_reader(name)
-                if not value:
-                    raise AdminError(f"{name} 값이 없습니다.")
-                sid = getattr(CURRENT, "sid", None)
-                if not sid:
-                    raise AdminError("로그인한 세션에서만 볼 수 있습니다.")
-                self.revealed = {k: v for k, v in self.revealed.items() if v[2] > time.monotonic()}
-                self.revealed[sid] = (name, value, time.monotonic() + REVEAL_SECONDS)
-                append_change(self.changes_path, {f"Secret {name}": ("(값 숨김)", f"보기 ({actor})")}, False)
-                return f"{name} 값을 {REVEAL_SECONDS}초 동안 보여 줍니다. 복사 후 화면을 닫아 주세요."
             if action == "secret_set":
                 name, value = _first(form, "name"), _first(form, "value")
                 if name not in SECRET_NAMES:
@@ -896,6 +879,7 @@ td .btn{margin:2px 0}
 .tone-blue .chip{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.tone-purple .chip{background:#f5f3ff;border-color:#ddd6fe;color:#6d28d9}
 .tone-red .chip{background:#fef2f2;border-color:#fecaca;color:#b91c1c}.tone-green .chip{background:#f0fdf4;border-color:#bbf7d0;color:#15803d}
 .chip.chip-ex{background:#f3f4f6;border-color:#d1d5db;color:#4b5563}
+.secret{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.secret code{min-width:120px;word-break:break-all}
 .chip-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;padding:6px 8px;border:1px dashed var(--line);border-radius:10px}
 .chip-title{font-weight:700;font-size:13px;margin-right:2px}.chip-group .chip-input{min-width:110px;font-size:13px}
 .chip-input{flex:1;min-width:140px;border:0;outline:0;padding:4px;font:inherit}.chip-count{display:block;text-align:right;font-size:12px;color:var(--muted)}.chip-count.over{color:var(--bad)}
@@ -1877,7 +1861,8 @@ def settings_page(app: AdminApp) -> str:
             f'<table><tr><th>이름</th><th>상태</th><th>값</th></tr>{secret_rows}</table>{secret_form(app)}</div>'
             f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
             f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
-            + accounts_card(app) + author_card(app) + signature_card(app) + criteria_card(app) + api_keywords_card(app) + CHIP_JS)
+            + accounts_card(app) + author_card(app) + signature_card(app) + criteria_card(app) + api_keywords_card(app) + CHIP_JS
+            + SECRET_JS % (json.dumps(app.token), REVEAL_SECONDS * 1000))
 
 
 def author_card(app: AdminApp) -> str:
@@ -1951,27 +1936,35 @@ def mask_secret(name: str, value: str) -> str:
 
 
 def secret_row(app: AdminApp, name: str, present: bool) -> str:
-    """이름 복사는 누구나. 값은 로그인 켜짐 + 관리자만: 평소 가림, 👁 로 비밀번호를 다시 확인하면 1분 동안 전체·복사 (D-084)."""
+    """이름 복사는 누구나. 값은 로그인 켜짐 + 관리자만: 평소 가림, 👁 보기·🙈 가리기·⧉ 복사 (D-084). 값은 누를 때만 가져온다."""
     state = badge("있음", "b-ok") if present else badge("없음", "b-bad")
     value = '<span class="muted">-</span>'
     if present and app.login_required and getattr(CURRENT, "role", None) == "admin":
-        shown = app.revealed_secret(getattr(CURRENT, "sid", None))
-        if shown and shown[0] == name:
-            # 남은 시간이 지나면 화면에서도 값·복사 속성을 지운다 (새로 고치지 않아도)
-            value = (f'<span class="reveal" data-ttl="{int(shown[2] * 1000)}"><code>{escape(shown[1])}</code> '
-                     f'{copy_button(shown[1], name + " 값 복사")}</span>'
-                     '<script>document.querySelectorAll(".reveal").forEach(function(e){setTimeout(function(){'
-                     'e.innerHTML="<span class=muted>시간이 지나 가렸습니다</span>"},parseInt(e.dataset.ttl,10))})</script>')
-        else:
-            value = (f'<code>{mask_secret(name, app.env_reader(name))}</code> <details class="inline"><summary class="btn icon" title="값 보기" '
-                     f'aria-label="{escape(name)} 값 보기">👁</summary><form method="post" action="/action/secret_reveal" class="row">'
-                     f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
-                     f'<input type="hidden" name="name" value="{escape(name, quote=True)}">'
-                     '<input name="password" type="password" autocomplete="current-password" required aria-label="내 비밀번호" placeholder="내 비밀번호">'
-                     '<button class="btn">보기</button></form></details>')
+        mask = mask_secret(name, app.env_reader(name))
+        value = (f'<span class="secret" data-name="{escape(name, quote=True)}"><code data-mask="{mask}">{mask}</code>'
+                 f'<button type="button" class="btn icon" data-act="view" title="값 보기" aria-label="{escape(name)} 값 보기">👁</button>'
+                 f'<button type="button" class="btn icon" data-act="copy" title="값 복사" aria-label="{escape(name)} 값 복사">⧉</button></span>')
     elif present:
         value = '<span class="muted">로그인한 관리자만</span>'
     return f"<tr><td>{escape(name)} {copy_button(name, name + ' 이름 복사')}</td><td>{state}</td><td>{value}</td></tr>"
+
+
+SECRET_JS = """<script>
+(function(){
+  function get(box,purpose){var body=new URLSearchParams({token:%s,name:box.dataset.name,purpose:purpose});
+    return fetch("/action/secret_value",{method:"POST",body:body,credentials:"same-origin",cache:"no-store"})
+      .then(function(r){if(!r.ok)throw new Error(r.status);return r.text();});}
+  document.querySelectorAll(".secret").forEach(function(box){
+    var code=box.querySelector("code"),view=box.querySelector("[data-act=view]"),copy=box.querySelector("[data-act=copy]"),timer=null;
+    function hide(){code.textContent=code.dataset.mask;view.textContent="👁";view.title="값 보기";clearTimeout(timer);}
+    view.onclick=function(){if(view.textContent!=="👁")return hide();
+      get(box,"view").then(function(v){code.textContent=v;view.textContent="🙈";view.title="다시 가리기";
+        timer=setTimeout(hide,%d);}).catch(function(){code.textContent="가져오지 못함 (다시 로그인)";});};
+    copy.onclick=function(){get(box,"copy").then(function(v){return navigator.clipboard.writeText(v);})
+      .then(function(){copy.textContent="✓";setTimeout(function(){copy.textContent="⧉";},1200);})
+      .catch(function(){copy.textContent="!";});};});
+})();
+</script>"""
 
 
 def secret_form(app: AdminApp) -> str:
@@ -2059,6 +2052,7 @@ CHIP_JS = r"""<script>
   // "분야 (세부, 세부)" 처럼 괄호 안이 쉼표로 2개 이상이면 묶음 제목 + 세부 태그로 보인다. 아니면 한 태그.
   function group(text){var m=/^([^()（）]+?)\s*[(（](.*)[)）]$/.exec(text);if(!m)return null;
     for(var i=0,d=0;i<m[2].length;i++){var c=m[2][i];if(c==="("||c==="（")d++;if(c===")"||c==="）")d--;if(d<0)return null;}
+    if(d!==0)return null;  // 괄호 짝이 안 맞으면 묶지 않는다 (Codex 2차 재검증)
     var subs=split(m[2]);return subs.length>1&&m[2]===subs.join(", ")?{title:m[1],subs:subs}:null;}
   document.querySelectorAll("textarea.chips").forEach(function(area){
     if(area.dataset.chipped)return;area.dataset.chipped="1";
@@ -2140,7 +2134,6 @@ def make_handler(app: AdminApp, port: int):
 
         def _bind(self, session) -> None:
             CURRENT.user, CURRENT.role, CURRENT.token = (session.user, session.role, app.token) if session else (None, None, app.token)
-            CURRENT.sid = self._sid() if session and app.login_required else None  # Secret 보기는 세션 단위 (D-084)
             CURRENT.login = app.login_required
 
         def do_GET(self):
@@ -2239,7 +2232,7 @@ def make_handler(app: AdminApp, port: int):
             if not app.login_required:
                 if not path.startswith("/action/"):
                     return self._redirect("/")
-                if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_reveal"):  # 로그인 없이 Secret·계정은 못 바꾼다
+                if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_value"):  # 로그인 없이 Secret·계정은 못 바꾼다
                     app.message = "실패: 로그인이 꺼져 있어 Secret·계정은 바꿀 수 없습니다 (config/admin.json 의 login 을 켠 뒤 사용)."
                     return self._redirect("/settings")
                 session = auth.Session("이 PC", "admin", 0.0)
@@ -2255,6 +2248,9 @@ def make_handler(app: AdminApp, port: int):
                 return self._redirect(_first(form, "back") if _first(form, "back") in {href for href, _ in MENU} else "/")
             if action in CONFIRM_TEXT and _first(form, "confirm") != "yes":
                 return self._send(400, "confirm required", "text/plain; charset=utf-8")
+            if action == "secret_value":  # 👁·⧉ 를 누를 때만 값 한 개를 돌려준다. 화면 HTML 에는 넣지 않는다.
+                value = app.secret_value(_first(form, "name"), _first(form, "purpose"))
+                return self._send(200 if value else 404, value, "text/plain; charset=utf-8")
             try:
                 app.message = app.act(action, form)
             except Exception as error:  # 화면에는 종류와 고정 문구만
@@ -2270,7 +2266,6 @@ def make_handler(app: AdminApp, port: int):
             if path == "/logout":
                 session = app.sessions.get(self._sid())
                 app.sessions.drop(self._sid())
-                app.revealed.pop(self._sid() or "", None)  # 보던 Secret 도 함께 지운다
                 if session:
                     append_change(app.changes_path, {"로그아웃": ("", session.user)}, False)
                 return self._redirect("/login", clear=True)

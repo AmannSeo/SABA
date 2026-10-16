@@ -115,7 +115,12 @@ class LoginTests(AdminBase):
                                            cookie=None)
         return status, location
 
-    def test_secret_masked_then_revealed_after_password_and_logged(self):
+    def secret_value(self, name, purpose="view", cookie=...):
+        body = urlencode({"token": self.app.token, "name": name, "purpose": purpose})
+        return self.request("POST", "/action/secret_value", body, cookie=cookie)
+
+    def test_secret_masked_and_fetched_only_on_click_and_logged(self):
+        # 2026-10-16 사용자 결정: 비밀번호 재확인 없이 👁 보기·🙈 가리기·⧉ 복사. 값은 화면 HTML 에 넣지 않는다.
         self.app.login_required = True
         self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789", "SABA_SMTP_PASSWORD": "virtual-mail-pass"}
         html = self.get("/settings")
@@ -123,43 +128,30 @@ class LoginTests(AdminBase):
         self.assertNotIn("sk-virtual-0123456789", html)
         self.assertNotIn("virt", html.split("SABA_SMTP_PASSWORD", 1)[1].split("</tr>", 1)[0])  # 비밀번호는 앞글자도 숨김
         self.assertIn('data-v="OPENAI_API_KEY"', html)  # 이름 복사
-        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="wrong-pass-1", back="/settings")
-        self.assertNotIn("sk-virtual-0123456789", self.get("/settings"))
-        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="virtual-pass-1", back="/settings")
-        shown = self.get("/settings")
-        self.assertIn("<code>sk-virtual-0123456789</code>", shown)
-        self.assertIn('data-v="sk-virtual-0123456789"', shown)  # 값 복사
+        self.assertIn('data-act="copy"', html)  # 값 복사 버튼은 항상 보인다
+        self.assertIn("다시 가리기", html)
+        self.assertEqual(self.secret_value("OPENAI_API_KEY")[:2], (200, "sk-virtual-0123456789"))
+        self.secret_value("OPENAI_API_KEY", "copy")
+        self.assertNotIn("sk-virtual-0123456789", self.get("/settings"))  # 새로 고치면 다시 가림 (서버에 보기 상태 없음)
         log = (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8")
         self.assertIn("보기 (tester)", log)
+        self.assertIn("복사 (tester)", log)
         self.assertNotIn("sk-virtual", log)
-        user, (name, value, _) = next(iter(self.app.revealed.items()))
-        self.app.revealed[user] = (name, value, 0.0)  # 1분이 지나면 다시 가린다
-        self.assertNotIn("sk-virtual-0123456789", self.get("/settings"))
+        self.assertEqual(self.secret_value("NOT_A_SECRET")[0], 404)  # 정해진 6개 이름만
 
-    def test_secret_reveal_is_per_session_expires_on_page_and_cleared_on_logout(self):
-        self.app.login_required = True
-        self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789"}
-        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="virtual-pass-1", back="/settings")
-        shown = self.get("/settings")
-        self.assertIn("sk-virtual-0123456789", shown)
-        self.assertIn('class="reveal" data-ttl=', shown)  # 화면에서도 시간이 지나면 지운다
-        other = "saba_session=" + self.app.sessions.create("tester", "admin")  # 같은 계정의 다른 브라우저
-        self.assertNotIn("sk-virtual-0123456789", self.request("GET", "/settings", cookie=other)[1])
-        self.request("POST", "/logout", urlencode({"token": self.app.token}))
-        self.assertEqual(self.app.revealed, {})
-
-    def test_secret_reveal_blocked_for_viewer_and_login_off(self):
+    def test_secret_value_blocked_for_viewer_login_off_and_no_session(self):
         self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789"}
         self.app.users.add("viewer1", "viewer", "virtual-pass-1")
         viewer = "saba_session=" + self.app.sessions.create("viewer1", "viewer")
         self.app.login_required = True
-        body = urlencode({"token": self.app.token, "name": "OPENAI_API_KEY", "password": "virtual-pass-1", "back": "/settings"})
-        self.request("POST", "/action/secret_reveal", body, cookie=viewer)
-        html = self.request("GET", "/settings", cookie=viewer)[1]
-        self.assertNotIn("sk-v", html)
+        for cookie in (viewer, None):
+            with self.subTest(cookie=cookie):
+                status, body, _ = self.secret_value("OPENAI_API_KEY", cookie=cookie)
+                self.assertNotIn("sk-virtual", body)
+        self.assertNotIn("sk-v", self.request("GET", "/settings", cookie=viewer)[1])
         self.app.login_required = False
-        self.post("secret_reveal", confirm=False, name="OPENAI_API_KEY", password="virtual-pass-1", back="/settings")
-        self.assertEqual(self.app.revealed, {})
+        status, body, _ = self.secret_value("OPENAI_API_KEY")
+        self.assertNotIn("sk-virtual", body)
         self.assertNotIn("sk-v", self.get("/settings"))
 
     def test_viewer_cannot_read_admin_csv_preview(self):
@@ -500,6 +492,21 @@ class CriteriaChipTests(AdminBase):
         self.assertIn('class="chips" data-tone="tone-blue" name="g2b"', html)  # 공공 API 키워드도 태그
         self.assertEqual(html.count("function split(text)"), 1)  # 스크립트는 한 번만
         self.assertIn("function group(text)", html)  # 분야 (세부, 세부) 는 묶음 제목 + 세부 태그 (2026-10-16)
+
+    def test_group_chip_boundaries_in_node(self):
+        import shutil
+        import subprocess
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node 없음")
+        js = admin.CHIP_JS
+        cases = {"A (B, C)": ["A", ["B", "C"]], "A (B, C(D)": None, "A (B) 과 C (D, E)": None, "A (B)": None,
+                 "A (B, C) 뒤": None, "A (B(x, y), C)": ["A", ["B(x, y)", "C"]], "A (B,C)": None}
+        script = (js[js.index("function split"):js.index("  document.querySelectorAll")]
+                  + f"var C={json.dumps(list(cases), ensure_ascii=False)};"
+                  + "console.log(JSON.stringify(C.map(function(t){var g=group(t);return g?[g.title,g.subs]:null;})));")
+        out = subprocess.run([node, "-e", script], capture_output=True, text=True, encoding="utf-8", timeout=30, check=True).stdout
+        self.assertEqual(dict(zip(cases, json.loads(out))), cases)  # 짝 안 맞는 괄호·괄호 뒤 글자·세부 1개·", " 아님은 한 태그
 
 
 class SignatureSettingsTests(AdminBase):
