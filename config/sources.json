@@ -177,7 +177,8 @@
     "method": "rss",
     "kst": true,
     "date_only": true,
-    "enabled": false
+    "enabled": false,
+    "note": "D-083: 상세 페이지에서 분석에 쓸 본문 발췌를 확인하지 못함. 보안 외 보도자료가 많음. 재개 조건: 본문 발췌 확보"
   },
   {
     "id": "google-search-central",
@@ -345,7 +346,8 @@
     "method": "crawl:nipa",
     "kst": true,
     "date_only": true,
-    "enabled": false
+    "enabled": false,
+    "note": "D-083: 목록에 제목만 있어 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
   },
   {
     "id": "smtech-notice",
@@ -357,7 +359,8 @@
     "method": "crawl:smtech",
     "kst": true,
     "date_only": true,
-    "enabled": false
+    "enabled": false,
+    "note": "D-083: 목록에 제목만 있어 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
   },
   {
     "id": "kocca-notice",
@@ -369,7 +372,8 @@
     "method": "crawl:kocca",
     "kst": true,
     "date_only": true,
-    "enabled": false
+    "enabled": false,
+    "note": "D-083: 목록에 제목만 있어 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
   },
   {
     "id": "naver-searchadvisor",
@@ -381,7 +385,8 @@
     "method": "crawl:searchadvisor",
     "kst": true,
     "date_only": true,
-    "enabled": false
+    "enabled": false,
+    "note": "D-083: 목록에 제목만 있어 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
   },
   {
     "id": "kiat-business",
@@ -393,7 +398,8 @@
     "method": "crawl:kiat",
     "kst": true,
     "date_only": true,
-    "enabled": false
+    "enabled": false,
+    "note": "D-083: 목록에 제목만 있어 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
   },
   {
     "id": "selenium-blog",
@@ -405,7 +411,8 @@
     "method": "crawl:selenium",
     "kst": false,
     "date_only": true,
-    "enabled": false
+    "enabled": false,
+    "note": "D-083: 분석에 쓸 본문 발췌가 부족해 AI 분석 입력 부족. 재개 조건: 분석에 쓸 본문 발췌 확보"
   },
   {
     "id": "g2b-service-bids",

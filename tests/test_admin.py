@@ -138,6 +138,12 @@ class LoginTests(AdminBase):
         self.assertIn("복사 (tester)", log)
         self.assertNotIn("sk-virtual", log)
         self.assertEqual(self.secret_value("NOT_A_SECRET")[0], 404)  # 정해진 6개 이름만
+        self.assertEqual(html.count('class="sc-card"'), 6)  # 항목마다 카드 (수정·삭제)
+        self.post("secret_delete", name="OPENAI_API_KEY", back="/settings")
+        self.assertIn(("OPENAI_API_KEY", ""), self.env_writes)  # 빈 값 = 지우기
+        self.assertIn("삭제 (tester)", (self.root / "logs" / "settings_changes.log").read_text(encoding="utf-8"))
+        self.post("secret_delete", name="NOT_A_SECRET", back="/settings")
+        self.assertEqual(len(self.env_writes), 1)
 
     def test_secret_value_blocked_for_viewer_login_off_and_no_session(self):
         self.env_values = {"OPENAI_API_KEY": "sk-virtual-0123456789"}
@@ -734,6 +740,16 @@ class SourceTests(AdminBase):
                   region="국내", kind="공식 기관", topic="경영", method="crawl:moel", kst="on", date_only="on", enabled="on", back="/sources")
         edited = next(e for e in self.entries() if e.source.source_id == "virtual-moel")
         self.assertEqual((edited.source.source_name, edited.source.method), ("가상 보도자료 (수정)", "crawl:moel"))
+        # 메모 (중지 사유) 저장·표시, 사유 없는 중지 표시 (2026-10-16 사용자 요청)
+        self.post("source_save", mode="edit", id="virtual-moel", name="가상 보도자료 (수정)", url="https://www.example.go.kr/list.do",
+                  region="국내", kind="공식 기관", topic="경영", method="crawl:moel", kst="on", date_only="on",
+                  note="본문 발췌 부족으로 중지", back="/sources")
+        edited = next(e for e in self.entries() if e.source.source_id == "virtual-moel")
+        self.assertEqual((edited.enabled, edited.note), (False, "본문 발췌 부족으로 중지"))
+        html = self.get("/sources")
+        self.assertIn("중지 사유: 본문 발췌 부족으로 중지", html)
+        self.post("source_toggle", id="boannews", back="/sources")
+        self.assertIn("중지 사유 미기록", self.get("/sources"))
 
     def test_add_requires_check_then_saves_and_logs(self):
         self.post("source_save", **self.form)

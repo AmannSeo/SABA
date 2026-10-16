@@ -186,11 +186,20 @@ def read_user_env(name: str) -> str:
 
 
 def set_user_env(name: str, value: str) -> None:
-    """Windows 사용자 환경 변수에 저장하고 이 프로세스에도 바로 반영한다. 다른 열린 프로그램은 다시 시작해야 읽는다."""
+    """Windows 사용자 환경 변수에 저장하고 이 프로세스에도 바로 반영한다. 빈 값이면 지운다. 다른 열린 프로그램은 다시 시작해야 읽는다."""
     import winreg
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_SET_VALUE) as key:
-        winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
-    os.environ[name] = value
+        if value:
+            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, value)
+        else:
+            try:
+                winreg.DeleteValue(key, name)
+            except FileNotFoundError:
+                pass
+    if value:
+        os.environ[name] = value
+    else:
+        os.environ.pop(name, None)
     try:  # 새로 여는 프로그램이 바뀐 값을 읽도록 알린다 (실패해도 저장은 끝났다)
         import ctypes
         ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x001A, 0, "Environment", 0x0002, 2000, None)

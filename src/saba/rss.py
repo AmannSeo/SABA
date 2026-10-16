@@ -63,6 +63,7 @@ class SourceEntry:
     """설정 파일의 Source 한 줄 (D-073). 관리 화면에서 추가·수정·중지·삭제한다."""
     source: Source
     enabled: bool = True
+    note: str = ""  # 관리 메모 (중지 사유 등, 200자). 수집에는 쓰지 않는다 (2026-10-16 사용자 요청)
 
 
 def check_api_url(url: str) -> None:
@@ -90,6 +91,7 @@ def parse_sources(rows: list) -> list[SourceEntry]:
             kind = row.get("kind") or ("공식 기관" if row.get("official") else "보안 전문 매체")
             topic = row.get("topic") or "보안"
             method = row.get("method") or "rss"
+            note = " ".join(str(row.get("note") or "").split())
         except (KeyError, TypeError, AttributeError):
             raise RssError("Source 설정 오류: id·name·url 이 필요합니다.") from None
         if not SOURCE_ID_PATTERN.fullmatch(source_id) or source_id in seen:
@@ -106,11 +108,13 @@ def parse_sources(rows: list) -> list[SourceEntry]:
             raise RssError("Source 설정 오류: 주제는 " + "·".join(TOPICS) + " 중 하나여야 합니다.")
         if method not in METHODS:
             raise RssError("Source 설정 오류: 수집 방식은 " + "·".join(METHODS) + " 중 하나여야 합니다.")
+        if len(note) > 200:
+            raise RssError("Source 설정 오류: 메모는 200자 이하여야 합니다.")
         if method.startswith("api:"):
             check_api_url(url)
         seen.add(source_id)
         entries.append(SourceEntry(Source(source_id, name, url, KST if kst else None, date_only, kind == "공식 기관",
-                                          region, kind, topic, method), enabled))
+                                          region, kind, topic, method), enabled, note))
     return entries
 
 
@@ -118,7 +122,7 @@ def source_row(entry: SourceEntry) -> dict:
     s = entry.source
     return {"id": s.source_id, "name": s.source_name, "url": s.feed_url, "region": s.region, "kind": s.kind,
             "topic": s.topic, "method": s.method, "kst": s.local_offset is not None, "date_only": s.date_only,
-            "enabled": entry.enabled}
+            "enabled": entry.enabled, **({"note": entry.note} if entry.note else {})}
 
 
 def load_source_entries(path: Path = SOURCES_PATH) -> list[SourceEntry]:

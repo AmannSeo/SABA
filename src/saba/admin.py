@@ -64,6 +64,7 @@ CONFIRM_TEXT = {
     "save_schedule": "예약 발송 설정을 저장합니다. 일정이 바뀌면 작업 스케줄러에 다시 등록합니다. 진행할까요?",
     "user_delete": "이 계정을 삭제할까요? 그 계정은 바로 로그아웃됩니다.",
     "secret_set": "이 Secret 을 새 값으로 바꿉니다 (Windows 사용자 환경 변수). 이전 값은 되돌릴 수 없습니다. 진행할까요?",
+    "secret_delete": "이 Secret 을 지웁니다 (Windows 사용자 환경 변수). 지우면 이 값을 쓰는 기능이 멈춥니다. 진행할까요?",
 }
 REVEAL_SECONDS = 60  # 👁 로 본 값은 이 시간이 지나면 화면에서 다시 가린다 (새로 고쳐도 가림)
 VIEWER_BLOCKED = {"/recipients/export.csv"}  # 조회자에게 막는 화면 (수신자 명단 내려받기)
@@ -393,7 +394,7 @@ class AdminApp:
             return self.set_task_state(_first(form, "state") == "on")
         if action == "save_schedule":
             return self.save_schedule(form)
-        if action in ("user_add", "user_password", "user_delete", "secret_set"):
+        if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_delete"):
             return self.account_action(action, form)
         if action == "api_keywords_save":
             return self.save_api_keywords(form)
@@ -479,6 +480,13 @@ class AdminApp:
                 append_change(self.changes_path, {f"Secret {name}": ("(값 숨김)", f"변경 ({actor})")}, False)
                 return (f"{name} 저장 완료 (값은 표시하지 않음). 관리 페이지에서 시작하는 실행에는 바로, 작업 스케줄러는 다음 실행부터 "
                         f"적용됩니다. 이미 열려 있는 다른 프로그램 (VS Code 등) 은 다시 켜야 읽습니다.")
+            if action == "secret_delete":
+                name = _first(form, "name")
+                if name not in SECRET_NAMES:
+                    raise AdminError("지울 수 없는 이름입니다.")
+                self.env_writer(name, "")
+                append_change(self.changes_path, {f"Secret {name}": ("(값 숨김)", f"삭제 ({actor})")}, False)
+                return f"{name} 삭제 완료. 이 값을 쓰는 기능은 새 값을 넣을 때까지 멈춥니다."
             user_id = _first(form, "user").strip().lower()
             if action == "user_add":
                 role = _first(form, "role")
@@ -540,7 +548,7 @@ class AdminApp:
                "region": _first(form, "region") or "해외", "kind": _first(form, "kind") or "보안 전문 매체",
                "topic": _first(form, "topic") or "보안", "method": _first(form, "method") or "rss",
                "kst": _first(form, "kst") == "on", "date_only": _first(form, "date_only") == "on",
-               "enabled": _first(form, "enabled") == "on"}
+               "enabled": _first(form, "enabled") == "on", "note": _first(form, "note")}
         self.draft = {**row, "mode": _first(form, "mode")}
         try:
             return parse_sources([row])[0]
@@ -813,7 +821,8 @@ def _source_text(entry) -> str:
         return "(없음)"
     s = entry.source
     return (f"{s.source_name} · {s.feed_url} · {s.region} · {s.kind} · {s.topic}"
-            f"{' · 한국 시간' if s.local_offset else ''}{' · 날짜만' if s.date_only else ''} · {'사용' if entry.enabled else '중지'}")
+            f"{' · 한국 시간' if s.local_offset else ''}{' · 날짜만' if s.date_only else ''} · {'사용' if entry.enabled else '중지'}"
+            f"{' · 메모: ' + entry.note if entry.note else ''}")
 
 
 def _first(form: dict, key: str) -> str:
@@ -878,8 +887,18 @@ td .btn{margin:2px 0}
 .chip-x{border:0;background:none;color:inherit;opacity:.55;cursor:pointer;font-size:15px;line-height:1;padding:0 4px}.chip-x:hover{opacity:1}
 .tone-blue .chip{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}.tone-purple .chip{background:#f5f3ff;border-color:#ddd6fe;color:#6d28d9}
 .tone-red .chip{background:#fef2f2;border-color:#fecaca;color:#b91c1c}.tone-green .chip{background:#f0fdf4;border-color:#bbf7d0;color:#15803d}
+.src-note{margin-top:4px;font-size:12px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:2px 8px;display:inline-block}
 .chip.chip-ex{background:#f3f4f6;border-color:#d1d5db;color:#4b5563}
-.secret{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}.secret code{min-width:120px;word-break:break-all}
+.sc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;margin-bottom:8px}
+.sc-card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface);display:flex;flex-direction:column;gap:10px}
+.sc-head{display:flex;align-items:center;gap:4px}.sc-label{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.02em}.sc-head .right{margin-left:auto}
+.sc-field{display:flex;align-items:center;gap:2px;height:42px;padding:0 6px 0 14px;border-radius:10px;background:#f1f3f4;min-width:0}
+.sc-field code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:none;font-size:14px;letter-spacing:.04em}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:0;border-radius:8px;background:none;color:#5f6368;cursor:pointer;flex:none}
+.icon-btn:hover{background:rgba(0,0,0,.06);color:#202124}
+.sc-foot{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}.sc-edit{flex:none}.sc-edit[open]{flex-basis:100%}.sc-edit summary{list-style:none;display:inline-flex}.sc-edit summary::-webkit-details-marker{display:none}
+.sc-edit[open] summary{display:none}.sc-grid{align-items:start}.sc-form{display:flex;gap:6px}.sc-form input{flex:1;min-width:0}
+.btn.pill{border-radius:999px;padding:6px 18px;border-color:#a8c7fa;color:#0b57d0;background:var(--surface)}
 .chip-group{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;padding:6px 8px;border:1px dashed var(--line);border-radius:10px}
 .chip-title{font-weight:700;font-size:13px;margin-right:2px}.chip-group .chip-input{min-width:110px;font-size:13px}
 .chip-input{flex:1;min-width:140px;border:0;outline:0;padding:4px;font:inherit}.chip-count{display:block;text-align:right;font-size:12px;color:var(--muted)}.chip-count.over{color:var(--bad)}
@@ -914,6 +933,45 @@ dialog h3{margin:0 0 10px}
 .steps{display:flex;gap:6px;align-items:stretch;margin-top:14px}
 .step{flex:1;border:1px solid var(--line);border-radius:var(--r-ctl);padding:10px 12px;background:var(--subtle);color:var(--muted)}
 .step b{display:block;color:var(--text);margin-bottom:2px}
+/* ---- 디자인 규칙 v2 (2026-10-16 사용자 요청: 크기·통일성·읽기 쉬움) ----
+   높이: 입력·선택·버튼 36px, 표 안 버튼 30px. 간격: 4·8·12·16·24. 카드 제목 아래 줄에 설명. 표는 가로선만. */
+body{font-size:14.5px}
+.muted{font-size:13px;line-height:1.6}
+.card{padding:22px 24px}
+.card h2{font-size:16px;margin:0 0 16px;row-gap:4px}
+.card h2>.muted,.card h2>span.muted{order:3;flex-basis:100%;font-weight:400;font-size:13px}
+.card h2 .right{order:2}
+.card h2 .badge{order:1}
+input:not([type=checkbox]):not([type=radio]):not([type=file]):not(.chip-input),select{height:36px;padding:0 10px;font-size:14px}
+input[type=file]{font-size:13px}
+textarea{padding:8px 10px;line-height:1.55}
+.btn{height:36px;min-height:36px;padding:0 14px}
+.btn.pill{border-radius:999px;padding:0 18px}
+.btn.icon{height:30px;min-height:30px;padding:0 8px}
+td .btn,td button.btn{height:30px;min-height:30px;padding:0 12px;font-size:12.5px;margin:2px 0}
+td .btn.success,td .btn.warn{color:var(--text);border-color:var(--line)}
+td .btn.danger{border-color:var(--line)}td .btn.danger:hover{background:var(--bad-soft);border-color:#f3b1aa}
+table{border:1px solid var(--line);border-radius:10px;border-collapse:separate;border-spacing:0;overflow:hidden}
+th,td{border:0;border-bottom:1px solid var(--line);padding:11px 14px}
+tr:last-child>td,tr:last-child>th{border-bottom:0}
+th{background:var(--subtle);font-size:13px}
+td>th,tr>th:first-child:not(:only-child){width:180px}
+tr.src:hover td,tbody tr:hover td{background:#fafbfc}
+.tile .v{font-size:22px}.tile .k{font-size:13px}.tile .s{font-size:13px}
+.row{gap:10px}
+.chips label{padding:0 12px;height:36px;display:inline-flex;align-items:center;gap:6px}
+.field>label.t{font-weight:600;font-size:13.5px}
+.msg{font-size:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-bottom:16px;align-items:start}.grid3>.card{margin-bottom:0}
+.grid3 tr>th:first-child{width:96px}
+td input:not([type=checkbox]):not([type=radio]),td select{width:100%;max-width:560px}
+.tw>table{overflow:visible}tr.src td:first-child{min-width:220px}tr.src td:nth-child(2),tr.src td:nth-child(5),tr.src td:nth-child(6),tr.src td:last-child{white-space:nowrap}
+tr.src td.url{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.src-note{display:block;max-width:420px;line-height:1.5}
+label>select,label>input:not([type=checkbox]):not([type=radio]){margin-left:6px}
+td a:not(.btn){color:var(--accent);text-decoration:none}td a:not(.btn):hover{text-decoration:underline}
+@media (max-width:1200px){.grid3{grid-template-columns:minmax(0,1fr)}}
+
 .step.done{border-color:#bfe2cb;background:var(--ok-soft)}.step.fail{border-color:#f3c2bc;background:var(--bad-soft)}
 .arrow{align-self:center;color:#9aa3b0}
 .summary{font-size:15px;line-height:1.65}
@@ -1687,7 +1745,10 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
                 rows += (f"<tr class='src' data-q='{escape((s.source_name + ' ' + s.source_id + ' ' + s.feed_url + ' ' + region + ' ' + kind + ' ' + s.topic).lower())}'"
                          f" data-topic='{escape(s.topic)}' data-region='{escape(region)}' data-kind='{escape(kind)}' data-state='{'사용' if e.enabled else '중지'}'"
                          f" data-dept='{escape('|'.join(depts))}' data-method='{method}' data-health='{_health_key(statuses.get(s.source_id))}'>"
-                         f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div></td>"
+                         f"<td><b>{escape(s.source_name)}</b><div class=muted>{escape(s.source_id)}</div>"
+                         + (f"<div class='src-note'>{'중지 사유' if not e.enabled else '메모'}: {escape(e.note)}</div>" if e.note
+                            else ("<div class='src-note'>중지 사유 미기록 (수정에서 메모를 남기세요)</div>" if not e.enabled else ""))
+                         + "</td>"
                          f"<td>{escape(s.topic)}</td><td>{escape(', '.join(depts))}</td>"
                          f"<td class=url title='{escape(s.feed_url)}'>{escape(s.feed_url)}</td>"
                          f"<td>{method}<div class=muted>{'한국 시간' if s.local_offset else '표준'}{' · 날짜만' if s.date_only else ''}</div></td>"
@@ -1713,7 +1774,8 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
         values = {"id": current.source.source_id, "name": current.source.source_name, "url": current.source.feed_url,
                   "region": current.source.region, "kind": current.source.kind, "topic": current.source.topic,
                   "method": current.source.method,
-                  "kst": current.source.local_offset is not None, "date_only": current.source.date_only, "enabled": current.enabled}
+                  "kst": current.source.local_offset is not None, "date_only": current.source.date_only, "enabled": current.enabled,
+                  "note": current.note}
     else:
         values = {"id": "", "name": "", "url": "https://", "region": "해외", "kind": "보안 전문 매체", "topic": "보안", "kst": False,
                   "date_only": False, "enabled": True}
@@ -1734,6 +1796,7 @@ def sources_page(app: AdminApp, edit_id: str | None) -> str:
 <div class="field"><label class="t">ID (영문 소문자·숫자·하이픈 3~40자, 만든 뒤 바꿀 수 없음)</label>
  <input name="id" value="{escape(str(values.get("id", "")))}" {"readonly" if editing else "required"} pattern="[a-z0-9][a-z0-9-]{{2,39}}" style="width:100%"></div>
 <div class="field"><label class="t">이름 (메일 출처 표시)</label><input aria-label="이름 (메일 출처 표시)" name="name" value="{escape(str(values.get("name", "")))}" required maxlength="60" style="width:100%"></div>
+<div class="field"><label class="t">메모 (중지 사유·재개 조건 등, 200자)</label><input aria-label="메모" name="note" value="{escape(str(values.get("note", "")))}" maxlength="200" style="width:100%"></div>
 </div>
 <div>
 <div class="field"><label class="t">구분 (메일 섹션)</label><div class="chips">
@@ -1848,21 +1911,25 @@ def settings_page(app: AdminApp) -> str:
     from saba.send_mail import TEST_ADDRESS
     config, valid = app.config(), app._try(app.config)
     entries = app.source_entries()
-    secret_rows = "".join(secret_row(app, n, v) for n, v in app.secrets_present().items())
-    return (f'<div class="grid"><div class="card"><h2>예약 발송<a class="btn right" href="/schedule">변경</a></h2><table>'
-            f'<tr><th style="width:160px">일정</th><td>{escape(schedule_summary(config))}</td></tr>'
-            f'<tr><th>하루 AI 호출 상한</th><td>분석 {config.max_analysis_calls}건 · 시사점 {config.max_insight_calls}건</td></tr>'
+    secret_cards = "".join(secret_card(app, n, v) for n, v in app.secrets_present().items())
+    enabled = sum(1 for e in entries if e.enabled)
+    return (f'<div class="grid3">'
+            f'<div class="card"><h2>예약 발송<a class="btn right" href="/schedule">변경</a></h2><table>'
+            f'<tr><th>일정</th><td>{escape(schedule_summary(config))}</td></tr>'
+            f'<tr><th>하루 AI 상한</th><td>분석 {config.max_analysis_calls}건 · 시사점 {config.max_insight_calls}건</td></tr>'
             f'<tr><th>발송</th><td>{"발송" if config.send else "메일 생성까지만"}</td></tr>'
             f'<tr><th>보관 기간</th><td>로그 {config.log_days}일 · 메일 파일 {config.mail_days}일</td></tr>'
-            f'<tr><th>설정 파일 점검</th><td>{escape(valid)}</td></tr></table></div>'
+            f'<tr><th>설정 파일</th><td>{escape(valid)}</td></tr></table></div>'
             f'<div class="card"><h2>RSS Source<a class="btn right" href="/sources">관리</a></h2><table>'
-            f'<tr><th style="width:160px">사용 중</th><td>{sum(1 for e in entries if e.enabled)}곳</td></tr><tr><th>전체</th><td>{len(entries)}곳</td></tr></table></div></div>'
-            f'<div class="grid"><div class="card"><h2>Secret<span class="muted">값은 가려서 보이고, 👁 는 내 비밀번호를 다시 확인한 뒤 1분 동안 보입니다 (관리자만).</span></h2>'
-            f'<table><tr><th>이름</th><th>상태</th><th>값</th></tr>{secret_rows}</table>{secret_form(app)}</div>'
-            f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2>'
-            f'<table><tr><th style="width:160px">현재</th><td>TEST 1명 (고정, {escape(TEST_ADDRESS)}). TEST 외 발송은 별도 승인 후</td></tr></table></div></div>'
+            f'<tr><th>사용 중</th><td>{enabled}곳</td></tr><tr><th>중지</th><td>{len(entries) - enabled}곳 (사유는 RSS Source 화면에 표시)</td></tr>'
+            f'<tr><th>전체</th><td>{len(entries)}곳</td></tr></table></div>'
+            f'<div class="card"><h2>발송 대상<a class="btn right" href="/recipients">수신자·그룹</a></h2><table>'
+            f'<tr><th>현재</th><td>TEST 1명 (고정)</td></tr><tr><th>주소</th><td>{escape(TEST_ADDRESS)}</td></tr>'
+            f'<tr><th>그룹 발송</th><td>잠금 (별도 승인 후)</td></tr></table></div></div>'
+            f'<div class="card"><h2>Secret<span class="muted">값은 가려서 보이고, 눈 아이콘으로 1분 동안 보고 복사 아이콘으로 바로 복사합니다 (관리자만).</span></h2>'
+            f'<div class="sc-grid">{secret_cards}</div>{secret_note(app)}</div>'
             + accounts_card(app) + author_card(app) + signature_card(app) + criteria_card(app) + api_keywords_card(app) + CHIP_JS
-            + SECRET_JS % (json.dumps(app.token), REVEAL_SECONDS * 1000))
+            + SECRET_JS % (json.dumps(app.token), json.dumps(ICON_EYE_OFF), REVEAL_SECONDS * 1000))
 
 
 def author_card(app: AdminApp) -> str:
@@ -1935,18 +2002,42 @@ def mask_secret(name: str, value: str) -> str:
     return "••••••••" if "PASSWORD" in name else escape(value[:4]) + "••••••••"
 
 
-def secret_row(app: AdminApp, name: str, present: bool) -> str:
-    """이름 복사는 누구나. 값은 로그인 켜짐 + 관리자만: 평소 가림, 👁 보기·🙈 가리기·⧉ 복사 (D-084). 값은 누를 때만 가져온다."""
+ICON_EYE = ('<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 5C6.5 5 2.7 9.1 1.5 12'
+            'c1.2 2.9 5 7 10.5 7s9.3-4.1 10.5-7C21.3 9.1 17.5 5 12 5zm0 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9zm0-7a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>')
+ICON_EYE_OFF = ICON_EYE.replace("</svg>", '<path d="M3 3l18 18" stroke="currentColor" stroke-width="2"/></svg>')
+ICON_COPY = ('<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8'
+             'a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>')
+
+
+def secret_card(app: AdminApp, name: str, present: bool) -> str:
+    """Secret 한 개 = 카드 한 장 (2026-10-16 사용자 요청). 값 칸 오른쪽에 👁·⧉, 아래에 수정·삭제.
+    값은 로그인 켜짐 + 관리자만: 평소 가림, 누를 때만 가져온다 (D-084·D-085 (5)). 칸 크기는 값 길이와 관계없이 같다."""
+    admin_view = app.login_required and getattr(CURRENT, "role", None) == "admin"
     state = badge("있음", "b-ok") if present else badge("없음", "b-bad")
-    value = '<span class="muted">-</span>'
-    if present and app.login_required and getattr(CURRENT, "role", None) == "admin":
+    name_copy = (f'<button type="button" class="icon-btn" title="이름 복사" aria-label="{escape(name)} 이름 복사" data-v="{escape(name, quote=True)}" '
+                 f'onclick="navigator.clipboard.writeText(this.dataset.v)">{ICON_COPY}</button>')
+    if present and admin_view:
         mask = mask_secret(name, app.env_reader(name))
-        value = (f'<span class="secret" data-name="{escape(name, quote=True)}"><code data-mask="{mask}">{mask}</code>'
-                 f'<button type="button" class="btn icon" data-act="view" title="값 보기" aria-label="{escape(name)} 값 보기">👁</button>'
-                 f'<button type="button" class="btn icon" data-act="copy" title="값 복사" aria-label="{escape(name)} 값 복사">⧉</button></span>')
-    elif present:
-        value = '<span class="muted">로그인한 관리자만</span>'
-    return f"<tr><td>{escape(name)} {copy_button(name, name + ' 이름 복사')}</td><td>{state}</td><td>{value}</td></tr>"
+        field = (f'<div class="sc-field secret" data-name="{escape(name, quote=True)}"><code data-mask="{mask}">{mask}</code>'
+                 f'<button type="button" class="icon-btn" data-act="view" title="값 보기" aria-label="{escape(name)} 값 보기">{ICON_EYE}</button>'
+                 f'<button type="button" class="icon-btn" data-act="copy" title="값 복사" aria-label="{escape(name)} 값 복사">{ICON_COPY}</button></div>')
+    else:
+        text = "값 없음" if not present else "로그인한 관리자만 볼 수 있습니다"
+        field = f'<div class="sc-field"><span class="muted">{text}</span></div>'
+    foot = ""
+    if admin_view:
+        hidden = (f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
+                  f'<input type="hidden" name="confirm" value="yes"><input type="hidden" name="name" value="{escape(name, quote=True)}">')
+        delete = (f'<form method="post" action="/action/secret_delete" class="inline" onsubmit="return confirm(\'{escape(CONFIRM_TEXT["secret_delete"])}\')">'
+                  f'{hidden}<button class="btn pill">삭제</button></form>') if present else ""
+        foot = (f'<div class="sc-foot"><details class="sc-edit"><summary class="btn pill">{"수정" if present else "입력"}</summary>'
+                f'<form method="post" action="/action/secret_set" class="sc-form" autocomplete="off" '
+                f'onsubmit="return confirm(\'{escape(CONFIRM_TEXT["secret_set"])}\')">{hidden}'
+                f'<input name="value" type="password" autocomplete="new-password" required maxlength="500" aria-label="{escape(name)} 새 값" placeholder="새 값">'
+                '<button class="btn primary">저장</button><button type="button" class="btn" onclick="this.closest(\'details\').open=false">취소</button>'
+                '</form></details>' + delete + '</div>')
+    return (f'<div class="sc-card"><div class="sc-head"><span class="sc-label">{escape(name)}</span>{name_copy}<span class="right">{state}</span></div>'
+            f'{field}{foot}</div>')
 
 
 SECRET_JS = """<script>
@@ -1956,34 +2047,26 @@ SECRET_JS = """<script>
       .then(function(r){if(!r.ok)throw new Error(r.status);return r.text();});}
   document.querySelectorAll(".secret").forEach(function(box){
     var code=box.querySelector("code"),view=box.querySelector("[data-act=view]"),copy=box.querySelector("[data-act=copy]"),timer=null;
-    function hide(){code.textContent=code.dataset.mask;view.textContent="👁";view.title="값 보기";clearTimeout(timer);}
-    view.onclick=function(){if(view.textContent!=="👁")return hide();
-      get(box,"view").then(function(v){code.textContent=v;view.textContent="🙈";view.title="다시 가리기";
+    var eye=view.innerHTML,eyeOff=%s,copyIcon=copy.innerHTML;
+    function hide(){code.textContent=code.dataset.mask;view.innerHTML=eye;view.title="값 보기";box.classList.remove("shown");clearTimeout(timer);}
+    view.onclick=function(){if(box.classList.contains("shown"))return hide();
+      get(box,"view").then(function(v){code.textContent=v;code.title=v;view.innerHTML=eyeOff;view.title="다시 가리기";box.classList.add("shown");
         timer=setTimeout(hide,%d);}).catch(function(){code.textContent="가져오지 못함 (다시 로그인)";});};
     copy.onclick=function(){get(box,"copy").then(function(v){return navigator.clipboard.writeText(v);})
-      .then(function(){copy.textContent="✓";setTimeout(function(){copy.textContent="⧉";},1200);})
-      .catch(function(){copy.textContent="!";});};});
+      .then(function(){copy.textContent="✓";setTimeout(function(){copy.innerHTML=copyIcon;},1200);})
+      .catch(function(){copy.textContent="!";setTimeout(function(){copy.innerHTML=copyIcon;},1200);});};});
 })();
 </script>"""
 
 
-def secret_form(app: AdminApp) -> str:
-    """관리자만: 새 값을 Windows 사용자 환경 변수에 저장 (작업 5). 입력 칸은 비밀번호 형식이고 값은 다시 보여 주지 않는다."""
+def secret_note(app: AdminApp) -> str:
     if not app.login_required:
-        return ('<p class="muted">로그인이 꺼져 있어 화면에서 Secret 을 바꿀 수 없습니다 (이 PC 를 쓰는 누구나 바꿀 수 있게 되므로). '
-                'Windows 환경 변수에서 직접 바꾸거나, config/admin.json 의 "login" 을 true 로 바꾸고 관리 페이지를 다시 켜면 이 화면이 열립니다.</p>')
+        return ('<p class="muted">로그인이 꺼져 있어 화면에서 Secret 을 보거나 바꿀 수 없습니다 (이 PC 를 쓰는 누구나 바꿀 수 있게 되므로). '
+                'config/admin.json 의 "login" 을 true 로 바꾸고 관리 페이지를 다시 켜면 열립니다.</p>')
     if getattr(CURRENT, "role", None) != "admin":
-        return '<p class="muted">Secret 변경은 관리자만 할 수 있습니다.</p>'
-    options = "".join(f"<option>{escape(n)}</option>" for n in SECRET_NAMES)
-    return (f'<form method="post" action="/action/secret_set" class="row" autocomplete="off" '
-            f'onsubmit="return confirm(\'{escape(CONFIRM_TEXT["secret_set"])}\')">'
-            f'<input type="hidden" name="token" value="{app.token}"><input type="hidden" name="back" value="/settings">'
-            f'<input type="hidden" name="confirm" value="yes">'
-            f'<label>이름 <select name="name">{options}</select></label>'
-            f'<label>새 값 <input name="value" type="password" autocomplete="new-password" required maxlength="500"></label>'
-            f'<button class="btn warn">저장</button></form>'
-            '<p class="muted">Windows 사용자 환경 변수에 저장합니다. 값은 화면·로그·변경 이력에 남기지 않고, 이력에는 바꾼 이름과 사람만 남습니다. '
-            '관리 페이지에서 시작하는 실행에는 바로, 작업 스케줄러는 다음 실행부터 적용되며, 이미 열려 있는 다른 프로그램은 다시 켜야 읽습니다.</p>')
+        return '<p class="muted">Secret 보기·변경은 관리자만 할 수 있습니다.</p>'
+    return ('<p class="muted">Windows 사용자 환경 변수에 저장합니다. 값은 로그·변경 이력에 남기지 않고, 보기·복사·변경·삭제한 이름과 사람만 남습니다. '
+            '관리 페이지에서 시작하는 실행에는 바로, 작업 스케줄러는 다음 실행부터 적용됩니다.</p>')
 
 
 def accounts_card(app: AdminApp) -> str:
@@ -2232,7 +2315,7 @@ def make_handler(app: AdminApp, port: int):
             if not app.login_required:
                 if not path.startswith("/action/"):
                     return self._redirect("/")
-                if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_value"):  # 로그인 없이 Secret·계정은 못 바꾼다
+                if action in ("user_add", "user_password", "user_delete", "secret_set", "secret_delete", "secret_value"):  # 로그인 없이 Secret·계정은 못 바꾼다
                     app.message = "실패: 로그인이 꺼져 있어 Secret·계정은 바꿀 수 없습니다 (config/admin.json 의 login 을 켠 뒤 사용)."
                     return self._redirect("/settings")
                 session = auth.Session("이 PC", "admin", 0.0)
